@@ -104,6 +104,18 @@ jobs:
         # build-windows-x64.ps1 以 --offline 构建 Rust 依赖，先联网预热缓存。
         run: cargo +stable fetch --locked --manifest-path native/agent-desktop/Cargo.toml --target x86_64-pc-windows-msvc
 
+      - name: 安装 adapters 依赖
+        # IM 平台 sidecar（telegram、whatsapp 等）随桌面端一起编译，依赖在
+        # adapters 子项目里，官方发布工作流同样单独安装。
+        working-directory: adapters
+        run: bun install
+
+      - name: 准备捆绑的 ripgrep
+        working-directory: desktop
+        env:
+          SIDECAR_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        run: bun run prepare:ripgrep
+
       - name: 构建 Windows-x64 安装包
         working-directory: desktop
         run: bun run build:windows-x64
