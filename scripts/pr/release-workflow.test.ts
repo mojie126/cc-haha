@@ -471,23 +471,22 @@ describe('release desktop workflow', () => {
     ]) {
       expect(signingJob).toContain(setting)
     }
-    // Fork policy: develop builds Windows only, so the preflight marks macOS
-    // unsigned without validating macOS secrets (see FORK_2026-11-14.md).
-    expect(signingJob).not.toContain('Missing macOS signing/notarization secrets')
-    expect(signingJob).not.toContain('refusing to build a macOS release whose Computer Use runtime cannot pass client attestation')
-    expect(signingJob).toContain('develop builds Windows only')
+    expect(signingJob).toContain('Missing macOS signing/notarization secrets')
+    expect(signingJob).toContain('refusing to build a macOS release whose Computer Use runtime cannot pass client attestation')
     expect(signingJob).toContain("RELEASE_DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft == true }}")
     expect(signingJob).toContain('macos_signed=false')
+    expect(signingJob).toContain('macos_signed=true')
     expect(signingJob).toContain('SignPath configuration missing')
     expect(signingJob).toContain('windows_signed=false')
     expect(signingJob).toContain('windows_signed=true')
     expect(signingJob).toContain('Refusing to publish a non-draft desktop release without SignPath Windows signing.')
     expect(signingJob).toContain("inputs.draft == true && vars.SIGNPATH_TEST_SIGNING_POLICY_SLUG || vars.SIGNPATH_RELEASE_SIGNING_POLICY_SLUG")
 
-    const winRequiredBlock = signingJob?.match(
-      /win_missing=\(\)[\s\S]*?Refusing to publish a non-draft desktop release without SignPath Windows signing\./,
+    const macRequiredBlock = signingJob?.match(
+      /missing=\(\)[\s\S]*?# Windows signing is opt-in/,
     )?.[0]
-    expect(winRequiredBlock).toContain('exit 1')
+    expect(macRequiredBlock).not.toContain('if [ "$RELEASE_DRAFT" != "true" ]; then')
+    expect(macRequiredBlock).toContain('exit 1')
     expect(signingJob).toContain('if [ "$RELEASE_DRAFT" != "true" ]; then')
     expect(signingJob).toContain('exit 1')
     expect(buildJob).toContain('- signing-preflight')
