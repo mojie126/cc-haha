@@ -18,7 +18,6 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       title: ${{ steps.title.outputs.value }}
-      body_file: ${{ steps.notes.outputs.body_file }}
     permissions:
       contents: read
     steps:
@@ -57,24 +56,6 @@ jobs:
             title="${title}-r${RUN_NUMBER}"
           fi
           echo "value=$title" >> "$GITHUB_OUTPUT"
-
-      - name: 准备发布说明
-        id: notes
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-        run: |
-          set -euo pipefail
-          if [ -f "release-notes/v${VERSION}.md" ]; then
-            echo "body_file=release-notes/v${VERSION}.md" >> "$GITHUB_OUTPUT"
-          else
-            body="$(mktemp)/body.md"
-            {
-              echo "## Claude Code Haha v${VERSION}（fork 构建）"
-              echo
-              echo "- Windows-x64 安装包，基于 mojie126/cc-haha develop 分支"
-            } > "$body"
-            echo "body_file=$body" >> "$GITHUB_OUTPUT"
-          fi
 
   windows:
     name: Windows-x64 安装包
@@ -147,8 +128,26 @@ jobs:
     permissions:
       contents: write
     steps:
-      # bodyFile 指向仓库内的 release-notes 文件，先检出再创建 Release。
       - uses: actions/checkout@v4
+
+      - name: 准备发布说明
+        id: notes
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          # 发布说明只写 fork 的定制内容，取自 FORK 文档的「本轮改动详情」
+          # 一节；官方更新记录以链接引用，不复制正文。
+          {
+            echo "## Claude Code Haha v${VERSION}（fork 构建）"
+            echo
+            echo "基于官方 v${VERSION} 的 fork 定制构建，官方更新记录见 [NanmiCoder/cc-haha v${VERSION}](https://github.com/NanmiCoder/cc-haha/releases/tag/v${VERSION})。"
+            echo
+            echo "### fork 定制内容"
+            echo
+            sed -n '/^## 本轮改动详情/,/^## /p' FORK_2026-11-14.md | sed '1d;$d'
+          } > body.md
+
 
       - name: 下载发布资产
         uses: actions/download-artifact@v4
@@ -175,7 +174,7 @@ jobs:
           allowUpdates: true
           replacesArtifacts: true
           artifacts: "dist/*"
-          bodyFile: ${{ needs.prepare.outputs.body_file }}
+          bodyFile: ${{ steps.notes.outputs.body }}
           draft: true
           tag: ${{ needs.prepare.outputs.title }}
           token: ${{ secrets.GITHUB_TOKEN }}
