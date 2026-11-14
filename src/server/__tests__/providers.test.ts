@@ -7,6 +7,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
 import { ProviderService } from '../services/providerService.js'
+import { clearDiscoveredModelsCache } from '../services/providerDiscoveredModels.js'
 import { readActiveProviderManagedEnv } from '../services/providerRuntimeEnv.js'
 import { handleProvidersApi } from '../api/providers.js'
 import { handleProxyRequest } from '../proxy/handler.js'
@@ -3930,6 +3931,45 @@ describe('Providers API', () => {
     expect(body.providers).toHaveLength(1)
     expect(body.providers[0].name).toBe('Test Provider')
     expect(body.providers[0].apiKey).toBe('sk-test-key-123')
+  })
+
+  test('GET /api/providers/discovered-models probes saved providers and caches within the TTL', async () => {
+    clearDiscoveredModelsCache()
+    const originalFetch = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = mock(async () => {
+      calls += 1
+      return new Response(JSON.stringify({
+        data: [{ id: 'gateway-model-a', max_input_tokens: 1_048_576, max_output_tokens: 65_536 }],
+      }), { status: 200 })
+    }) as typeof fetch
+
+    try {
+      const svc = new ProviderService()
+      await svc.addProvider(sampleInput({ baseUrl: 'https://gateway.example.com/v1' }))
+
+      const first = makeRequest('GET', '/api/providers/discovered-models')
+      const firstRes = await handleProvidersApi(first.req, first.url, first.segments)
+      expect(firstRes.status).toBe(200)
+      const firstBody = (await firstRes.json()) as { models: Record<string, { id: string; contextWindow?: number }[]> }
+      const listed = Object.values(firstBody.models)[0]!
+      expect(listed.map(model => model.id)).toEqual(['gateway-model-a'])
+      expect(listed[0].contextWindow).toBe(1_048_576)
+
+      // The published windows are written back to the saved record, so session
+      // env building carries them; missing entries only, mapped slots untouched.
+      const saved = (await new ProviderService().listProviders()).providers[0]!
+      expect(saved.modelContextWindows).toEqual({ 'gateway-model-a': 1_048_576 })
+      expect(saved.modelMaxOutputTokens).toEqual({ 'gateway-model-a': 65_536 })
+
+      const second = makeRequest('GET', '/api/providers/discovered-models')
+      const secondRes = await handleProvidersApi(second.req, second.url, second.segments)
+      expect(secondRes.status).toBe(200)
+      expect(calls).toBe(1)
+    } finally {
+      clearDiscoveredModelsCache()
+      globalThis.fetch = originalFetch
+    }
   })
 
   test('GET /api/providers preserves a drag across built-in rows after reopening settings', async () => {

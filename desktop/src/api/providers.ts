@@ -11,6 +11,7 @@ import type {
   CcSwitchImportResult,
   ProviderModelsInput,
   ProviderModelsResult,
+  ProviderModelInfo,
   ModelContextWindows,
   ModelMapping,
   MagpieState,
@@ -30,6 +31,10 @@ type OfficialProviderModelsResponse = {
   models: ModelMapping
   /** The user's own per-model windows; absent from a server that predates them. */
   modelContextWindows?: ModelContextWindows
+}
+type DiscoveredModelsResponse = {
+  /** Discovered catalog per saved provider id; absent entries mean "not probed yet". */
+  models: Record<string, ProviderModelInfo[]>
 }
 type AuthStatusResponse = {
   hasAuth: boolean
@@ -130,5 +135,14 @@ export const providersApi = {
    */
   fetchModels(input: ProviderModelsInput) {
     return api.post<ProviderModelsResult>('/api/providers/models', input)
+  },
+
+  /**
+   * Every saved API provider's discovered catalog, probed server-side with the
+   * provider's own credentials and cached for 30s. The model picker calls this
+   * on open; the session catalog merges the same cache without probing again.
+   */
+  discoveredModels() {
+    return api.get<DiscoveredModelsResponse>('/api/providers/discovered-models')
   },
 }

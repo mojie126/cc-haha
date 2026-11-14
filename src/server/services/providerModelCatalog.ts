@@ -13,11 +13,26 @@ import {
   loadNetworkSettings,
   resolveProviderNetworkSettings,
 } from './networkSettings.js'
+import {
+  MODEL_CONTEXT_WINDOW_MAX,
+  MODEL_CONTEXT_WINDOW_MIN,
+  MODEL_MAX_OUTPUT_TOKENS_MAX,
+  MODEL_MAX_OUTPUT_TOKENS_MIN,
+} from '../../utils/model/modelContextWindows.js'
+import { MODEL_REASONING_EFFORTS } from '../../shared/modelReasoning.js'
 import type { ProviderProxyConfig } from '../types/provider.js'
 
 export type FetchedModel = {
   id: string
   ownedBy?: string
+  /** The gateway's display name, when the catalog publishes one. */
+  name?: string
+  /** Published input window (tokens); drives the runtime's context accounting. */
+  contextWindow?: number
+  /** Published reply limit (tokens). */
+  maxOutputTokens?: number
+  /** Published reasoning effort levels, filtered to the ones the runtime knows. */
+  reasoningEfforts?: string[]
 }
 
 export type FetchProviderModelsErrorCode =
@@ -81,6 +96,10 @@ const VERSION_SEGMENT_RE = /^v\d+$/
 const MODEL_ARRAY_KEYS = ['data', 'models', 'items'] as const
 const MODEL_ID_KEYS = ['id', 'slug', 'model', 'name'] as const
 const MODEL_OWNER_KEYS = ['owned_by', 'ownedBy', 'provider', 'vendor', 'owner'] as const
+const MODEL_NAME_KEYS = ['name', 'display_name', 'displayName'] as const
+const MODEL_CONTEXT_KEYS = ['max_input_tokens', 'context_length', 'context_window', 'max_context_tokens'] as const
+const MODEL_OUTPUT_KEYS = ['max_output_tokens', 'max_completion_tokens'] as const
+const MODEL_EFFORT_KEYS = ['reasoning_efforts', 'reasoningEfforts', 'supported_reasoning_efforts'] as const
 
 // Structural auth markers only — never match on human-readable text, which is
 // localized and would misfire across providers.
@@ -173,6 +192,7 @@ export function buildModelsUrlCandidates(
  */
 export async function fetchProviderModels(
   input: FetchProviderModelsInput,
+  options?: { fetchImpl?: typeof fetch },
 ): Promise<FetchProviderModelsResult> {
   const baseUrl = input.baseUrl?.trim() ?? ''
   const apiKey = input.apiKey?.trim() ?? ''
@@ -213,7 +233,7 @@ export async function fetchProviderModels(
     let response: Response
     try {
       const proxyOptions = getNetworkProxyFetchOptions(networkSettings, endpoint)
-      response = await fetch(endpoint, {
+      response = await (options?.fetchImpl ?? fetch)(endpoint, {
         method: 'GET',
         // cc-switch sends a bearer token to every provider, including the
         // Anthropic- and Gemini-compatible ones. There is deliberately no
@@ -371,7 +391,18 @@ function toFetchedModels(entries: unknown[]): FetchedModel[] {
     if (!id || seen.has(id)) continue
     seen.add(id)
     const ownedBy = readModelOwner(entry)
-    models.push(ownedBy ? { id, ownedBy } : { id })
+    const name = readModelName(entry)
+    const contextWindow = readModelTokenLimit(entry, MODEL_CONTEXT_KEYS, MODEL_CONTEXT_WINDOW_MIN, MODEL_CONTEXT_WINDOW_MAX)
+    const maxOutputTokens = readModelTokenLimit(entry, MODEL_OUTPUT_KEYS, MODEL_MAX_OUTPUT_TOKENS_MIN, MODEL_MAX_OUTPUT_TOKENS_MAX)
+    const reasoningEfforts = readModelEfforts(entry)
+    models.push({
+      id,
+      ...(ownedBy && { ownedBy }),
+      ...(name && { name }),
+      ...(contextWindow !== undefined && { contextWindow }),
+      ...(maxOutputTokens !== undefined && { maxOutputTokens }),
+      ...(reasoningEfforts.length > 0 && { reasoningEfforts }),
+    })
   }
 
   // cc-switch only dedupes on its OAuth path, but duplicate ids are never
@@ -392,6 +423,39 @@ function readModelOwner(entry: unknown): string | undefined {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined
   const record = entry as Record<string, unknown>
   return firstNonEmptyString(MODEL_OWNER_KEYS.map(key => record[key]))
+}
+
+function readModelName(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined
+  const record = entry as Record<string, unknown>
+  return firstNonEmptyString(MODEL_NAME_KEYS.map(key => record[key]))
+}
+
+/** The first present numeric limit, clamped to the runtime's accepted range. */
+function readModelTokenLimit(entry: unknown, keys: readonly string[], min: number, max: number): number | undefined {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined
+  const record = entry as Record<string, unknown>
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue
+    if (value < min || value > max) return undefined
+    return Math.round(value)
+  }
+  return undefined
+}
+
+/** Effort levels the gateway declares for the model, narrowed to the runtime's set. */
+function readModelEfforts(entry: unknown): string[] {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+  const record = entry as Record<string, unknown>
+  for (const key of MODEL_EFFORT_KEYS) {
+    const value = record[key]
+    if (!Array.isArray(value)) continue
+    const known = new Set<string>(MODEL_REASONING_EFFORTS)
+    const efforts = value.filter((item): item is string => typeof item === 'string' && known.has(item))
+    if (efforts.length > 0) return [...new Set(efforts)]
+  }
+  return []
 }
 
 /**

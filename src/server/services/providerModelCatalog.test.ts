@@ -378,6 +378,50 @@ describe('fetchProviderModels', () => {
     expect(authHeaderOf(calls[0])).toBe('Bearer sk-or-offline-fixture')
   })
 
+  test('reads published per-model metadata (name, windows, limits, efforts)', async () => {
+    stubFetchSequence([() => jsonResponse({
+      object: 'list',
+      data: [
+        {
+          id: 'glm-5.3',
+          name: 'GLM-5.3',
+          owned_by: 'autoclaw',
+          max_input_tokens: 1_048_576,
+          max_output_tokens: 307_200,
+          reasoning_efforts: ['low', 'high', 'max', 'bogus'],
+        },
+        { id: 'sensenova-6.8-flash', max_input_tokens: 256_000 },
+        // Out-of-range or non-numeric limits are dropped, not clamped.
+        { id: 'exaggerated', max_input_tokens: 99_999_999 },
+      ],
+    })])
+
+    const result = await fetchProviderModels({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'sk-test-key-123456',
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.models).toEqual([
+      {
+        id: 'exaggerated',
+      },
+      {
+        id: 'glm-5.3',
+        ownedBy: 'autoclaw',
+        name: 'GLM-5.3',
+        contextWindow: 1_048_576,
+        maxOutputTokens: 307_200,
+        reasoningEfforts: ['low', 'high', 'max'],
+      },
+      {
+        id: 'sensenova-6.8-flash',
+        contextWindow: 256_000,
+      },
+    ])
+  })
+
   test('accepts models[]/items[]/bare arrays and string entries', async () => {
     const payloads: unknown[] = [
       { models: ['b-model', 'a-model'] },

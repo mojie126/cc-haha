@@ -105,6 +105,32 @@ describe('ModelSelector', () => {
     }))
   })
 
+  it('lists a saved provider\'s discovered catalog rows after its mapped slots', async () => {
+    useSettingsStore.setState({ locale: 'en' })
+    const discovery = vi.spyOn(providersApi, 'discoveredModels').mockResolvedValue({
+      models: { 'custom-1': [{ id: 'gateway-model-a', ownedBy: 'vendor-a' }] },
+    })
+    useProviderStore.setState({
+      activeId: 'custom-1', hasLoadedProviders: true, isLoading: false,
+      providers: [{
+        id: 'custom-1', presetId: 'custom', name: 'Gateway',
+        apiFormat: 'anthropic', apiKey: 'fixture', baseUrl: 'https://gateway.invalid',
+        models: { main: 'mapped-main', haiku: '', sonnet: '', opus: '' },
+      }],
+    })
+    const runtimeChange = vi.fn()
+    render(<ModelSelector runtimeKey="__draft__" onRuntimeSelectionChange={runtimeChange} />)
+    await clickByRole(/, Gateway$/)
+
+    const dropdown = within(screen.getByTestId('model-selector-dropdown'))
+    await waitFor(() => expect(dropdown.getByRole('button', { name: /gateway-model-a/ })).toBeInTheDocument())
+    expect(discovery).toHaveBeenCalled()
+    fireEvent.click(dropdown.getByRole('button', { name: /gateway-model-a/ }))
+    expect(runtimeChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerId: 'custom-1', modelId: 'gateway-model-a',
+    }))
+  })
+
   it('shows the configured default for an opened session whose saved provider was removed', () => {
     useSettingsStore.setState({ locale: 'en', effortLevel: 'high' })
     useProviderStore.setState({

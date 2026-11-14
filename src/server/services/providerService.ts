@@ -52,6 +52,7 @@ import {
   type MagpieModel,
   type MagpieStatus,
 } from './magpieGateway.js'
+import { refreshSavedProvidersDiscoveredModels } from './providerDiscoveredModels.js'
 import { hahaGrokOAuthService } from './hahaGrokOAuthService.js'
 import {
   CURRENT_PROVIDER_INDEX_SCHEMA_VERSION,
@@ -97,6 +98,7 @@ import type {
   ModelMapping,
   ProviderAuthStrategy,
   RequestCompatibility,
+  ProviderModelInfo,
 } from '../types/provider.js'
 import {
   BUILT_IN_PROVIDER_IDS,
@@ -649,6 +651,57 @@ export class ProviderService {
     } catch {
       // Not running: the session reports that itself; the last limits stay.
     }
+  }
+
+  /**
+   * Saved providers' discovered catalogs (GET /api/providers/discovered-models).
+   * The probe uses each provider's own credentials and proxy override, and the
+   * results are cached in providerDiscoveredModels for the session catalog's
+   * local-only merge.
+   */
+  async getDiscoveredModels(): Promise<Record<string, ProviderModelInfo[]>> {
+    const index = await this.readIndex()
+    const discovered = await refreshSavedProvidersDiscoveredModels(index.providers)
+    await this.syncDiscoveredProviders(index, discovered)
+    return discovered
+  }
+
+  /**
+   * Discovered windows and reply limits written back to their saved provider,
+   * so every session, settings sync and Agent route built from the record sees
+   * the same accounting. Only missing entries are filled: explicit overrides
+   * and the user's own mapped slots stay untouched.
+   */
+  private async syncDiscoveredProviders(index: ProvidersIndex, discovered: Record<string, ProviderModelInfo[]>): Promise<void> {
+    const changed: SavedProvider[] = []
+    index.providers = index.providers.map((provider) => {
+      const models = discovered[provider.id]
+      if (!models?.length) return provider
+      const mappedBaseIds = new Set(
+        Object.values(provider.models)
+          .map((model) => model.trim().replace(/(?:\[1m\]|:1m)$/i, ''))
+          .filter(Boolean),
+      )
+      const windows = { ...provider.modelContextWindows }
+      const outputs = { ...provider.modelMaxOutputTokens }
+      for (const model of models) {
+        if (mappedBaseIds.has(model.id.trim().replace(/(?:\[1m\]|:1m)$/i, ''))) continue
+        if (model.contextWindow !== undefined && windows[model.id] === undefined) windows[model.id] = model.contextWindow
+        if (model.maxOutputTokens !== undefined && outputs[model.id] === undefined) outputs[model.id] = model.maxOutputTokens
+      }
+      const next: SavedProvider = { ...provider }
+      if (Object.keys(windows).length > 0) next.modelContextWindows = windows
+      else delete next.modelContextWindows
+      if (Object.keys(outputs).length > 0) next.modelMaxOutputTokens = outputs
+      else delete next.modelMaxOutputTokens
+      if (JSON.stringify(next) === JSON.stringify(provider)) return provider
+      changed.push(next)
+      return next
+    })
+    if (!changed.length) return
+    await this.writeIndex(index)
+    const active = changed.find((provider) => provider.id === index.activeId)
+    if (active) await this.syncToSettings(active)
   }
 
   private async syncMagpieProviders(baseUrl: string, models: MagpieModel[] | null): Promise<void> {

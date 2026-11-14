@@ -30,6 +30,7 @@ import type {
   CcSwitchImportResult,
   ProviderModelsInput,
   ProviderModelsResult,
+  ProviderModelInfo,
 } from '../types/provider'
 import type { ProviderPreset } from '../types/providerPreset'
 import type { RuntimeSelection } from '../types/runtime'
@@ -44,6 +45,8 @@ type ProviderStore = {
   presets: ProviderPreset[]
   isLoading: boolean
   error: string | null
+  /** Saved providers' discovered catalogs from the server's short-TTL probe. */
+  discoveredModels: Record<string, ProviderModelInfo[]>
 
   fetchProviders: () => Promise<void>
   createProvider: (input: CreateProviderInput) => Promise<SavedProvider>
@@ -57,6 +60,7 @@ type ProviderStore = {
   scanCcSwitch: () => Promise<CcSwitchScanResult>
   importCcSwitch: (sourceIds: string[]) => Promise<CcSwitchImportResult>
   fetchModels: (input: ProviderModelsInput) => Promise<ProviderModelsResult>
+  fetchDiscoveredModels: () => Promise<void>
 }
 
 function defaultProviderOrder(providers: SavedProvider[]): string[] {
@@ -188,6 +192,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   presets: BUNDLED_PROVIDER_PRESETS,
   isLoading: false,
   error: null,
+  discoveredModels: {},
 
   fetchProviders: async () => {
     set({ isLoading: true, error: null })
@@ -336,5 +341,16 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
 
   fetchModels: async (input) => {
     return providersApi.fetchModels(input)
+  },
+
+  fetchDiscoveredModels: async () => {
+    // The server deduplicates probes behind a 30s TTL, so overlapping picker
+    // opens are cheap; failures keep the mapped-slot picker working.
+    try {
+      const { models } = await providersApi.discoveredModels()
+      set({ discoveredModels: models })
+    } catch {
+      // Discovery is additive; leave the last known catalogs in place.
+    }
   },
 }))

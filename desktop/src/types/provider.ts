@@ -217,6 +217,14 @@ export type CcSwitchImportResult = {
 export type ProviderModelInfo = {
   id: string
   ownedBy?: string
+  /** The gateway's display name, when the catalog publishes one. */
+  name?: string
+  /** Published input window (tokens); drives the runtime's context accounting. */
+  contextWindow?: number
+  /** Published reply limit (tokens). */
+  maxOutputTokens?: number
+  /** Published reasoning effort levels, filtered to the ones the runtime knows. */
+  reasoningEfforts?: string[]
 }
 
 export type ProviderModelsInput = {

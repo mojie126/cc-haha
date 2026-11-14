@@ -54,6 +54,8 @@ Which models FennoAI and Qiniu Cloud AI give you depends on the plan you bought,
 
 When a preset has a signup page for API keys, a "Get API Key" button appears under the key field.
 
+The in-chat model selector also runs its own model discovery: opening the picker fetches the provider's live catalog once with the provider's own credentials (cached server-side for 30s), and the discovered models are listed after your slot mappings — selectable in chat, delegation and scheduled tasks alike. Published display names, context windows and reasoning effort levels are adopted as-is; when a gateway publishes no window, accounting falls back to the 200K default, and you can add a context-window override in the provider settings.
+
 ### OpenRouter
 
 OpenRouter is an aggregator: one key reaches Claude, DeepSeek, GLM, Kimi and more. The preset fills in `https://openrouter.ai/api`, where OpenRouter serves an Anthropic-native protocol. The app connects directly instead of going through the local proxy, so thinking, tool use, and prompt caching keep their native semantics. As with the local models, don't append `/v1` to that address.

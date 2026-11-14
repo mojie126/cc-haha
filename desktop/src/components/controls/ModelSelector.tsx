@@ -19,7 +19,7 @@ import { useProviderStore } from '../../stores/providerStore'
 import { formatTokenLimit, isMagpieProvider, useMagpieStore } from '../../stores/magpieStore'
 import { DRAFT_RUNTIME_SELECTION_KEY, useSessionRuntimeStore } from '../../stores/sessionRuntimeStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import type { MagpieModel, ModelMapping, SavedProvider } from '../../types/provider'
+import type { MagpieModel, ModelMapping, ProviderModelInfo, SavedProvider } from '../../types/provider'
 import type { RuntimeSelection } from '../../types/runtime'
 import type { ModelInfo, ReasoningEffortLevel } from '../../types/settings'
 import { useDismissable } from '@/hooks/useDismissable'
@@ -266,6 +266,8 @@ function buildProviderChoices(
   deepSeekAccountLoggedIn: boolean,
   magpieCatalog: readonly MagpieModel[] | null = null,
   describeMagpieModel: (model: MagpieModel) => string = (model) => model.displayName,
+  discoveredModels: Record<string, ProviderModelInfo[]> = {},
+  describeDiscoveredModel: (model: ProviderModelInfo) => string = (model) => model.ownedBy ?? '',
 ): ModelProviderChoice[] {
   const claudeOfficialModels = activeId === null && availableModels.length > 0
     ? mergeOfficialModels(availableModels)
@@ -303,13 +305,29 @@ function buildProviderChoices(
   }
 
   for (const provider of providers) {
+    const rows = isMagpieProvider(provider) && magpieCatalog?.length
+      ? buildMagpieProviderModels(provider, labels, magpieCatalog, describeMagpieModel)
+      : buildProviderModels(provider, labels)
+    // A discovered catalog (model discovery on the provider's Base URL) offers
+    // every model the provider lists, after the user's own slot mappings.
+    const listed = new Set(rows.map(row => baseModelId(row.id)))
+    const discovered = (discoveredModels[provider.id] ?? [])
+      .filter(model => model.id && !listed.has(baseModelId(model.id)))
+      .map(model => {
+        const row = buildProviderModelRow(provider, model.id, model.name ?? model.id, describeDiscoveredModel(model))
+        // The gateway knows its models' effort levels better than the id-based
+        // profile does; its declared list wins when present.
+        const declaredEfforts = model.reasoningEfforts?.filter(isModelReasoningEffort) ?? []
+        if (declaredEfforts.length > 0) {
+          row.supportedReasoningEfforts = [...declaredEfforts]
+        }
+        return row
+      })
     choices.push({
       providerId: provider.id,
       providerName: provider.name,
       isDefault: activeId === provider.id,
-      models: isMagpieProvider(provider) && magpieCatalog?.length
-        ? buildMagpieProviderModels(provider, labels, magpieCatalog, describeMagpieModel)
-        : buildProviderModels(provider, labels),
+      models: [...rows, ...discovered],
     })
   }
 
@@ -356,6 +374,8 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
     hasLoadedProviders,
     isLoading: providersLoading,
     fetchProviders,
+    discoveredModels,
+    fetchDiscoveredModels,
   } = useProviderStore()
   const claudeOAuthStatus = useHahaOAuthStore((s) => s.status)
   const fetchClaudeOAuthStatus = useHahaOAuthStore((s) => s.fetchStatus)
@@ -513,6 +533,14 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
     model.reasoningEfforts.length > 0 ? t('settings.providers.magpie.reasoningTag') : null,
   ].filter(Boolean).join(' · '), [t])
 
+  const describeDiscoveredModel = useCallback((model: ProviderModelInfo) => [
+    model.name && model.name !== model.id ? model.id : null,
+    model.contextWindow !== undefined
+      ? t('settings.providers.magpie.contextTag', { size: formatTokenLimit(model.contextWindow) })
+      : null,
+    model.reasoningEfforts?.length ? t('settings.providers.magpie.reasoningTag') : null,
+  ].filter(Boolean).join(' · '), [t])
+
   const providerChoices = useMemo(
     () => [...(leadingChoices ?? []), ...(runtimeChoices ?? buildProviderChoices(
       savedProvidersOnly
@@ -532,10 +560,14 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
       deepSeekOAuthStatus?.loggedIn === true && !savedProvidersOnly,
       magpieCatalog,
       describeMagpieModel,
+      discoveredModels,
+      describeDiscoveredModel,
     ))],
     [
       magpieCatalog,
       describeMagpieModel,
+      discoveredModels,
+      describeDiscoveredModel,
       leadingChoices,
       savedProvidersOnly,
       runtimeChoices,
@@ -685,6 +717,12 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
     if (useProviderStore.getState().providers.some(isMagpieProvider)) {
       void useMagpieStore.getState().refresh()
     }
+    // Saved providers' discovered catalogs refresh through the server's
+    // short-TTL probe; the merged rows appear while the dropdown is open.
+    // Controlled runtime pickers already read the server-authoritative catalog.
+    if (runtimeChoices === undefined && isRuntimeScoped) {
+      void fetchDiscoveredModels()
+    }
 
     if (runtimeChoices !== undefined || !isRuntimeScoped || providerChoices.length > 0) {
       setOpen(true)
@@ -741,6 +779,7 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
     })()
   }, [
     disabled,
+    fetchDiscoveredModels,
     fetchClaudeOAuthStatus,
     fetchDeepSeekOAuthStatus,
     fetchGrokOAuthStatus,

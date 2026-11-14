@@ -5,6 +5,7 @@
  * GET    /api/providers/presets           — list available presets
  * GET    /api/providers/auth-status       — check whether any usable auth exists
  *                                           (?providerId=<id>: only that provider's own auth)
+ * GET    /api/providers/discovered-models — saved providers' discovered model catalogs
  * GET    /api/providers/settings          — read cc-haha managed settings.json
  * GET    /api/providers/cc-switch/scan    — scan a local cc-switch install
  * GET    /api/providers/magpie            — the local Magpie gateway's state and catalog
@@ -114,6 +115,11 @@ export async function handleProvidersApi(
         return Response.json(await openMagpieApp())
       }
       throw ApiError.notFound(`Unknown Magpie route: ${action}`)
+    }
+
+    // GET /api/providers/presets
+    if (id === 'discovered-models' && req.method === 'GET') {
+      return Response.json({ models: await providerService.getDiscoveredModels() })
     }
 
     // GET /api/providers/presets

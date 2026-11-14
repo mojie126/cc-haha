@@ -10,8 +10,10 @@ import { OPENAI_CODEX_MODEL_CATALOG, OPENAI_DEFAULT_MAIN_MODEL } from '../../ser
 import { GROK_MODEL_CATALOG, GROK_DEFAULT_MAIN_MODEL } from '../../services/grokAuth/models.js'
 import { DEEPSEEK_ACCOUNT_MODEL_CATALOG } from '../../services/deepseekAuth/modelCatalog.js'
 import { getPresetDefaultEnv, getPresetReasoningProviderKind } from './providerRuntimeEnv.js'
+import { getCachedDiscoveredModels } from './providerDiscoveredModels.js'
 import { ApiError } from '../middleware/errorHandler.js'
 import type { SavedProvider } from '../types/provider.js'
+import type { ProviderModelInfo } from '../types/provider.js'
 import { getCachedMagpieModels, isMagpieProvider, type MagpieModel } from './magpieGateway.js'
 
 const providers = new ProviderService()
@@ -24,7 +26,12 @@ export async function listSessionModels(): Promise<SessionModelOption[]> {
     hahaGrokOAuthService.loadTokens(), hahaDeepSeekOAuthService.loadTokens(),
   ])
   // Magpie's catalog as last fetched (settings, model picker or a session start), never refetched here.
-  const catalog = buildSessionModelCatalog(index.providers, { claude: !!claude, openai: !!openai, grok: !!grok, deepseek: !!deepseek }, index.activeId, getCachedMagpieModels())
+  const discoveredModels: Record<string, ProviderModelInfo[]> = {}
+  for (const provider of index.providers) {
+    const cached = getCachedDiscoveredModels(provider.id)
+    if (cached.length > 0) discoveredModels[provider.id] = cached
+  }
+  const catalog = buildSessionModelCatalog(index.providers, { claude: !!claude, openai: !!openai, grok: !!grok, deepseek: !!deepseek }, index.activeId, getCachedMagpieModels(), discoveredModels)
   // Official accounts also have user-configured slot mappings. Keep those
   // concrete choices and defaults without consulting a remote model catalog.
   for (const providerId of [null, 'openai-official', 'grok-official', 'deepseek-account']) {
@@ -46,7 +53,7 @@ export async function listSessionModels(): Promise<SessionModelOption[]> {
   return catalog
 }
 
-export function buildSessionModelCatalog(saved: SavedProvider[], accounts: { claude: boolean; openai: boolean; grok: boolean; deepseek: boolean }, activeProviderId?: string | null, magpieModels: readonly MagpieModel[] = []): SessionModelOption[] {
+export function buildSessionModelCatalog(saved: SavedProvider[], accounts: { claude: boolean; openai: boolean; grok: boolean; deepseek: boolean }, activeProviderId?: string | null, magpieModels: readonly MagpieModel[] = [], discoveredModels: Record<string, ProviderModelInfo[]> = {}): SessionModelOption[] {
   const result: SessionModelOption[] = []
   const add = (providerId: string | null, providerName: string, modelId: string, modelName: string, isDefault: boolean, supportedEfforts?: readonly string[], defaultEffort?: string) => {
     if (!modelId || result.some(item => item.providerId === providerId && item.modelId === modelId)) return
@@ -77,6 +84,17 @@ export function buildSessionModelCatalog(saved: SavedProvider[], accounts: { cla
       const profile = resolveModelReasoningProfile(model.runtimeId, provider.apiFormat,
         getModelReasoningCapabilityOverride(model.runtimeId, provider.models, getPresetDefaultEnv(provider.presetId)), getPresetReasoningProviderKind(provider.presetId))
       add(provider.id, provider.name, model.runtimeId, model.displayName, false, profile?.supportedReasoningEfforts ?? [], profile?.defaultReasoningEffort)
+    }
+    // A discovered catalog (GET /api/providers/discovered-models) serves every
+    // model the provider lists, not only the mapped slots.
+    for (const model of discoveredModels[provider.id] ?? []) {
+      const profile = resolveModelReasoningProfile(model.id, provider.apiFormat,
+        getModelReasoningCapabilityOverride(model.id, provider.models, getPresetDefaultEnv(provider.presetId)), getPresetReasoningProviderKind(provider.presetId))
+      // A gateway that publishes per-model effort levels overrides the id-based
+      // profile; its display name labels the row when the id is opaque.
+      add(provider.id, provider.name, model.id, model.name ?? model.id, false,
+        model.reasoningEfforts?.length ? model.reasoningEfforts : (profile?.supportedReasoningEfforts ?? []),
+        profile?.defaultReasoningEffort)
     }
   }
   const identitiesByName = new Map<string, Set<string>>()

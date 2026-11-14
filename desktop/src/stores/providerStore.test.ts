@@ -28,6 +28,7 @@ const {
     scanCcSwitch: vi.fn(),
     importCcSwitch: vi.fn(),
     fetchModels: vi.fn(),
+    discoveredModels: vi.fn(),
   },
   chatStoreState: {
     sessions: {} as Record<string, { connectionState: string; chatState: string }>,
@@ -100,6 +101,36 @@ describe('providerStore presets', () => {
       expect.objectContaining({ id: 'custom' }),
       expect.objectContaining({ id: 'deepseek' }),
     ]))
+  })
+})
+
+describe('providerStore discovered models', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    const { useProviderStore } = await import('./providerStore')
+    useProviderStore.setState(useProviderStore.getInitialState(), true)
+  })
+
+  it('stores the server-discovered catalogs keyed by provider id', async () => {
+    providersApiMock.discoveredModels.mockResolvedValue({
+      models: { 'provider-a': [{ id: 'gateway-model-a' }, { id: 'gateway-model-b', ownedBy: 'vendor' }] },
+    })
+    const { useProviderStore } = await import('./providerStore')
+
+    await useProviderStore.getState().fetchDiscoveredModels()
+
+    expect(useProviderStore.getState().discoveredModels).toEqual({
+      'provider-a': [{ id: 'gateway-model-a' }, { id: 'gateway-model-b', ownedBy: 'vendor' }],
+    })
+  })
+
+  it('keeps the picker usable when the discovery request fails', async () => {
+    providersApiMock.discoveredModels.mockRejectedValue(new Error('server unreachable'))
+    const { useProviderStore } = await import('./providerStore')
+
+    await expect(useProviderStore.getState().fetchDiscoveredModels()).resolves.toBeUndefined()
+
+    expect(useProviderStore.getState().discoveredModels).toEqual({})
   })
 })
 

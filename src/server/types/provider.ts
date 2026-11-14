@@ -150,6 +150,20 @@ export const ProviderProxyConfigSchema = z.object({
 export type ProviderProxyConfig = z.infer<typeof ProviderProxyConfigSchema>
 
 /**
+ * One entry of a discovered model catalog, as the provider published it on its
+ * Base URL. Metadata fields stay optional: gateways range from a bare id list
+ * to rich per-model records, and every field is advisory.
+ */
+export type ProviderModelInfo = {
+  id: string
+  ownedBy?: string
+  name?: string
+  contextWindow?: number
+  maxOutputTokens?: number
+  reasoningEfforts?: string[]
+}
+
+/**
  * A provider's balance/quota query, as cc-switch stores it in a provider's
  * `meta.usage_script`. It is kept exactly as cc-switch wrote it, field names
  * included, so the same scripts and template settings can run once cc-haha has

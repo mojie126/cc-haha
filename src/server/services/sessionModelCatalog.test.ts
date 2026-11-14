@@ -2,6 +2,7 @@ import { describe, expect, test, spyOn, mock } from 'bun:test'
 import { buildSessionModelCatalog, resolveSessionRuntimeFromCatalog, listSessionModels } from './sessionModelCatalog.js'
 import type { SavedProvider } from '../types/provider.js'
 import { ProviderService } from './providerService.js'
+import { refreshDiscoveredProviderModels } from './providerDiscoveredModels.js'
 import { hahaOAuthService } from './hahaOAuthService.js'
 import { hahaOpenAIOAuthService } from './hahaOpenAIOAuthService.js'
 import { hahaGrokOAuthService } from './hahaGrokOAuthService.js'
@@ -58,6 +59,22 @@ describe('session model catalog and strict runtime identity', () => {
     expect(catalog.map(item => item.modelId)).toContain('shared-model[1m]')
     expect(catalog.map(item => item.modelId)).toContain('shared-model')
   })
+
+  test('discovered models extend a saved provider beyond its mapped slots', () => {
+    const catalog = buildSessionModelCatalog([provider('first')], accounts, 'first', [], {
+      first: [{ id: 'discovered-model', name: 'Discovered Model', reasoningEfforts: ['low', 'max'] }],
+    })
+    const discovered = catalog.find(item => item.providerId === 'first' && item.modelId === 'discovered-model')!
+    expect(discovered.modelName).toBe('Discovered Model')
+    expect(discovered.supportedEfforts).toEqual(['low', 'max'])
+    expect(catalog.filter(item => item.providerId === 'first').map(item => item.modelId))
+      .toEqual(['shared-model', 'small-model', 'discovered-model'])
+    expect(resolveSessionRuntimeFromCatalog(
+      { runtime: { providerId: 'first', modelId: 'discovered-model' } },
+      parent,
+      catalog,
+    )).toEqual({ providerId: 'first', modelId: 'discovered-model' })
+  })
 })
 
 test('inherited stale effort is normalized, while an explicit unsupported effort is rejected', () => {
@@ -85,5 +102,23 @@ test('live directory stays local and includes configured official defaults witho
     expect(result.filter(item => item.isDefault)).toHaveLength(1)
     expect(JSON.stringify(result)).not.toContain('private-token')
     expect(JSON.stringify(result)).not.toContain('secret-key')
+  } finally { mock.restore() }
+})
+
+test('the discovered catalog merges from cache only; listSessionModels never probes', async () => {
+  try {
+    const fetch = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('No network allowed'))
+    const saved = provider('saved')
+    await refreshDiscoveredProviderModels(saved, {
+      fetchImpl: (async () => new Response(JSON.stringify({ data: [{ id: 'discovered-model' }] }), { status: 200 })) as typeof fetch,
+      now: 1_000,
+    })
+    expect(fetch).not.toHaveBeenCalled()
+    spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [saved], activeId: 'saved', providerOrder: [] })
+    for (const service of [hahaOAuthService, hahaOpenAIOAuthService, hahaGrokOAuthService, hahaDeepSeekOAuthService]) spyOn(service, 'loadTokens').mockResolvedValue({ accessToken: 'private-token' } as never)
+    const result = await listSessionModels()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(result.filter(item => item.providerId === 'saved').map(item => item.modelId))
+      .toEqual(['shared-model', 'small-model', 'discovered-model'])
   } finally { mock.restore() }
 })
