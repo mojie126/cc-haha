@@ -4,18 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       platforms:
-        description: 'Build platforms'
+        # Fork policy: develop builds Windows only (see FORK_2026-11-14.md).
+        description: 'Build platforms (Windows only on develop)'
         required: true
-        default: 'all'
+        default: 'windows-x64'
         type: choice
         options:
-          - all
-          - macos-arm64
-          - macos-x64
           - windows-x64
-          - windows-arm64
-          - linux-x64
-          - linux-arm64
 
 permissions:
   contents: read

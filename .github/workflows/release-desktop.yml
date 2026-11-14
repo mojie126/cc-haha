@@ -86,23 +86,9 @@ jobs:
           WINDOWS_SIGNING_ENABLED: ${{ vars.WINDOWS_SIGNING_ENABLED == 'true' }}
           WINDOWS_SIGNING_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_signing || 'auto' }}
         run: |
-          # macOS signing + notarization is preferred: Squirrel.Mac auto-update and
-          # first-launch Gatekeeper approval and Computer Use client attestation
-          # require a consistent Developer ID build. Drafts use the same native
-          # runtime, so an unsigned macOS lane would be a knowingly broken app.
-          missing=()
-          [ -n "$CSC_LINK" ] || missing+=("MACOS_CERTIFICATE")
-          [ -n "$CSC_KEY_PASSWORD" ] || missing+=("MACOS_CERTIFICATE_PASSWORD")
-          [ -n "$APPLE_ID" ] || missing+=("APPLE_ID")
-          [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] || missing+=("APPLE_APP_SPECIFIC_PASSWORD")
-          [ -n "$APPLE_TEAM_ID" ] || missing+=("APPLE_TEAM_ID")
-          if [ "${#missing[@]}" -gt 0 ]; then
-            printf '::error::Missing macOS signing/notarization secrets (%s): refusing to build a macOS release whose Computer Use runtime cannot pass client attestation.\n' "${missing[*]}"
-            echo "macos_signed=false" >> "$GITHUB_OUTPUT"
-            exit 1
-          else
-            echo "macos_signed=true" >> "$GITHUB_OUTPUT"
-          fi
+          # Fork policy: develop builds Windows only, so macOS signing is
+          # neither required nor validated here (see FORK_2026-11-14.md).
+          echo "macos_signed=false" >> "$GITHUB_OUTPUT"
           # Windows signing is opt-in while SignPath approval is pending: the
           # WINDOWS_SIGNING_ENABLED repository variable turns it on for every
           # trigger, and a manual run may override it either way (for example
@@ -159,6 +145,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Fork policy: develop builds Windows-x64 only. Non-Windows rows
+          # stay listed for the release-asset contract tests but are skipped
+          # per leg by the build job's `if` (see FORK_2026-11-14.md).
           - platform: macos-latest
             target_triple: aarch64-apple-darwin
             builder_args: --mac dmg zip --arm64 '-c.dmg.artifactName=Claude-Code-Haha-${version}-macOS-Apple-Silicon.${ext}'
@@ -166,6 +155,7 @@ jobs:
             label: macOS-ARM64
             smoke_platform: macos
             arch: arm64
+            enabled: false
           - platform: macos-latest
             target_triple: x86_64-apple-darwin
             builder_args: --mac dmg zip --x64 '-c.dmg.artifactName=Claude-Code-Haha-${version}-macOS-Intel.${ext}'
@@ -173,18 +163,21 @@ jobs:
             label: macOS-x64
             smoke_platform: macos
             arch: x64
+            enabled: false
           - platform: ubuntu-22.04
             target_triple: x86_64-unknown-linux-gnu
             builder_args: --linux AppImage deb rpm --x64 '-c.linux.artifactName=Claude-Code-Haha-${version}-Linux-x64.${ext}'
             label: Linux-x64
             smoke_platform: linux
             arch: x64
+            enabled: false
           - platform: ubuntu-22.04-arm
             target_triple: aarch64-unknown-linux-gnu
             builder_args: --linux AppImage deb rpm --arm64 '-c.linux.artifactName=Claude-Code-Haha-${version}-Linux-arm64.${ext}'
             label: Linux-ARM64
             smoke_platform: linux
             arch: arm64
+            enabled: false
           - platform: windows-latest
             target_triple: x86_64-pc-windows-msvc
             builder_args: --win nsis --x64
@@ -193,6 +186,7 @@ jobs:
             label: Windows-x64
             smoke_platform: windows
             arch: x64
+            enabled: true
           - platform: windows-latest
             target_triple: aarch64-pc-windows-msvc
             builder_args: --win nsis --arm64
@@ -201,6 +195,9 @@ jobs:
             label: Windows-ARM64
             smoke_platform: windows
             arch: arm64
+            enabled: false
+
+    if: matrix.enabled != 'false'
 
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
@@ -914,18 +911,18 @@ jobs:
           APP_VERSION: ${{ steps.version.outputs.value }}
         run: |
           expected=(
-            "Claude-Code-Haha-${APP_VERSION}-macOS-Apple-Silicon.dmg"
-            "Claude-Code-Haha-${APP_VERSION}-macOS-arm64-update.zip"
-            "Claude-Code-Haha-${APP_VERSION}-macOS-Intel.dmg"
-            "Claude-Code-Haha-${APP_VERSION}-macOS-x64-update.zip"
-            "Claude-Code-Haha-${APP_VERSION}-Linux-x64.AppImage"
-            "Claude-Code-Haha-${APP_VERSION}-Linux-x64.deb"
-            "Claude-Code-Haha-${APP_VERSION}-Linux-x64.rpm"
-            "Claude-Code-Haha-${APP_VERSION}-Linux-arm64.AppImage"
-            "Claude-Code-Haha-${APP_VERSION}-Linux-arm64.deb"
-            "Claude-Code-Haha-${APP_VERSION}-Linux-arm64.rpm"
-            "Claude-Code-Haha-${APP_VERSION}-Windows-x64-Setup.exe"
-            "Claude-Code-Haha-${APP_VERSION}-Windows-arm64-Setup.exe"
+          "Claude-Code-Haha-${APP_VERSION}-macOS-Apple-Silicon.dmg"
+          "Claude-Code-Haha-${APP_VERSION}-macOS-arm64-update.zip"
+          "Claude-Code-Haha-${APP_VERSION}-macOS-Intel.dmg"
+          "Claude-Code-Haha-${APP_VERSION}-macOS-x64-update.zip"
+          "Claude-Code-Haha-${APP_VERSION}-Linux-x64.AppImage"
+          "Claude-Code-Haha-${APP_VERSION}-Linux-x64.deb"
+          "Claude-Code-Haha-${APP_VERSION}-Linux-x64.rpm"
+          "Claude-Code-Haha-${APP_VERSION}-Linux-arm64.AppImage"
+          "Claude-Code-Haha-${APP_VERSION}-Linux-arm64.deb"
+          "Claude-Code-Haha-${APP_VERSION}-Linux-arm64.rpm"
+          "Claude-Code-Haha-${APP_VERSION}-Windows-x64-Setup.exe"
+          "Claude-Code-Haha-${APP_VERSION}-Windows-arm64-Setup.exe"
           )
 
           missing=()
@@ -951,9 +948,9 @@ jobs:
         shell: bash
         run: |
           expected=(
-            "latest-mac.yml"
-            "latest-linux.yml"
-            "latest-linux-arm64.yml"
+          "latest-mac.yml"
+          "latest-linux.yml"
+          "latest-linux-arm64.yml"
             "latest.yml"
           )
           missing=()
