@@ -109,13 +109,14 @@ describe('release desktop workflow', () => {
     expect(workflow).toContain('name: Build (${{ matrix.label }})')
   })
 
-  test('version tags have exactly one desktop release publisher', () => {
+  test('fork policy: the desktop release publisher stays unique and manual', () => {
     const releasePublishers = readdirSync('.github/workflows')
       .filter(fileName => fileName.endsWith('.yml'))
       .filter((fileName) => {
         const workflow = readFileSync(`.github/workflows/${fileName}`, 'utf8')
-        return workflow.includes("tags: ['v*.*.*']")
-          && workflow.includes('softprops/action-gh-release@v2')
+        // The fork removed the version-tag trigger; manual dispatch is the
+        // only release path (see FORK_2026-11-14.md).
+        return workflow.includes('softprops/action-gh-release@v2')
       })
 
     expect(releasePublishers).toEqual(['release-desktop.yml'])
@@ -324,7 +325,7 @@ describe('release desktop workflow', () => {
     }
 
     expect(desktopPackage.description).toBeTruthy()
-    expect(desktopPackage.homepage).toBe('https://github.com/NanmiCoder/cc-haha')
+    expect(desktopPackage.homepage).toBe('https://github.com/mojie126/cc-haha')
     expect(desktopPackage.author?.name).toBe('NanmiCoder')
     expect(desktopPackage.author?.email).toBe('relakkes@gmail.com')
     expect(desktopPackage.build?.linux?.maintainer).toBe('NanmiCoder <relakkes@gmail.com>')
@@ -918,7 +919,7 @@ describe('release desktop workflow', () => {
     expect(desktopPackage.build.publish).toEqual([
       {
         provider: 'github',
-        owner: 'NanmiCoder',
+        owner: 'mojie126',
         repo: 'cc-haha',
       },
     ])

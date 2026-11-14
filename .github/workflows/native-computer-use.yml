@@ -1,23 +1,8 @@
 name: Native Computer Use
 
+# Fork policy: manual only (upstream also ran it on pull requests and pushes to
+# main); see FORK_2026-11-14.md for the divergence.
 on:
-  pull_request:
-    paths:
-      - 'native/agent-desktop/**'
-      - 'src/utils/computerUse/agentDesktop*'
-      - 'src/vendor/computer-use-mcp/agentDesktop*'
-      - 'desktop/scripts/native-agent-desktop*'
-      - 'scripts/pr/run-agent-desktop-checks*'
-      - '.github/workflows/native-computer-use.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'native/agent-desktop/**'
-      - 'src/utils/computerUse/agentDesktop*'
-      - 'src/vendor/computer-use-mcp/agentDesktop*'
-      - 'desktop/scripts/native-agent-desktop*'
-      - 'scripts/pr/run-agent-desktop-checks*'
-      - '.github/workflows/native-computer-use.yml'
   workflow_dispatch:
 
 permissions:

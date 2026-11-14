@@ -1,13 +1,9 @@
 name: PR Quality
 
-# Also runs after every merge to main, scoped to what that push changed. A gate
-# that only ever looks at pull requests lets main drift red unnoticed, and then
-# every later pull request inherits failures it did not cause.
+# Fork policy: this workflow is manual only. Upstream ran it on pull requests
+# and after every merge to main; see FORK_2026-11-14.md for the divergence.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,7 +11,7 @@ permissions:
 
 concurrency:
   group: pr-quality-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   scope-plan:

@@ -1,13 +1,6 @@
 name: Deploy React Site
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'site/**'
-      - 'package.json'
-      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
 permissions:

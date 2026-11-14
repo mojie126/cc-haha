@@ -413,17 +413,19 @@ describe('PR quality workflow', () => {
     expect(result.exitCode, new TextDecoder().decode(result.stdout)).toBe(scenario.exit)
   })
 
-  test('re-checks main after every merge, scoped to the pushed range', () => {
+  test('fork policy: pr quality is manual only, script contracts unchanged', () => {
     const workflow = readFileSync('.github/workflows/pr-quality.yml', 'utf8')
-    const parsed = parse(workflow) as { on: { push?: { branches?: string[] } } }
+    const parsed = parse(workflow) as { on: Record<string, unknown> }
     const jobs = workflowJobs(workflow)
     const collect = (jobs['scope-plan'].steps ?? []).find((step) => step.name === 'Collect changed files')!.run!
     const enforce = (jobs['policy-enforcement'].steps ?? []).find((step) => step.name === 'Enforce change policy')!.run!
 
-    expect(parsed.on.push?.branches).toEqual(['main'])
+    // The fork disabled the pull-request and merge triggers; manual dispatch
+    // is the only entry point (see FORK_2026-11-14.md).
+    expect(Object.keys(parsed.on)).toEqual(['workflow_dispatch'])
     expect(collect).toContain('git diff --name-only -z "$PUSH_BEFORE" "$PUSH_AFTER"')
     // Pushes to main must not cancel one another: each merge gets its own verdict.
-    expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
+    expect(workflow).toContain('cancel-in-progress: false')
     // Label exceptions live on the pull request; main must not re-block on them.
     expect(enforce.indexOf('"$EVENT_NAME" != "pull_request"')).toBeLessThan(enforce.indexOf('"$BLOCKED" = "true"'))
   })
@@ -487,10 +489,10 @@ describe('full quality workflow', () => {
     const runs = (jobs['full-deterministic'].steps ?? []).map((step) => step.run ?? '')
 
     expect(workflow).toContain('workflow_dispatch:')
-    // Daily, by maintainer decision (2026-10). More often than that is a call for the
-    // maintainer, not for a drive-by edit: the sweep costs about ninety minutes.
+    // Fork policy: manual only; the upstream daily cron sweep is removed
+    // (see FORK_2026-11-14.md). The sweep costs about ninety minutes.
     const schedule = (parse(workflow) as { on: { schedule?: Array<{ cron: string }> } }).on.schedule ?? []
-    expect(schedule).toEqual([{ cron: '0 19 * * *' }])
+    expect(schedule).toEqual([])
     for (const command of [
       'bun run check:policy',
       'bun run check:agent-flow',
@@ -546,7 +548,10 @@ describe('docs deployment workflow', () => {
   test('builds and uploads the isolated React site', () => {
     const workflow = readFileSync('.github/workflows/deploy-docs.yml', 'utf8')
 
-    expect(workflow).toContain("      - 'site/**'")
+    // Fork policy: manual only; the push-to-main trigger is removed
+    // (see FORK_2026-11-14.md).
+    expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).not.toContain('push:')
     expect(workflow).toContain('cache-dependency-path: site/package-lock.json')
     expect(workflow).toContain('run: npm --prefix site ci')
     expect(workflow).toContain('run: npm --prefix site run build')

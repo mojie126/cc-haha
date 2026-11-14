@@ -12,9 +12,8 @@ name: Full Quality
 # minutes and the per-push PR Quality run already covers what each merge touched.
 
 on:
-  schedule:
-    # 19:00 UTC = 03:00 Beijing, outside working hours.
-    - cron: '0 19 * * *'
+# Fork policy: manual only (upstream also ran a daily cron sweep);
+# see FORK_2026-11-14.md for the divergence.
   workflow_dispatch:
     inputs:
       skip_coverage:

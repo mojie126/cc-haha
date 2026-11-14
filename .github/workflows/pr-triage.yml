@@ -1,8 +1,14 @@
 name: PR Triage
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  # Fork policy: manual only (upstream ran it on pull_request_target events);
+  # see FORK_2026-11-14.md for the divergence.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number to triage'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -10,7 +16,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pr-triage-${{ github.event.pull_request.number }}
+  group: pr-triage-${{ inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
@@ -24,7 +30,7 @@ jobs:
           script: |
             const owner = context.repo.owner
             const repo = context.repo.repo
-            const issue_number = context.payload.pull_request.number
+            const issue_number = context.payload.pull_request?.number ?? Number(core.getInput('pr_number'))
 
             const managedLabels = {
               'area:desktop': '1d76db',
