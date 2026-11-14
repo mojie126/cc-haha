@@ -1,0 +1,167 @@
+name: fork-build
+
+# 个人 fork 的 Windows 资产构建与草稿 Release，参考 agent2api A2API 的
+# fork-build.yml：只构建 Windows-x64 安装包，工作流仅手动触发，不响应标签
+# 推送。Release 固定按应用版本创建为草稿，人工确认后再正式发布；已发布过
+# 的版本重跑时标题自动追加 -r{run_number} 后缀。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: 构建前校验
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      title: ${{ steps.title.outputs.value }}
+      body_file: ${{ steps.notes.outputs.body_file }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取应用版本
+        id: release
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./desktop/package.json').version")"
+          if [[ -z "$version" ]]; then
+            echo "::error::未能读取 desktop/package.json 的版本号"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 读取已发布版本
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.release.outputs.version }}"
+          echo "current=$(gh release view "$tag" --json isDraft --jq '.isDraft == false' 2>/dev/null || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: 计算发布标题
+        id: title
+        env:
+          CURRENT_PUBLISHED: ${{ steps.published.outputs.current }}
+          RUN_NUMBER: ${{ github.run_number }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          title="v$VERSION"
+          if [[ "$CURRENT_PUBLISHED" == "true" ]]; then
+            title="${title}-r${RUN_NUMBER}"
+          fi
+          echo "value=$title" >> "$GITHUB_OUTPUT"
+
+      - name: 准备发布说明
+        id: notes
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -f "release-notes/v${VERSION}.md" ]; then
+            echo "body_file=release-notes/v${VERSION}.md" >> "$GITHUB_OUTPUT"
+          else
+            body="$(mktemp)/body.md"
+            {
+              echo "## Claude Code Haha v${VERSION}（fork 构建）"
+              echo
+              echo "- Windows-x64 安装包，基于 mojie126/cc-haha develop 分支"
+            } > "$body"
+            echo "body_file=$body" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    name: Windows-x64 安装包
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: 预取 native Computer Use 依赖
+        # build-windows-x64.ps1 以 --offline 构建 Rust 依赖，先联网预热缓存。
+        run: cargo +stable fetch --locked --manifest-path native/agent-desktop/Cargo.toml --target x86_64-pc-windows-msvc
+
+      - name: 构建 Windows-x64 安装包
+        working-directory: desktop
+        run: bun run build:windows-x64
+
+      - name: 收集发布资产
+        shell: pwsh
+        run: |
+          $canonical = "desktop/build-artifacts/windows-x64"
+          $stage = "dist"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item (Join-Path $canonical "Claude-Code-Haha-*-Windows-x64-Setup.exe") $stage/
+          Copy-Item (Join-Path $canonical "Claude-Code-Haha-*-Windows-x64-Setup.exe.blockmap") $stage/
+          Copy-Item (Join-Path $canonical "latest.yml") $stage/
+          Get-ChildItem $stage | Format-Table Name, Length
+
+      - name: 上传发布资产
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: 创建草稿 Release
+    needs:
+      - prepare
+      - windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载发布资产
+        uses: actions/download-artifact@v4
+        with:
+          name: fork-windows-x64
+          path: dist
+
+      - name: 校验 Release 附件
+        run: |
+          set -euo pipefail
+          cd dist
+          setup_count="$(find . -maxdepth 1 -type f -name '*-Setup.exe' | wc -l)"
+          blockmap_count="$(find . -maxdepth 1 -type f -name '*.blockmap' | wc -l)"
+          metadata_count="$(find . -maxdepth 1 -type f -name 'latest.yml' | wc -l)"
+          if [[ "$setup_count" -ne 1 || "$blockmap_count" -ne 1 || "$metadata_count" -ne 1 ]]; then
+            echo "::error::Release 附件应为安装包、blockmap 与更新元数据各一个"
+            find . -maxdepth 1 -type f -printf '%f\n' | sort
+            exit 1
+          fi
+
+      - name: 创建或更新草稿 Release
+        uses: ncipollo/release-action@v1.21.0
+        with:
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: "dist/*"
+          bodyFile: ${{ needs.prepare.outputs.body_file }}
+          draft: true
+          tag: ${{ needs.prepare.outputs.title }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          updateOnlyUnreleased: true
