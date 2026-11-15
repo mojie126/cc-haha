@@ -41,8 +41,9 @@ const PROMPT_DOC_CANDIDATES: PromptDocCandidate[] = [
 
 function resolvePromptDocRoot(cwd?: string): string {
   const base = cwd || getCwd()
-  const root = findCanonicalGitRoot(base) ?? base
-  return root.endsWith(path.sep) ? root.slice(0, -path.sep.length) : root
+  // 保留盘符根的分隔符（`E:\` 解析结果不能退化成 `E:`，否则相对解析会落到
+  // 服务进程当前目录），统一走绝对路径。
+  return path.resolve(findCanonicalGitRoot(base) ?? base)
 }
 
 function resolvePromptDocPath(id: string, cwd?: string): { fullPath: string; candidate: PromptDocCandidate } {
@@ -55,8 +56,10 @@ function resolvePromptDocPath(id: string, cwd?: string): { fullPath: string; can
 
   const root = resolvePromptDocRoot(cwd)
   const fullPath = path.resolve(root, candidate.name)
-  // id 来自白名单映射，路径必然位于根内；防御式断言保留。
-  if (!fullPath.startsWith(`${root}${path.sep}`)) {
+  // id 来自白名单映射，路径必然位于根内；用相对路径判断，避免根为盘符或
+  // 目录分隔符时前缀比较失效。
+  const relative = path.relative(root, fullPath)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
     throw ApiError.badRequest('Prompt doc path escapes workspace root')
   }
   return { fullPath, candidate }
@@ -139,10 +142,7 @@ export async function handlePromptsApi(
               throw ApiError.conflict(`Prompt doc changed before it could be saved: ${candidate.name}`)
             }
           }
-          if (candidate.scope === 'project') {
-            await fs.mkdir(path.dirname(fullPath), { recursive: true })
-          }
-          console.log('PROMPT_SAVE_PATH', fullPath)
+          await fs.mkdir(path.dirname(fullPath), { recursive: true })
           await writeFileAtomically(fullPath, content)
           return statPromptDoc(fullPath)
         })

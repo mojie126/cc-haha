@@ -110,4 +110,15 @@ describe('refreshSavedProvidersDiscoveredModels', () => {
     expect(models['saved-a']!.map(model => model.id)).toEqual(['gateway-model-a'])
     expect(getCachedDiscoveredModels('account-b')).toEqual([])
   })
+
+  test('a probe that throws degrades to an empty catalog instead of failing the batch', async () => {
+    const fetchImpl = (async () => {
+      throw new Error('network exploded')
+    }) as unknown as typeof fetch
+
+    const models = await refreshSavedProvidersDiscoveredModels([provider()], { fetchImpl, now: 1_000 })
+
+    expect(models['saved-a']).toEqual([])
+    expect(getCachedDiscoveredModels('saved-a')).toEqual([])
+  })
 })

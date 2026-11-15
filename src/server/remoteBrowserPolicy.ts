@@ -7,7 +7,7 @@ export type ApiRequestContext = { remoteBrowser?: boolean; remoteDeviceId?: stri
 // on the extra per-turn request stays a desktop-only decision.
 const READ_SETTINGS = ['agentTeamsEnabled', 'alwaysThinkingEnabled', 'workflowKeywordTriggerEnabled', 'nextPromptSuggestionsEnabled', 'autoDreamEnabled', 'skipAutoPermissionPrompt', 'chatSendBehavior', 'outputStyle', 'skipWebFetchPreflight', 'language', 'maxOutputTokensEscalationMode']
 const WRITE_SETTINGS = new Set(['language', 'chatSendBehavior', 'alwaysThinkingEnabled', 'workflowKeywordTriggerEnabled', 'outputStyle', 'autoQuestion'])
-const RESERVED_PROVIDER_PATHS = new Set(['settings', 'cc-switch', 'test', 'models', 'presets', 'auth-status', 'official', 'reorder'])
+const RESERVED_PROVIDER_PATHS = new Set(['settings', 'cc-switch', 'test', 'models', 'presets', 'auth-status', 'official', 'reorder', 'discovered-models'])
 const REMOTE_COMPATIBILITY_KEYS = new Set(['maxOutputTokens', 'outputTokenLimit', 'outputTokenField', 'sampling', 'reasoning', 'parallelTools', 'structuredOutput'])
 
 /** The browser replaces the fields it can edit, while hidden extensions stay on the desktop. */

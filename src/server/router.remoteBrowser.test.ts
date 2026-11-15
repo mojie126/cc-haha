@@ -182,4 +182,12 @@ describe('remote browser API routing', () => {
     // Non-settings APIs retain the existing router behavior under remote context.
     expect((await request('/api/nonexistent')).status).toBe(404)
   })
+
+  test('prompt doc editing and model discovery stay desktop-only', async () => {
+    // 提示词文档按客户端给出的工作目录读写主机文件，发现模型会带密钥外呼并
+    // 回写配置，远程浏览器都不得访问。
+    expect((await request('/api/prompts/docs?cwd=/tmp')).status).toBe(403)
+    expect((await request('/api/prompts/doc', 'PUT', { id: 'global', content: 'x' })).status).toBe(403)
+    expect((await request('/api/providers/discovered-models')).status).toBe(403)
+  })
 })

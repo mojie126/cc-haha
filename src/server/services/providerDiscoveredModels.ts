@@ -57,18 +57,25 @@ export async function refreshDiscoveredProviderModels(
   if (pending) return pending
 
   const probe = (async () => {
-    const apiKey = resolveProviderApiKey(provider, getPresetDefaultEnv(provider.presetId))
-    const result = apiKey && provider.baseUrl.trim()
-      ? await fetchProviderModels(
-        {
-          baseUrl: provider.baseUrl,
-          apiKey,
-          ...(provider.proxy && { proxy: provider.proxy }),
-        },
-        { fetchImpl: options?.fetchImpl },
-      )
-      : null
-    const models = result?.ok ? result.models : []
+    // 单个服务商探测失败（含凭据解析与写盘异常）只降级为空目录，不能拖垮
+    // 整批发现结果。
+    let models: ProviderModelInfo[] = []
+    try {
+      const apiKey = resolveProviderApiKey(provider, getPresetDefaultEnv(provider.presetId))
+      const result = apiKey && provider.baseUrl.trim()
+        ? await fetchProviderModels(
+          {
+            baseUrl: provider.baseUrl,
+            apiKey,
+            ...(provider.proxy && { proxy: provider.proxy }),
+          },
+          { fetchImpl: options?.fetchImpl },
+        )
+        : null
+      if (result?.ok) models = result.models
+    } catch {
+      models = []
+    }
     cache.set(provider.id, { models, at: now })
     return models
   })()

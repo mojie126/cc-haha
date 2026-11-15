@@ -61,6 +61,8 @@ test('remote settings boundary permits only intended provider routes and General
   expect(remoteProviderRouteAllowed(parts('/api//providers/settings/'), 'GET')).toBe(false)
   expect(remoteProviderRouteAllowed(parts('/api/providers/id/extra'), 'DELETE')).toBe(false)
   expect(remoteProviderRouteAllowed(parts('/api/providers/id/activate'), 'POST')).toBe(true)
+  // 发现模型会带服务商密钥外呼并回写配置，只允许桌面端触发。
+  expect(remoteProviderRouteAllowed(parts('/api/providers/discovered-models'), 'GET')).toBe(false)
   expect(remoteSettingsRouteAllowed(parts('/api/settings/user/extra'), 'PUT')).toBe(false)
   expect(validateRemoteSettingsPatch({ hooks: {} })).toBe(false)
   expect(validateRemoteSettingsPatch({ alwaysThinkingEnabled: 'true' })).toBe(false)
