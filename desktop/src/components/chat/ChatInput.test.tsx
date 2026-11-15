@@ -12,7 +12,7 @@ import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
 import { COMPUTER_USE_ENABLE_REQUEST } from '@/lib/computerUseEnable'
 import { AGENT_TEAMS_NOTICE_STORAGE_KEY, dismissAgentTeamsNotice } from '@/lib/agentTeamsNotice'
 import { readRecentSkills, RECENT_SKILLS_STORAGE_KEY } from '@/lib/recentSkills'
-import { COMPOSER_DRAFT_STORAGE_KEY, writeComposerDraft } from '@/lib/composerDraftPersistence'
+import { COMPOSER_DRAFT_STORAGE_KEY, readComposerDraft, writeComposerDraft } from '@/lib/composerDraftPersistence'
 import { recordPromptHistory, PROMPT_HISTORY_STORAGE_KEY } from '@/lib/promptHistory'
 import { act, StrictMode } from 'react'
 
@@ -496,6 +496,15 @@ describe('ChatInput file mentions', () => {
     expect(tray.className).toMatch(/(^|\s)max-h-\[/)
     expect(tray).toHaveClass('overflow-y-auto')
     expect(tray).not.toContainElement(screen.getByRole('textbox'))
+  })
+
+  it('writes a typed draft to disk before any unmount', async () => {
+    render(<ChatInput compact />)
+    setComposerText('unsent text survives a hard quit', 32)
+
+    await waitFor(() => {
+      expect(readComposerDraft(sessionId)?.input).toBe('unsent text survives a hard quit')
+    }, { timeout: 2_000 })
   })
 
   it('restores an unsent draft that was persisted by a previous run', async () => {

@@ -811,6 +811,54 @@ describe('MessageList nested tool calls', () => {
     dropSession(sessionId)
   })
 
+  it('re-pins after an idle block collapse above the tail', async () => {
+    const sessionId = 'idle-collapse-follow'
+    const observers: Array<{ callback: ResizeObserverCallback, targets: Element[] }> = []
+    class TestResizeObserver {
+      targets: Element[] = []
+      observe = (target: Element) => { this.targets.push(target) }
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+      constructor(callback: ResizeObserverCallback) { observers.push({ callback, targets: this.targets }) }
+    }
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    dropSession(sessionId)
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: makeSessionState({
+          chatState: 'idle',
+          messages: Array.from({ length: 12 }, (_, i) => ({
+            id: `collapse-row-${i}`, type: 'assistant_text' as const, content: `answer ${i}`, timestamp: i,
+          })),
+        }),
+      },
+    })
+    const { container } = render(<MessageList sessionId={sessionId} />)
+    const scroller = container.querySelector('.chat-scroll-area') as HTMLElement
+    let scrollTop = 3_400
+    let scrollHeight = 4_000
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 600 })
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, get: () => scrollTop, set: (value) => { scrollTop = value } })
+    await waitForProgrammaticScrollReset()
+    fireEvent.scroll(scroller)
+    expect(scrollTop).toBe(3_400)
+
+    // A reasoning block above the tail collapses: content shrinks by 200px.
+    scrollHeight = 3_800
+    const content = scroller.firstElementChild as HTMLElement
+    const contentObserver = observers.find(o => o.targets.includes(content))!
+    expect(contentObserver).toBeTruthy()
+    act(() => contentObserver.callback(
+      [{ target: content, contentRect: { height: 3_800 } } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    ))
+    await waitForProgrammaticScrollReset()
+
+    expect(scrollTop).toBe(3_200)
+    dropSession(sessionId)
+  })
+
   it('keeps fractional border-box jitter from invalidating a settled virtual row', async () => {
     const sessionId = 'virtual-row-measurement-jitter'
     const observers: Array<{
@@ -3199,6 +3247,35 @@ describe('MessageList nested tool calls', () => {
     expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
       'group:group-tool-read',
       'message:assistant-final',
+    ])
+  })
+
+  it('folds a background-continue notice into the run it opened', () => {
+    const messages: UIMessage[] = [
+      { id: 'assistant-prev', type: 'assistant_text', content: 'Previous answer.', timestamp: 1 },
+      { id: 'notice-1', type: 'system', content: 'Continued after a background task ended.', backgroundContinueTaskIds: ['task-1'], timestamp: 2 },
+      { id: 'think-1', type: 'thinking', content: 'Check what that task produced.', timestamp: 3 },
+      { id: 'assistant-final', type: 'assistant_text', content: 'The task passed.', timestamp: 4 },
+    ]
+
+    const { renderItems } = buildRenderModel(messages)
+
+    expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
+      'message:assistant-prev',
+      'group:group-notice-1',
+      'message:assistant-final',
+    ])
+  })
+
+  it('keeps a background-continue notice visible when nothing followed it', () => {
+    const messages: UIMessage[] = [
+      { id: 'notice-1', type: 'system', content: 'Continued after a background task ended.', backgroundContinueTaskIds: ['task-1'], timestamp: 1 },
+    ]
+
+    const { renderItems } = buildRenderModel(messages)
+
+    expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
+      'message:notice-1',
     ])
   })
 

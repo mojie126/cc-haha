@@ -202,6 +202,8 @@ export const ActivityGroup = memo(function ActivityGroup({
           />
         ) : step.kind === 'text' ? (
           <TimelineCommentary key={step.message.id} content={step.message.content} />
+        ) : step.kind === 'notice' ? (
+          <TimelineNotice key={step.message.id} content={step.message.content} />
         ) : (
           <ActivityToolRow key={step.toolCall.id} toolCall={step.toolCall} {...rowProps} />
         ))}
@@ -356,6 +358,8 @@ export const ActivityGroup = memo(function ActivityGroup({
               />
             ) : step.kind === 'text' ? (
               <TimelineCommentary key={step.message.id} content={step.message.content} />
+            ) : step.kind === 'notice' ? (
+              <TimelineNotice key={step.message.id} content={step.message.content} />
             ) : (
               <ActivityToolRow key={step.toolCall.id} toolCall={step.toolCall} {...rowProps} />
             ))}
@@ -396,6 +400,19 @@ const TimelineCommentary = memo(function TimelineCommentary({ content }: { conte
         variant="compact"
         className="chat-reading-markdown text-[var(--color-text-secondary)]"
       />
+    </div>
+  )
+})
+
+/** A system line that explains an automatic turn, folded with the work it introduced. */
+const TimelineNotice = memo(function TimelineNotice({ content }: { content: string }) {
+  return (
+    <div className="relative py-0.5 pl-[30px] text-[12px] text-[var(--color-text-tertiary)]">
+      <span
+        aria-hidden="true"
+        className="absolute left-[9px] top-[9px] h-1.5 w-1.5 rounded-full bg-[var(--color-outline)]"
+      />
+      {content}
     </div>
   )
 })

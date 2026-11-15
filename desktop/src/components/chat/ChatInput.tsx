@@ -609,6 +609,15 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     }
   }, [saveComposerDraft])
 
+  // Quitting the app does not run the unmount cleanup, so the draft has to be
+  // written while typing. Debounced: a write per keystroke would touch
+  // localStorage far more often than the draft can meaningfully change.
+  useEffect(() => {
+    if (!activeTabId) return
+    const timer = setTimeout(() => saveComposerDraft(activeTabId), 300)
+    return () => clearTimeout(timer)
+  }, [activeTabId, attachments, input, mentions, saveComposerDraft])
+
   useEffect(() => {
     mentionsRef.current = mentions
   }, [mentions])

@@ -909,6 +909,14 @@ export function buildRenderModel(
     pendingAgentCount = 0
 
     if (toolCount === 0) {
+      // A turn opened only by a system notice has no work to fold; keeping the
+      // notice as a row is what tells the reader why the turn exists.
+      if (steps.every((step) => step.kind === 'notice')) {
+        for (const step of steps) {
+          if (step.kind === 'notice') items.push({ kind: 'message', message: step.message })
+        }
+        return
+      }
       // A run of pure reasoning or commentary has no tool to count, but it is
       // still process: Codex folds it into one summary row with the rest of the
       // turn's work, so it does not compete with the final answer. Keep the
@@ -1050,6 +1058,14 @@ export function buildRenderModel(
       // Hold it until the next message decides whether it was commentary for
       // the work that follows or the turn's final answer.
       pendingCommentary.push(msg)
+      continue
+    }
+    if (msg.type === 'system' && msg.backgroundContinueTaskIds?.length) {
+      // The notice explains a turn that started on its own. Close the previous
+      // turn first, then let the notice ride into the run it introduced.
+      flushGroup()
+      flushCommentaryAsMessages()
+      pendingSteps.push({ kind: 'notice', message: msg })
       continue
     }
     if (msg.type === 'tool_use' || msg.type === 'thinking') {
@@ -2629,7 +2645,10 @@ export function MessageList({
   const hasPendingPermissionCard = pendingPermissions.some(
     (permission) => permission.toolName !== 'AskUserQuestion',
   )
-  const shouldFollowContentResize =
+  // Whether content growth belongs to the turn that is running. Idle growth is
+  // usually something the reader opened, which must keep their place (#1177);
+  // a shrink from collapsing a block still re-pins in either state.
+  const shouldFollowContentGrowth =
     isPreparingTurn ||
     streamingText.trim().length > 0 ||
     chatState === 'streaming' ||
@@ -2670,6 +2689,13 @@ export function MessageList({
   const ignoreProgrammaticScrollTopRef = useRef<number | null>(null)
   const userScrollIntentUntilRef = useRef(0)
   const disclosureLayoutUntilRef = useRef(0)
+  // Content height at the moment a transcript disclosure was clicked, so the
+  // follow decision can tell an expansion from a collapse.
+  const disclosureHeightBeforeRef = useRef(0)
+  // When the transcript or its scroller changed height. Native scroll anchoring
+  // fires a scroll event for that adjustment; treating it as reader intent is
+  // what used to switch follow off after any collapse.
+  const layoutChangeAtRef = useRef(0)
   const lastSessionIdRef = useRef<string | null | undefined>(undefined)
   const lastTailMessageIdBySessionRef = useRef(new Map<string, string | null>())
   const lastLiveFollowInputRef = useRef({
@@ -2787,6 +2813,9 @@ export function MessageList({
     restoringScrollAnchorRef.current = null
     restoringBottomRef.current = true
     shouldAutoScrollRef.current = true
+    // An explicit return to the latest supersedes any older gesture: the
+    // follow this asks for must not be suppressed by its 500ms intent window.
+    userScrollIntentUntilRef.current = 0
     isProgrammaticScrollingRef.current = true
     ignoreProgrammaticScrollUntilRef.current = performance.now() + 250
     lastAutoScrollAtRef.current = performance.now()
@@ -2850,13 +2879,14 @@ export function MessageList({
 
   const releaseBottomRestoration = useCallback(() => {
     restoringBottomRef.current = false
-    // A reader action can arrive between ResizeObserver and its queued frame.
-    // Cancel only idle restoration; live output keeps its existing follow rules.
-    if (!shouldFollowContentResize && liveFollowFrameRef.current !== null) {
+    // A reader action can arrive between a layout observer and its queued
+    // frame. Cancel that frame: the reader is taking the view back, and any
+    // later height change schedules its own.
+    if (liveFollowFrameRef.current !== null) {
       cancelAnimationFrame(liveFollowFrameRef.current)
       liveFollowFrameRef.current = null
     }
-  }, [shouldFollowContentResize])
+  }, [])
 
   const flushMeasuredHeightVersion = useCallback(() => {
     setMeasuredItemsVersion((version) => version + 1)
@@ -2871,6 +2901,7 @@ export function MessageList({
     ) return
 
     virtualItemHeights.set(itemKey, measuredHeight)
+    layoutChangeAtRef.current = performance.now()
     // A row changing height while the reader follows the tail moves the bottom.
     // Re-pin whatever caused it (a permission card, a reloaded transcript
     // measuring in after the reply, a tool result settling), not only live
@@ -2910,6 +2941,18 @@ export function MessageList({
       syncVirtualViewportFromContainer(container)
       return
     }
+    const now = performance.now()
+    const layoutChangedRecently =
+      now - layoutChangeAtRef.current < 300 && now >= userScrollIntentUntilRef.current
+    if (shouldAutoScrollRef.current && layoutChangedRecently) {
+      // A block collapsing above the reader or an image settling changes the
+      // content height; the browser then adjusts scrollTop and emits a scroll
+      // event. That is not the reader leaving the tail, so keep following and
+      // put the bottom back where it belongs.
+      syncVirtualViewportFromContainer(container)
+      requestLiveFollow()
+      return
+    }
     if (performance.now() < userScrollIntentUntilRef.current) {
       setProgrammaticNavigationItemId(null)
     }
@@ -2929,7 +2972,7 @@ export function MessageList({
     if (resolvedSessionId) {
       rememberSessionScroll(resolvedSessionId, container, isAtBottom)
     }
-  }, [hasPendingPermissionCard, resolvedSessionId, syncVirtualViewportFromContainer])
+  }, [hasPendingPermissionCard, requestLiveFollow, resolvedSessionId, syncVirtualViewportFromContainer])
 
   /**
    * Expanding a collapsed block is the reader rearranging their own view, not
@@ -2945,11 +2988,19 @@ export function MessageList({
    */
   const handleDisclosureToggle = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target
-    if (!(target instanceof Element) || !target.closest(CHAT_DISCLOSURE_SELECTOR)) return
+    if (!(target instanceof Element)) return
+    const disclosure = target.closest<HTMLElement>(CHAT_DISCLOSURE_SELECTOR)
+    if (!disclosure) return
 
     releaseBottomRestoration()
     restoringScrollAnchorRef.current = null
 
+    // A collapse above a reader who was following the tail must stay pinned;
+    // an expansion made while reading older content keeps that spot. The click
+    // handler runs before the layout change, so remember the current height for
+    // the fallback when React has already swapped the row's DOM.
+    const wasFollowing = shouldAutoScrollRef.current
+    disclosureHeightBeforeRef.current = scrollContainerRef.current?.scrollHeight ?? 0
     disclosureLayoutUntilRef.current = performance.now() + DISCLOSURE_FOLLOW_SUPPRESS_MS
 
     // Suppression only covers the resize frame. Once the block is open the
@@ -2962,12 +3013,23 @@ export function MessageList({
       disclosureLayoutUntilRef.current = 0
       const container = scrollContainerRef.current
       if (!container) return
-      const atBottom = isNearScrollBottom(container)
+      // `aria-expanded` was flipped by the click's re-render; it says which
+      // direction the row went even when a late frame already changed the
+      // measured height. A disclosure without the attribute falls back to the
+      // height comparison below.
+      const ariaExpanded = disclosure.isConnected
+        ? disclosure.getAttribute('aria-expanded')
+        : null
+      const expanding = ariaExpanded === null
+        ? container.scrollHeight > disclosureHeightBeforeRef.current + RESIZE_OBSERVER_JITTER_MAX_DELTA_PX
+        : ariaExpanded === 'true'
+      const atBottom = wasFollowing && !expanding ? true : isNearScrollBottom(container)
       shouldAutoScrollRef.current = atBottom
       setIsAwayFromLatest(!atBottom)
       syncVirtualViewportFromContainer(container)
+      if (atBottom) requestLiveFollow()
     })
-  }, [releaseBottomRestoration, syncVirtualViewportFromContainer])
+  }, [releaseBottomRestoration, requestLiveFollow, syncVirtualViewportFromContainer])
 
   const markUserScrollIntent = useCallback(() => {
     releaseBottomRestoration()
@@ -3011,6 +3073,9 @@ export function MessageList({
       restoringBottomRef.current = shouldAutoScrollRef.current
       lastSessionIdRef.current = resolvedSessionId
       setProgrammaticNavigationItemId(null)
+      // Interaction intent belongs to the transcript the reader was looking
+      // at; the next session restores its own bottom/reading intent.
+      userScrollIntentUntilRef.current = 0
       if (resolvedSessionId) getHeightsForSession(resolvedSessionId, appearanceSignature)
       lastContentResizeFollowHeightRef.current = null
       if (liveFollowFrameRef.current !== null) {
@@ -3108,42 +3173,6 @@ export function MessageList({
     scrollToBottom()
   }, [scrollToBottom])
 
-  useEffect(() => {
-    const content = scrollContentRef.current
-    if (!content || typeof ResizeObserver === 'undefined') return
-
-    const observer = new ResizeObserver((entries) => {
-      const nextHeight = entries[0]?.contentRect.height
-      if (typeof nextHeight === 'number' && Number.isFinite(nextHeight)) {
-        const previousFollowHeight = lastContentResizeFollowHeightRef.current
-        if (
-          previousFollowHeight !== null &&
-          Math.abs(nextHeight - previousFollowHeight) <= RESIZE_OBSERVER_JITTER_MAX_DELTA_PX
-        ) {
-          return
-        }
-        lastContentResizeFollowHeightRef.current = nextHeight
-      }
-      if (restoringScrollAnchorRef.current) {
-        // Non-virtual rows can settle after the switch's layout effect too.
-        // Reapply the saved reading anchor before paint, as measured rows do.
-        flushSync(flushMeasuredHeightVersion)
-        return
-      }
-      // Short lists have no measured-row callback. Keep a restored tail pinned
-      // through late layout, until the reader interacts with the transcript.
-      // Idle disclosures can fetch more content long after their click frame.
-      if (!shouldFollowContentResize && !restoringBottomRef.current) return
-      if (!shouldAutoScrollRef.current) return
-      // The reader just opened something: the growth is theirs, not the model's.
-      if (performance.now() < disclosureLayoutUntilRef.current) return
-      requestLiveFollow()
-    })
-    observer.observe(content)
-
-    return () => observer.disconnect()
-  }, [flushMeasuredHeightVersion, requestLiveFollow, shouldFollowContentResize])
-
   // The scroller itself changes height: the composer grows with every typed
   // line, a permission card pushes it down, and on touch-H5 the soft keyboard
   // shrinks the visual viewport. Resizing does not emit a scroll event, so a
@@ -3155,6 +3184,7 @@ export function MessageList({
     if (!container || typeof ResizeObserver === 'undefined') return
 
     const observer = new ResizeObserver(() => {
+      layoutChangeAtRef.current = performance.now()
       if (!shouldAutoScrollRef.current) return
       requestLiveFollow()
     })
@@ -3162,6 +3192,55 @@ export function MessageList({
 
     return () => observer.disconnect()
   }, [requestLiveFollow])
+
+  useEffect(() => {
+    const content = scrollContentRef.current
+    if (!content || typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver((entries) => {
+      const nextHeight = entries[0]?.contentRect.height
+      let grew = false
+      if (typeof nextHeight === 'number' && Number.isFinite(nextHeight)) {
+        const previousFollowHeight = lastContentResizeFollowHeightRef.current
+        if (
+          previousFollowHeight !== null &&
+          Math.abs(nextHeight - previousFollowHeight) <= RESIZE_OBSERVER_JITTER_MAX_DELTA_PX
+        ) {
+          return
+        }
+        grew = previousFollowHeight !== null && nextHeight > previousFollowHeight
+        lastContentResizeFollowHeightRef.current = nextHeight
+      }
+      if (restoringScrollAnchorRef.current) {
+        // Non-virtual rows can settle after the switch's layout effect too.
+        // Reapply the saved reading anchor before paint, as measured rows do.
+        flushSync(flushMeasuredHeightVersion)
+        return
+      }
+      // Any height change above a reader who is following the tail moves the
+      // bottom — a reasoning block collapsing, an image settling, a reloaded
+      // row measuring in. A shrink re-pins in idle sessions too: the old
+      // live-only gate let every collapse above the tail leave it behind.
+      layoutChangeAtRef.current = performance.now()
+      if (!shouldAutoScrollRef.current) return
+      // The reader is interacting with the transcript (selecting text, clicking
+      // a control). Do not fight that gesture for its short window; a later
+      // height change resumes following if they are still at the tail.
+      if (performance.now() < userScrollIntentUntilRef.current) return
+      // The reader just toggled something: the first frame of that growth is
+      // theirs, not the model's (#1177). Collapses keep following in
+      // handleDisclosureToggle.
+      if (performance.now() < disclosureLayoutUntilRef.current) return
+      // Growth while idle is usually the reader opening a block or lazily
+      // loaded activity landing; keep the spot they are reading. A restored
+      // tail is the exception: it is still settling into place.
+      if (grew && !shouldFollowContentGrowth && !restoringBottomRef.current) return
+      requestLiveFollow()
+    })
+    observer.observe(content)
+
+    return () => observer.disconnect()
+  }, [flushMeasuredHeightVersion, requestLiveFollow, shouldFollowContentGrowth])
 
   const {
     toolResultMap,

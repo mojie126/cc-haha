@@ -22,6 +22,10 @@ export type ComposerMarkdownKind =
   | 'code'
   | 'fence'
   | 'quote'
+  | 'link'
+  | 'linkUrl'
+  | 'listMarker'
+  | 'orderedMarker'
 
 export type ComposerMarkdownToken = {
   kind: ComposerMarkdownKind
@@ -38,12 +42,21 @@ const HEADING = /^(#{1,6})(?:[ \t]+(.*))?$/
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/
 const QUOTE_PREFIX = /^(?: {0,3}>[ \t]?)+/
 const LIST_MARKER = /^\s*(?:[-*+]|\d{1,9}[.)])(?=\s)/
+/** 任务列表勾选框紧跟在列表标记之后（中间可有空白） */
+const TASK_PREFIX = /^[ \t]*\[[ xX]\][ \t]+/
+/** 三个及以上 `-`、`*`、`_`（可夹空格）单独成行 */
+const HORIZONTAL_RULE = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/
 const INLINE_CODE = /(`+)([^`]+?)\1/g
+const LINK = /!?\[[^\]\n]*\]\([^)\n]*\)/g
+const STRONG_EM_STAR = /\*\*\*(?=\S)([^*\n]*?\S)\*\*\*/g
+const STRONG_EM_UNDERSCORE = /___(?=\S)([^_\n]*?\S)___/g
 const STRONG_STAR = /\*\*(?=\S)([^*\n]*?\S)\*\*/g
 const STRONG_UNDERSCORE = /__(?=\S)([^_\n]*?\S)__/g
 const EM_STAR = /\*(?=\S)([^*\n]*?\S)\*/g
 const EM_UNDERSCORE = /_(?=\S)([^_\n]*?\S)_/g
 const STRIKE = /~~(?=\S)([^~\n]*?\S)~~/g
+/** 单波浪线删除线：聊天里很常见，放在 `~~` 之后扫描避免把双波浪拆开 */
+const STRIKE_SINGLE = /~(?=\S)([^~\n]*?\S)~/g
 
 function isWordChar(char: string | undefined): boolean {
   return char !== undefined && /[A-Za-z0-9_]/.test(char)
@@ -99,10 +112,52 @@ function scanInline(line: string, start: number, end: number, out: ComposerMarkd
     if (overlapsMasked(from, to)) continue
     addDelimited(from, to, match[1]!.length, 'code')
   }
+  // 链接与图片：标记符按装饰处理，地址与文字分别着色
+  for (const match of line.slice(start, end).matchAll(LINK)) {
+    if (match.index === undefined) continue
+    const from = start + match.index
+    const to = from + match[0].length
+    if (overlapsMasked(from, to)) continue
+    const raw = match[0]
+    const image = raw.startsWith('!')
+    const labelOpen = from + (image ? 1 : 0)
+    const bracketClose = from + raw.indexOf('](')
+    if (bracketClose <= labelOpen) continue
+    if (image) out.push({ kind: 'marker', start: from, end: from + 1 })
+    out.push({ kind: 'marker', start: labelOpen, end: labelOpen + 1 })
+    out.push({ kind: 'marker', start: bracketClose, end: bracketClose + 1 })
+    out.push({ kind: 'marker', start: bracketClose + 1, end: bracketClose + 2 })
+    out.push({ kind: 'marker', start: to - 1, end: to })
+    if (bracketClose > labelOpen + 1) {
+      out.push({ kind: 'link', start: labelOpen + 1, end: bracketClose })
+    }
+    if (to - 1 > bracketClose + 2) {
+      out.push({ kind: 'linkUrl', start: bracketClose + 2, end: to - 1 })
+    }
+    masked.push([from, to])
+  }
+  const scanTripleDelimiter = (pattern: RegExp) => {
+    for (const match of line.slice(start, end).matchAll(pattern)) {
+      if (match.index === undefined) continue
+      const from = start + match.index
+      const to = from + match[0].length
+      if (overlapsMasked(from, to)) continue
+      out.push({ kind: 'marker', start: from, end: from + 3 })
+      out.push({ kind: 'marker', start: to - 3, end: to })
+      if (to - 3 > from + 3) {
+        out.push({ kind: 'strong', start: from + 3, end: to - 3 })
+        out.push({ kind: 'em', start: from + 3, end: to - 3 })
+      }
+      masked.push([from, to])
+    }
+  }
+  scanTripleDelimiter(STRONG_EM_STAR)
+  scanTripleDelimiter(STRONG_EM_UNDERSCORE)
   scanPattern(STRONG_STAR, 'strong', 2)
   scanPattern(STRONG_UNDERSCORE, 'strong', 2, (from, to) =>
     !isWordChar(line[from - 1]) && !isWordChar(line[to]))
   scanPattern(STRIKE, 'strike', 2)
+  scanPattern(STRIKE_SINGLE, 'strike', 1)
   scanPattern(EM_STAR, 'em', 1)
   // 下划线强调须落在词边界之外，避免把 snake_case 识别成斜体
   scanPattern(EM_UNDERSCORE, 'em', 1, (from, to) =>
@@ -132,6 +187,11 @@ function scanLine(line: string, fence: FenceState): { tokens: ComposerMarkdownTo
     return { tokens, fence: { char: opening[1]![0]!, length: opening[1]!.length } }
   }
 
+  if (HORIZONTAL_RULE.test(line)) {
+    tokens.push({ kind: 'marker', start: 0, end: line.length })
+    return { tokens, fence }
+  }
+
   const heading = HEADING.exec(line)
   if (heading) {
     const level = heading[1]!.length
@@ -158,8 +218,13 @@ function scanLine(line: string, fence: FenceState): { tokens: ComposerMarkdownTo
 
   const list = LIST_MARKER.exec(line)
   if (list) {
-    const contentStart = list[0].length
-    tokens.push({ kind: 'marker', start: 0, end: contentStart })
+    let contentStart = list[0].length
+    // 任务列表的 `[ ]` / `[x]` 也是标记，跟随列表符号一起隐藏
+    const task = TASK_PREFIX.exec(line.slice(contentStart))
+    if (task) contentStart += task[0].length
+    // 无序列表隐藏时替换成圆点，有序列表的序号本身有信息量，始终保留
+    const ordered = /^\s*\d/.test(list[0])
+    tokens.push({ kind: ordered ? 'orderedMarker' : 'listMarker', start: 0, end: contentStart })
     scanInline(line, contentStart, line.length, tokens)
     return { tokens, fence }
   }
@@ -239,6 +304,19 @@ function decorationAttrs(token: ComposerMarkdownToken, hidden: boolean): Record<
 }
 
 /**
+ * Stand-in for a collapsed unordered-list dash. A widget rather than CSS on the
+ * hidden span: the span is collapsed to zero width, which would take the bullet
+ * with it.
+ */
+function markdownListBullet(): HTMLElement {
+  const bullet = document.createElement('span')
+  bullet.className = 'composer-md-bullet'
+  bullet.setAttribute('aria-hidden', 'true')
+  bullet.textContent = '•'
+  return bullet
+}
+
+/**
  * Decorations for the current document. Ranges that touch a mention atom are
  * dropped: the atom projects as a token, so a decoration boundary landing
  * inside it has no stable PM position.
@@ -264,7 +342,15 @@ export function buildComposerMarkdownDecorations(
       if (token.end <= token.start) continue
       if (projection.atomSpans.some(([atomFrom, atomTo]) =>
         token.start < atomTo && token.end > atomFrom)) continue
-      const hidden = hideMarkers && token.kind === 'marker'
+      const hidden = hideMarkers && (token.kind === 'marker' || token.kind === 'listMarker')
+      if (hidden && token.kind === 'listMarker') {
+        // 列表符号折叠后留一个圆点，否则隐藏的 `-` 会让这一行读成普通段落
+        decorations.push(Decoration.widget(
+          textOffsetToPmPos(projection, token.start),
+          markdownListBullet,
+          { side: -1, key: `md-bullet:${index}:${token.start}` },
+        ))
+      }
       decorations.push(Decoration.inline(
         textOffsetToPmPos(projection, token.start),
         textOffsetToPmPos(projection, token.end),

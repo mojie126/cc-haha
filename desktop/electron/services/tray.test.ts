@@ -51,6 +51,75 @@ describe('Electron tray service', () => {
     expect(shouldInstallTray('linux')).toBe(true)
   })
 
+  it('labels the menu in the stored interface language and follows later changes', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'electron-tray-locale-'))
+    try {
+      const userData = path.join(root, 'user-data')
+      mkdirSync(path.join(root, 'src-tauri', 'icons'), { recursive: true })
+      mkdirSync(userData, { recursive: true })
+      writeFileSync(path.join(root, 'src-tauri', 'icons', 'icon.png'), 'png')
+      writeFileSync(path.join(userData, 'locale-preference.json'), JSON.stringify({ locale: 'jp' }))
+      const trayMocks = createElectronTrayMocks()
+
+      const controller = await installTray({
+        app: {
+          name: 'Claude Code Haha',
+          getPath: () => userData,
+          getPreferredSystemLanguages: () => ['zh-CN'],
+        } as never,
+        desktopRoot: root,
+        show: vi.fn(),
+        quit: vi.fn(),
+        electronRuntime: {
+          Menu: { buildFromTemplate: trayMocks.buildFromTemplate },
+          Tray: trayMocks.Tray.mockImplementation(() => trayMocks.tray),
+          nativeImage: { createFromPath: trayMocks.createFromPath },
+        } as never,
+      })
+
+      const labels = () => (trayMocks.buildFromTemplate.mock.calls.at(-1)?.[0] as Array<{ label?: string, type?: string }>)
+        .map(item => item.label ?? item.type)
+      expect(labels()).toEqual(['Claude Code Haha を表示', 'separator', 'Claude Code Haha を終了'])
+
+      controller.setLocale('zh')
+      expect(labels()).toEqual(['显示 Claude Code Haha', 'separator', '退出 Claude Code Haha'])
+      controller.dispose()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the system language when no preference was stored', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'electron-tray-system-locale-'))
+    try {
+      mkdirSync(path.join(root, 'src-tauri', 'icons'), { recursive: true })
+      writeFileSync(path.join(root, 'src-tauri', 'icons', 'icon.png'), 'png')
+      const trayMocks = createElectronTrayMocks()
+
+      const controller = await installTray({
+        app: {
+          name: 'Claude Code Haha',
+          getPath: () => path.join(root, 'missing-user-data'),
+          getPreferredSystemLanguages: () => ['ko-KR'],
+        } as never,
+        desktopRoot: root,
+        show: vi.fn(),
+        quit: vi.fn(),
+        electronRuntime: {
+          Menu: { buildFromTemplate: trayMocks.buildFromTemplate },
+          Tray: trayMocks.Tray.mockImplementation(() => trayMocks.tray),
+          nativeImage: { createFromPath: trayMocks.createFromPath },
+        } as never,
+      })
+
+      const template = trayMocks.buildFromTemplate.mock.calls.at(-1)?.[0] as Array<{ label?: string }>
+      expect(template[0]?.label).toBe('Claude Code Haha 열기')
+      controller.dispose()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('installs tray handlers that show the app, quit explicitly, and dispose cleanly', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'electron-tray-install-'))
     try {

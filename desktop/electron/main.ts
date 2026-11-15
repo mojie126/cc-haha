@@ -662,6 +662,7 @@ function registerIpcHandlers() {
     }
     const locale = payload as Locale
     writeLocalePreference(app, locale)
+    trayController?.setLocale(locale)
     broadcastLocaleChanged(locale)
   })
   registerHandler(

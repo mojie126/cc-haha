@@ -211,6 +211,11 @@ import type { RepositoryContextResult } from '../api/sessions'
 import { browserHost } from '../lib/desktopHost/browserHost'
 import { AGENT_TEAMS_NOTICE_STORAGE_KEY } from '../lib/agentTeamsNotice'
 import { getComposerElement, getComposerText, getComposerView, setComposerSelection, setComposerText } from '../components/chat/composerTestUtils'
+import {
+  COMPOSER_DRAFT_STORAGE_KEY,
+  NEW_SESSION_DRAFT_SESSION_ID,
+  readComposerDraft,
+} from '../lib/composerDraftPersistence'
 import { useVoiceInputStore } from '../stores/voiceInputStore'
 
 function okRepositoryContext(overrides: Partial<RepositoryContextResult> = {}): RepositoryContextResult {
@@ -296,6 +301,7 @@ describe('EmptySession', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
     // ProseMirror selection scrolling needs geometry APIs absent in jsdom.
     Object.defineProperties(Range.prototype, {
       getClientRects: { configurable: true, value: () => [] },
@@ -374,6 +380,19 @@ describe('EmptySession', () => {
     usePluginStore.setState(initialPluginState, true)
     useProviderStore.setState(initialProviderState, true)
     useWorkflowStore.setState(initialWorkflowState, true)
+  })
+
+  it('restores a new-session draft typed before a restart', async () => {
+    const { unmount } = render(<EmptySession />)
+    setComposerText('unsent idea for a new session', 29)
+
+    await waitFor(() => {
+      expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)?.input).toBe('unsent idea for a new session')
+    }, { timeout: 2_000 })
+    unmount()
+
+    render(<EmptySession />)
+    await waitFor(() => expect(getComposerText()).toBe('unsent idea for a new session'))
   })
 
   it('drops a starter into the draft and keeps what was already typed', async () => {

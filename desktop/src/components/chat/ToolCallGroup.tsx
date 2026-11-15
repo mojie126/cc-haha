@@ -312,6 +312,10 @@ function ToolCallGroupContent({
               className="chat-reading-markdown text-[var(--color-text-secondary)]"
             />
           </div>
+        ) : step.kind === 'notice' ? (
+          <div key={step.message.id} className="text-[12px] text-[var(--color-text-tertiary)]">
+            {step.message.content}
+          </div>
         ) : null)}
       </>
     )

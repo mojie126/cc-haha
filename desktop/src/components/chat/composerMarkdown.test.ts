@@ -45,6 +45,13 @@ describe('scanComposerMarkdownLine', () => {
     ])
     expect(ranges('*em*', 'em')).toEqual([[1, 3]])
     expect(ranges('~~gone~~', 'strike')).toEqual([[2, 6]])
+    // 单波浪线也按删除线处理，双波浪线优先整体命中
+    expect(tokensOf('~gone~')).toEqual([
+      { kind: 'marker', start: 0, end: 1 },
+      { kind: 'marker', start: 5, end: 6 },
+      { kind: 'strike', start: 1, end: 5 },
+    ])
+    expect(tokensOf('~/code ~/other')).toEqual([])
     expect(tokensOf('`code`')).toEqual([
       { kind: 'marker', start: 0, end: 1 },
       { kind: 'marker', start: 5, end: 6 },
@@ -68,9 +75,51 @@ describe('scanComposerMarkdownLine', () => {
       { kind: 'marker', start: 0, end: 2 },
       { kind: 'quote', start: 2, end: 8 },
     ])
-    expect(tokensOf('- item')).toEqual([{ kind: 'marker', start: 0, end: 1 }])
-    expect(tokensOf('  12. item')).toEqual([{ kind: 'marker', start: 0, end: 5 }])
+    expect(tokensOf('- item')).toEqual([{ kind: 'listMarker', start: 0, end: 1 }])
+    expect(tokensOf('  12. item')).toEqual([{ kind: 'orderedMarker', start: 0, end: 5 }])
     expect(ranges('- **item**', 'strong')).toEqual([[4, 8]])
+  })
+
+  it('marks horizontal rules and task-list prefixes', () => {
+    expect(tokensOf('---')).toEqual([{ kind: 'marker', start: 0, end: 3 }])
+    expect(tokensOf('* * *')).toEqual([{ kind: 'marker', start: 0, end: 5 }])
+    expect(tokensOf('- [x] done')).toEqual([{ kind: 'listMarker', start: 0, end: 6 }])
+    expect(tokensOf('1. [ ] open')).toEqual([{ kind: 'orderedMarker', start: 0, end: 7 }])
+  })
+
+  it('marks link labels and addresses separately from their punctuation', () => {
+    expect(tokensOf('see [docs](https://x) now')).toEqual([
+      { kind: 'marker', start: 4, end: 5 },
+      { kind: 'marker', start: 9, end: 10 },
+      { kind: 'marker', start: 10, end: 11 },
+      { kind: 'marker', start: 20, end: 21 },
+      { kind: 'link', start: 5, end: 9 },
+      { kind: 'linkUrl', start: 11, end: 20 },
+    ])
+    // 图片只多一个 `!`，标签与地址的着色规则相同
+    expect(tokensOf('![alt](/a.png)')).toEqual([
+      { kind: 'marker', start: 0, end: 1 },
+      { kind: 'marker', start: 1, end: 2 },
+      { kind: 'marker', start: 5, end: 6 },
+      { kind: 'marker', start: 6, end: 7 },
+      { kind: 'marker', start: 13, end: 14 },
+      { kind: 'link', start: 2, end: 5 },
+      { kind: 'linkUrl', start: 7, end: 13 },
+    ])
+  })
+
+  it('marks triple delimiters as both strong and emphasis', () => {
+    expect(tokensOf('***x***')).toEqual([
+      { kind: 'marker', start: 0, end: 3 },
+      { kind: 'marker', start: 4, end: 7 },
+      { kind: 'strong', start: 3, end: 4 },
+      { kind: 'em', start: 3, end: 4 },
+    ])
+  })
+
+  it('keeps link syntax literal inside a code span', () => {
+    expect(ranges('`[docs](https://x)`', 'link')).toEqual([])
+    expect(ranges('`[docs](https://x)`', 'linkUrl')).toEqual([])
   })
 
   it('carries a fenced code block across lines until the matching close', () => {
@@ -134,7 +183,27 @@ describe('buildComposerMarkdownDecorations', () => {
     expect(decorations).toHaveLength(1)
     expect(decorations[0]!.from).toBe(1)
     expect(decorations[0]!.to).toBe(2)
-    expect(attrsOf(decorations[0]!).class).toBe('composer-md-marker')
+    expect(attrsOf(decorations[0]!).class).toBe('composer-md-listMarker')
+  })
+
+  it('keeps a bullet where a folded unordered-list dash used to be', () => {
+    const doc = buildComposerDoc('- item\nsecond line', [])
+    const decorations = buildComposerMarkdownDecorations(doc, 1).find()
+    const widgets = decorations.filter((decoration) => decoration.from === decoration.to)
+    expect(widgets).toHaveLength(1)
+    expect(widgets[0]!.from).toBe(1)
+    expect(decorations.filter((decoration) => decoration.from !== decoration.to).some((decoration) =>
+      attrsOf(decoration).class === 'composer-md-listMarker' &&
+      attrsOf(decoration)['data-md-hidden'] === 'true')).toBe(true)
+  })
+
+  it('keeps an ordered-list number visible when the line is not active', () => {
+    const doc = buildComposerDoc('1. first\nsecond line', [])
+    const decorations = buildComposerMarkdownDecorations(doc, 1).find()
+    const ordered = decorations.filter((decoration) => attrsOf(decoration).class === 'composer-md-orderedMarker')
+    expect(ordered).toHaveLength(1)
+    expect(attrsOf(ordered[0]!)['data-md-hidden']).toBeUndefined()
+    expect(decorations.some((decoration) => decoration.from === decoration.to)).toBe(false)
   })
 
   it('hides the markers of every line except the one holding the caret', () => {

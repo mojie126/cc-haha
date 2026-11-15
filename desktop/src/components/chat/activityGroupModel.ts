@@ -20,6 +20,7 @@ type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
 type ThinkingMessage = Extract<UIMessage, { type: 'thinking' }>
 type AssistantTextMessage = Extract<UIMessage, { type: 'assistant_text' }>
+type SystemNoticeMessage = Extract<UIMessage, { type: 'system' }>
 
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string
 
@@ -32,10 +33,15 @@ type Translate = (key: TranslationKey, params?: Record<string, string | number>)
  * `text` is the Responses-style `commentary` message: assistant prose that is
  * followed by more work in the same turn. It folds into the run the way Codex
  * folds it, so only the final answer stays outside the summary.
+ *
+ * `notice` is a system line that explains a turn nobody typed, such as the
+ * automatic continuation after a background task ends. It is process too, so
+ * it folds with the work it introduced instead of standing in the transcript.
  */
 export type ActivityStep =
   | { kind: 'thinking'; message: ThinkingMessage }
   | { kind: 'text'; message: AssistantTextMessage }
+  | { kind: 'notice'; message: SystemNoticeMessage }
   | { kind: 'tool'; toolCall: ToolCall }
 
 export const THINKING_SEGMENT_KEY = '__thinking__'
@@ -133,8 +139,9 @@ export function buildActivitySegments(steps: ActivityStep[], t: Translate): Acti
   const editedFilePaths = new Set<string>()
 
   for (const step of steps) {
-    // Commentary is context for the steps around it, not a counted activity.
-    if (step.kind === 'text') continue
+    // Commentary and system notices are context for the steps around them, not
+    // counted activity.
+    if (step.kind === 'text' || step.kind === 'notice') continue
     const key = step.kind === 'thinking'
       ? THINKING_SEGMENT_KEY
       : TOOL_FAMILIES[step.toolCall.toolName] ?? step.toolCall.toolName

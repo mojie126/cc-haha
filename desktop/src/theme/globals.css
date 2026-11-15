@@ -1940,7 +1940,9 @@ body > :not(#root, [role="tooltip"]) * {
 
 /* Input-side Markdown syntax marking (composerMarkdown.ts). Decoration only —
    the document text and its plain-text projection stay exactly as typed. */
-.composer-md-marker {
+.composer-md-marker,
+.composer-md-listMarker,
+.composer-md-orderedMarker {
   color: var(--color-text-tertiary);
   opacity: 0.75;
 }
@@ -1951,10 +1953,16 @@ body > :not(#root, [role="tooltip"]) * {
    font size keeps the text in the DOM, so positions and the plain-text
    projection are untouched; the marker span's own letter-spacing is zeroed
    too, or the collapsed run would still nudge the following text. */
-.composer-md-marker[data-md-hidden="true"] {
+.composer-md-marker[data-md-hidden="true"],
+.composer-md-listMarker[data-md-hidden="true"] {
   font-size: 0;
   letter-spacing: 0;
   opacity: 0;
+}
+
+/* Stands in for a collapsed `-` so unordered items keep their bullet. */
+.composer-md-bullet {
+  color: var(--color-text-tertiary);
 }
 
 .composer-md-heading {
@@ -1987,6 +1995,19 @@ body > :not(#root, [role="tooltip"]) * {
 
 .composer-md-quote {
   color: var(--color-text-secondary);
+}
+
+/* Link text and the address behind it: the label reads as the clickable part,
+   the URL stays quiet so it does not compete with the prose around it. */
+.composer-md-link,
+.composer-md-linkUrl {
+  color: var(--color-info);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.composer-md-linkUrl {
+  color: var(--color-text-tertiary);
 }
 
 /* Dictated text that was just written into the draft. Held, then faded, so the

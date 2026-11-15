@@ -2,17 +2,19 @@ import type { ComposerMention } from './composerMentions'
 import type { ComposerAttachment } from './composerAttachments'
 
 /**
- * Unsend composer drafts survive a restart.
+ * Unsent composer drafts survive a restart.
  *
  * The chat store keeps drafts in memory only, so closing the app or reloading
- * the page dropped whatever the user had typed. Only the project-scoped chat
- * drafts are persisted here; the retained new-session draft lives in the UI
- * store and is intentionally ephemeral (it has no session to key a record by).
+ * the page dropped whatever the user had typed. Session drafts are keyed by
+ * session id; the retained new-session composer has none yet, so it uses the
+ * reserved id below and is served from the same record.
  *
  * Base64 image payloads are dropped on save: they can be tens of megabytes and
  * would blow the localStorage quota, which would take the text down with them.
  */
 export const COMPOSER_DRAFT_STORAGE_KEY = 'cc-haha-composer-drafts'
+/** Record id for the composer that has not created a session yet. */
+export const NEW_SESSION_DRAFT_SESSION_ID = '__new_session_draft__'
 const STORAGE_VERSION = 1
 /** Keep the newest N sessions; drafts are cheap but the quota is not. */
 const MAX_PERSISTED_SESSIONS = 20
@@ -146,6 +148,11 @@ export function readComposerDrafts(): Record<string, PersistedComposerDraft> {
       { input: draft.input, mentions: draft.mentions, attachments: draft.attachments },
     ]),
   )
+}
+
+/** One persisted draft, or undefined when nothing was left unsent. */
+export function readComposerDraft(sessionId: string): PersistedComposerDraft | undefined {
+  return readComposerDrafts()[sessionId]
 }
 
 /**

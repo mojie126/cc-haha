@@ -93,6 +93,11 @@ import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDial
 import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
 import { recordRecentSkills } from '@/lib/recentSkills'
 import { readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
+import {
+  NEW_SESSION_DRAFT_SESSION_ID,
+  readComposerDraft,
+  writeComposerDraft,
+} from '@/lib/composerDraftPersistence'
 import { formatBytes } from '@/lib/formatBytes'
 import { checkUserMessageBudget } from '@/lib/userMessageBudget'
 import type { AttachmentRef, UIAttachment } from '../types/chat'
@@ -214,8 +219,11 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
-  const [input, setInput] = useState('')
-  const [mentions, setMentions] = useState<ComposerMention[]>([])
+  // A retained draft that never became a session still has to survive a
+  // restart; it uses the reserved composer-draft record.
+  const [initialComposerDraft] = useState(() => readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID))
+  const [input, setInput] = useState(initialComposerDraft?.input ?? '')
+  const [mentions, setMentions] = useState<ComposerMention[]>(initialComposerDraft?.mentions ?? [])
   const [referenceDetail, setReferenceDetail] = useState<ComposerMention | null>(null)
   const [referenceOptionId, setReferenceOptionId] = useState<string | undefined>()
   const [referenceState, setReferenceState] = useState<{ context: string, items: ComposerReferenceCandidate[], loading: boolean, error: boolean } | null>(null)
@@ -239,7 +247,7 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     setFollowedWorkDir(initialWorkDir)
     if (initialWorkDir !== workDir) applyWorkDir(initialWorkDir)
   }
-  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [attachments, setAttachments] = useState<Attachment[]>(initialComposerDraft?.attachments ?? [])
   const [plusMenuOpen, setPlusMenuOpen] = useState(false)
   // Bumped when the + menu installs a skill, so the mention list reloads.
   const [referencesVersion, setReferencesVersion] = useState(0)
@@ -262,6 +270,14 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
   const runSubmittingRef = useRef(false)
   const draftComposerRef = useRef({ input, attachments, mentions })
   draftComposerRef.current = { input, attachments, mentions }
+  // Quitting the app skips unmount cleanup, so keep the draft on disk while it
+  // is being typed. Debounced to avoid a write per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, { input, mentions, attachments })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [input, mentions, attachments])
   // Shell-style prompt recall, same as the session composer.
   const historyIndexRef = useRef(0)
   const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
