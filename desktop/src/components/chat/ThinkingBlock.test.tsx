@@ -4,7 +4,7 @@ import '@testing-library/jest-dom'
 
 import { ThinkingBlock, thinkingPreview } from './ThinkingBlock'
 import { useSettingsStore } from '../../stores/settingsStore'
-import { clearDisclosureMemory } from '../../lib/disclosureMemory'
+import { clearDisclosureMemory, getDisclosure } from '../../lib/disclosureMemory'
 
 describe('thinkingPreview', () => {
   it('follows the tail while streaming so the row says what it is thinking now', () => {
@@ -97,7 +97,6 @@ describe('ThinkingBlock', () => {
     const settled = Array.from({ length: 4 }, (_, index) => paragraph(index + 1)).join('\n\n')
     const before = `${settled}\n\nStill thinking about`
     const { container, rerender } = render(<ThinkingBlock content={before} isActive />)
-    fireEvent.click(screen.getByRole('button'))
     const body = container.querySelector('[data-thinking-content="expanded"]')!
     const segmentsBefore = Array.from(body.querySelectorAll('.markdown-prose'))
     expect(segmentsBefore.length).toBeGreaterThan(1)
@@ -114,21 +113,50 @@ describe('ThinkingBlock', () => {
     expect(body.textContent).toContain(paragraph(4))
   })
 
-  it('renders the finished block whole again', () => {
+  it('renders the finished block whole again when reopened after settling', () => {
     const paragraph = (index: number) => `Paragraph ${index}: ${'reasoning about the request '.repeat(40)}`.trim()
     const content = `${Array.from({ length: 4 }, (_, index) => paragraph(index + 1)).join('\n\n')}\n\nDone.`
+    // The streamed body folds back to its summary row once the step settles;
+    // reopening it renders the whole text through one renderer again.
     const { container, rerender } = render(<ThinkingBlock content={content} isActive />)
-    fireEvent.click(screen.getByRole('button'))
-    expect(container.querySelectorAll('.markdown-prose').length).toBeGreaterThan(1)
     expect(container.querySelector('.thinking-cursor')).not.toBeNull()
 
     rerender(<ThinkingBlock content={content} isActive={false} />)
+
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button'))
 
     const bodies = container.querySelectorAll('.markdown-prose')
     expect(bodies).toHaveLength(1)
     expect(bodies[0]).toHaveClass('thinking-markdown')
     expect(bodies[0]).toHaveTextContent('Done.')
     expect(container.querySelector('.thinking-cursor')).toBeNull()
+  })
+
+  it('keeps a reader-collapsed streaming block folded after it settles', () => {
+    // Folding mid-stream is the reader's call; settling must not re-open it.
+    clearDisclosureMemory()
+    const { container, rerender } = render(
+      <ThinkingBlock content="reasoning..." isActive disclosureKey="think-fold" />,
+    )
+    expect(container.querySelector('[data-thinking-content="expanded"]')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button'))
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+
+    rerender(<ThinkingBlock content="reasoning..." isActive={false} disclosureKey="think-fold" />)
+
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+    expect(getDisclosure('think-fold')).toBe(false)
+  })
+
+  it('does not write the streaming default into the disclosure memory', () => {
+    // The open-by-default body is presentation state; only a reader click is
+    // worth remembering across virtualized unmounts.
+    clearDisclosureMemory()
+    const { rerender } = render(<ThinkingBlock content="reasoning..." isActive disclosureKey="think-default" />)
+    rerender(<ThinkingBlock content="reasoning..." isActive={false} disclosureKey="think-default" />)
+    expect(getDisclosure('think-default')).toBeUndefined()
   })
 
   it('keeps the expanded state across a virtualized row unmount and remount', () => {

@@ -12,6 +12,11 @@ import {
 /**
  * One line: the label, a preview of the reasoning, and the full text on demand.
  *
+ * While the block is streaming the body is open by default — the Codex
+ * Responses flow shows the reasoning as it arrives and folds it back into its
+ * summary row once the step settles. A reader's own click (kept in the local
+ * state or the disclosure memory) always beats that default.
+ *
  * There used to be a second, larger `standalone` form for a thinking block that
  * was the only thing in its run — it made sense when rows lived behind a
  * collapsed summary and a lone block needed to be findable. Now that every step
@@ -35,8 +40,11 @@ export function ThinkingBlock({
   durationMs?: number
 }) {
   const t = useTranslation()
-  const [localExpanded, setLocalExpanded] = useState(false)
-  const expanded = disclosureKey ? (getDisclosure(disclosureKey) ?? localExpanded) : localExpanded
+  // null means "the reader has not clicked this row in this mount"; a boolean
+  // is their choice, which outranks both the memory and the streaming default.
+  const [localExpanded, setLocalExpanded] = useState<boolean | null>(null)
+  const storedExpanded = disclosureKey ? getDisclosure(disclosureKey) : undefined
+  const expanded = storedExpanded ?? localExpanded ?? isActive
   const contentRef = useRef<HTMLDivElement>(null)
   const displayContent = useMemo(() => content.replace(/\r\n?/g, '\n').trimEnd(), [content])
   const hasDisplayContent = displayContent.trim().length > 0

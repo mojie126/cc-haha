@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { Marked } from 'marked'
 import { ThinkingBlock } from '@/components/chat/ThinkingBlock'
@@ -10,9 +10,8 @@ const paragraph = 'Long reasoning: ' + 'reasoning about the request '.repeat(100
 afterEach(cleanup)
 
 function renderActive(content: string) {
-  const result = render(<ThinkingBlock content={content} isActive />)
-  fireEvent.click(screen.getByRole('button', { name: /思考中|Thinking/ }))
-  return result
+  // Active blocks stream with their body open by default.
+  return render(<ThinkingBlock content={content} isActive />)
 }
 
 describe('ThinkingBlock streaming Markdown regressions', () => {

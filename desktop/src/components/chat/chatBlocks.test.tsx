@@ -39,16 +39,27 @@ describe('chat blocks', () => {
     expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull()
   })
 
-  it('keeps thinking collapsed by default', () => {
-    const { container } = render(<ThinkingBlock content="this is a long internal reasoning trace" isActive />)
+  it('streams the reasoning body open while active and folds it back to the summary once settled', () => {
+    // Codex 的 Responses 协议：推理随流到达时正文默认展开，落定后收起为总结行。
+    const { container, rerender } = render(<ThinkingBlock content="this is a long internal reasoning trace" isActive />)
 
     expect(screen.getByText(/Thinking/)).toBeTruthy()
-    // The row previews the reasoning; what stays shut is the full block. A
-    // label with nothing beside it was the old standalone form, and it made the
-    // opening thought of a turn — usually the substantial one — the least
-    // informative thing on screen.
+    expect(container.querySelector('[data-thinking-content="expanded"]')).not.toBeNull()
+    expect(container.querySelector('.thinking-cursor')).not.toBeNull()
+
+    rerender(<ThinkingBlock content="this is a long internal reasoning trace" isActive={false} />)
+
     expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
     expect(container.querySelector('.thinking-cursor')).toBeNull()
+  })
+
+  it('keeps a reader-collapsed active block shut against later deltas', () => {
+    const { container, rerender } = render(<ThinkingBlock content="first reasoning" isActive />)
+    fireEvent.click(screen.getByRole('button'))
+
+    rerender(<ThinkingBlock content="first reasoning plus more deltas" isActive />)
+
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
   })
 
   it('does not animate inactive historical thinking blocks', () => {
