@@ -168,13 +168,33 @@ jobs:
             exit 1
           fi
 
+      - name: 清理同名草稿 Release
+        # release-action 按 tag 匹配旧草稿，创建时未绑定 tag 的残留草稿
+        # （tag_name 显示为 untagged-* 开头的占位名）匹配不上，重跑会累积
+        # 多个同名草稿，先删除同名的草稿再创建，只影响草稿，已发布的
+        # Release 不动。
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TITLE: ${{ needs.prepare.outputs.title }}
+        run: |
+          set -euo pipefail
+          ids="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | select(.draft and .name == $ENV.RELEASE_TITLE) | .id')"
+          count=0
+          while IFS= read -r id; do
+            if [[ -n "$id" ]]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/$id" > /dev/null
+              count=$((count + 1))
+            fi
+          done <<< "$ids"
+          echo "已删除同名草稿 Release $count 个"
+
       - name: 创建或更新草稿 Release
         uses: ncipollo/release-action@v1.21.0
         with:
           allowUpdates: true
           replacesArtifacts: true
           artifacts: "dist/*"
-          bodyFile: ${{ steps.notes.outputs.body }}
+          bodyFile: body.md
           draft: true
           tag: ${{ needs.prepare.outputs.title }}
           token: ${{ secrets.GITHUB_TOKEN }}
