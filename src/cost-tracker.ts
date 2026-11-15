@@ -87,6 +87,15 @@ export type SessionUsageSnapshot = {
   totalCacheReadInputTokens: number
   totalCacheCreationInputTokens: number
   totalWebSearchRequests: number
+  /**
+   * Derived rates computed on the gateway side so every surface (panel, stats
+   * row, H5) shows the same numbers without each one re-deriving and polling.
+   * `tokensPerSecond` divides output by API wall-clock including prefill;
+   * `cacheHitRate` is cache reads over prompt-side tokens, `null` before any
+   * prompt token is seen.
+   */
+  tokensPerSecond: number | null
+  cacheHitRate: number | null
   models: Array<{
     model: string
     displayName: string
@@ -284,21 +293,33 @@ ${modelUsageDisplay}`,
 }
 
 export function getSessionUsageSnapshot(): SessionUsageSnapshot {
+  const totalInputTokens = getTotalInputTokens()
+  const totalOutputTokens = getTotalOutputTokens()
+  const totalCacheReadInputTokens = getTotalCacheReadInputTokens()
+  const totalCacheCreationInputTokens = getTotalCacheCreationInputTokens()
+  const totalAPIDuration = getTotalAPIDuration()
+  const promptTokens = totalInputTokens + totalCacheReadInputTokens + totalCacheCreationInputTokens
   return {
     totalCostUSD: getTotalCostUSD(),
     costDisplay: formatCost(getTotalCostUSD()),
     hasUnknownModelCost: hasUnknownModelCost(),
-    totalAPIDuration: getTotalAPIDuration(),
+    totalAPIDuration,
     totalDecodeDuration: getTotalDecodeDuration(),
     totalTtftDuration: getTotalTtftDuration(),
     totalDuration: getTotalDuration(),
     totalLinesAdded: getTotalLinesAdded(),
     totalLinesRemoved: getTotalLinesRemoved(),
-    totalInputTokens: getTotalInputTokens(),
-    totalOutputTokens: getTotalOutputTokens(),
-    totalCacheReadInputTokens: getTotalCacheReadInputTokens(),
-    totalCacheCreationInputTokens: getTotalCacheCreationInputTokens(),
+    totalInputTokens,
+    totalOutputTokens,
+    totalCacheReadInputTokens,
+    totalCacheCreationInputTokens,
     totalWebSearchRequests: getTotalWebSearchRequests(),
+    tokensPerSecond: totalAPIDuration > 0 && totalOutputTokens > 0
+      ? totalOutputTokens / (totalAPIDuration / 1000)
+      : null,
+    cacheHitRate: promptTokens > 0
+      ? totalCacheReadInputTokens / promptTokens
+      : null,
     models: Object.entries(getModelUsage()).map(([model, usage]) => ({
       model,
       displayName: getCanonicalName(model),

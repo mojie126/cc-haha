@@ -17,6 +17,9 @@ export type SessionUsageLike = {
   totalCacheCreationInputTokens: number
   totalDecodeDuration?: number
   totalAPIDuration?: number
+  /** 网关侧（CLI 进程）计算好传回的速率；缺省时才回退到本地推导。 */
+  tokensPerSecond?: number | null
+  cacheHitRate?: number | null
 }
 
 export type SessionUsageMetrics = {
@@ -44,9 +47,10 @@ function finite(value: number | undefined): number {
 /**
  * Derives the panel's headline numbers.
  *
- * `tokensPerSecond` divides output tokens by the time the API was actually running, including
- * prefill. A caller that only has a transcript (no API duration) gets `null` rather than a rate
- * computed against wall clock that includes `Bash`.
+ * 速率与命中率优先采用网关侧快照传回的值（`tokensPerSecond`、`cacheHitRate`），
+ * 两者口径与这里的推导完全一致；仅在快照缺省（旧版本 CLI、transcript 重放）时
+ * 回退到本地推导。`tokensPerSecond` 除以含预填充的 API 时长，transcript 来源
+ * 没有 API 时长时得到 `null`，而不是拿含 Bash 的墙钟时间硬算。
  */
 export function deriveSessionUsageMetrics(usage: SessionUsageLike): SessionUsageMetrics {
   const input = finite(usage.totalInputTokens)
@@ -60,8 +64,8 @@ export function deriveSessionUsageMetrics(usage: SessionUsageLike): SessionUsage
     totalTokens: input + output,
     promptTokens,
     cachedTokens: cacheRead,
-    cacheHitRate: promptTokens > 0 ? cacheRead / promptTokens : null,
-    tokensPerSecond: apiMs > 0 && output > 0 ? output / (apiMs / 1000) : null,
+    cacheHitRate: usage.cacheHitRate ?? (promptTokens > 0 ? cacheRead / promptTokens : null),
+    tokensPerSecond: usage.tokensPerSecond ?? (apiMs > 0 && output > 0 ? output / (apiMs / 1000) : null),
   }
 }
 

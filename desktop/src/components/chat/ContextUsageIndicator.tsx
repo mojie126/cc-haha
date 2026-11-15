@@ -59,10 +59,7 @@ export type ContextUsageIndicatorHandle = {
 }
 
 const ACTIVE_REFRESH_MS = 3_000
-// Lifetime totals only change when a turn completes, but a turn can run for minutes and the
-// user is staring at the panel while it does. Polling is scoped to the open popover/sheet —
-// a closed panel costs nothing — and the request it makes is the single-control `usageOnly`
-// path, not the full inspection.
+// 旧版 CLI 的快照不带网关侧速率时，行内数字仍靠本地推导，需要定时刷新。
 const USAGE_POLL_MS = 3_000
 // Right after a completed turn, compaction, or runtime restart the CLI can
 // still be settling, so retry the event-driven refresh once.
@@ -320,21 +317,24 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
     return () => clearInterval(timer)
   }, [chatState, refresh])
 
-  // Lifetime session totals: polled while the breakdown is open or the turn is
-  // running. An idle session that already has numbers fetches nothing in the
-  // background — the row keeps showing the last turn's reading.
-  const statsRowHasUsage = usageSessionIdRef.current === sessionId
-  const statsRowWantsUsage = showStatsRow && contextEnabled
-  const statsRowNeedsPolling = showStatsRow && chatState !== 'idle'
-  const shouldPollUsage = detailsOpen
-    || (statsRowWantsUsage && (statsRowNeedsPolling || !statsRowHasUsage))
+  // Lifetime session totals. The gateway now computes tokens-per-second and the cache
+  // hit rate inside the snapshot, so those readings need no polling: one fetch when the
+  // breakdown opens or a turn boundary lands is enough. A CLI that does not send them
+  // yet leaves the row to local derivation, which tracks a moving total and therefore
+  // has to keep refreshing.
+  const statsRowNeedsUsage = showStatsRow && contextEnabled
+  const shouldLoadUsage = detailsOpen || statsRowNeedsUsage
+  const gatewayRatesAvailable = usage
+    ? usage.tokensPerSecond != null || usage.cacheHitRate != null
+    : false
+  const shouldPollUsage = shouldLoadUsage && !gatewayRatesAvailable
+  // 轮询开关走 ref：网关侧带上速率后不必重跑 effect，也就不会多打一次请求。
+  const shouldPollUsageRef = useRef(shouldPollUsage)
+  shouldPollUsageRef.current = shouldPollUsage
   useEffect(() => {
-    if (!shouldPollUsage || !sessionId) return
+    if (!shouldLoadUsage || !sessionId) return
     if (typeof sessionsApi.getSessionUsage !== 'function') return
     let cancelled = false
-    // The poll interval is shorter than the request deadline, so a slow server would otherwise
-    // let ticks stack up behind the in-flight one. Skipping a tick loses nothing: the answer
-    // that is still outstanding is the same answer the new tick would have asked for.
     let inFlight = false
     const controller = new AbortController()
 
@@ -345,12 +345,13 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
         .then((inspection) => {
           if (cancelled || !inspection.usage) return
           usageSessionIdRef.current = sessionId
+          // 每次拿到快照都直接更新展示，不等到下一次触发。
           setUsage(inspection.usage)
         })
         .catch(() => {
-          // A failed poll (CLI busy, control timeout) leaves the last good numbers on screen.
-          // The panel is a readout, not a task; a flickering error would be worse than a
-          // value that is three seconds stale.
+          // A failed fetch (CLI busy, control timeout) leaves the last good numbers on screen.
+          // The row is a readout, not a task; a flickering error would be worse than a
+          // value that is one turn stale.
         })
         .finally(() => {
           inFlight = false
@@ -358,16 +359,16 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
     }
 
     load()
-    // 空闲且已有数据时只补一次，不启动定时器。
-    const timer = (detailsOpen || statsRowNeedsPolling)
-      ? setInterval(load, USAGE_POLL_MS)
-      : null
+    // 缺少网关侧速率时才轮询；拿到带字段的快照后定时器自然空转。
+    const timer = setInterval(() => {
+      if (shouldPollUsageRef.current) load()
+    }, USAGE_POLL_MS)
     return () => {
       cancelled = true
       controller.abort()
-      if (timer !== null) clearInterval(timer)
+      clearInterval(timer)
     }
-  }, [detailsOpen, shouldPollUsage, statsRowNeedsPolling, sessionId])
+  }, [shouldLoadUsage, sessionId, chatState, messageCount, contentRevision, refreshNonce])
 
   // If the presentation mode flips (Workbench drag, H5 resize), drop any open
   // shell so we don't leave a desktop popover stranded on a sheet layout.

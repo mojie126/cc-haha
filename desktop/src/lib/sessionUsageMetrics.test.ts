@@ -87,6 +87,22 @@ describe('deriveSessionUsageMetrics', () => {
     expect(metrics.tokensPerSecond).toBeCloseTo(166_998 / 1_480, 6)
   })
 
+  it('prefers the gateway-computed rates over local derivation', () => {
+    // 网关侧（CLI 进程）按同一口径算好速率与命中率，前端直接展示，避免两端
+    // 各自推导出现偏差；只有快照缺字段时才回退本地计算。
+    const metrics = deriveSessionUsageMetrics(usage({
+      totalInputTokens: 1_000,
+      totalOutputTokens: 200,
+      totalCacheReadInputTokens: 8_000,
+      totalAPIDuration: 5_000,
+      tokensPerSecond: 123.4,
+      cacheHitRate: 0.75,
+    }))
+
+    expect(metrics.tokensPerSecond).toBe(123.4)
+    expect(metrics.cacheHitRate).toBe(0.75)
+  })
+
   it('treats missing and non-finite fields as zero rather than NaN', () => {
     const metrics = deriveSessionUsageMetrics({
       totalInputTokens: Number.NaN,
@@ -105,8 +121,8 @@ describe('deriveSessionUsageMetrics', () => {
 describe('formatCacheHitRate', () => {
   it.each([
     [0, '0%'],
-    [0.5, '50.0%'],
-    [0.982, '98.2%'],
+    [0.5, '50.00%'],
+    [0.982, '98.20%'],
     [1, '100%'],
   ])('renders %s as %s', (rate, expected) => {
     expect(formatCacheHitRate(rate)).toBe(expected)
@@ -143,15 +159,15 @@ describe('formatTokensPerSecond', () => {
 describe('formatCompactTokens', () => {
   it.each([
     [812, '812'],
-    [9_500, '9.5K'],
-    [375_372, '375K'],
-    [8_100_000, '8.1M'],
+    [9_500, '9.5k'],
+    [375_372, '375k'],
+    [8_100_000, '8100k'],
   ])('renders %s as %s', (value, expected) => {
     expect(formatCompactTokens(value)).toBe(expected)
   })
 
-  it('promotes a value that would round into a four-digit smaller unit', () => {
-    // 999_949/1000 rounds to "1000" at zero decimals; showing "1000K" reads as a bug.
-    expect(formatCompactTokens(999_949)).toBe('1.0M')
+  it('keeps the unified k unit even past a million', () => {
+    // 单位统一为 k，四位数以上收成整数，1M 窗口显示为 1049k。
+    expect(formatCompactTokens(1_048_600)).toBe('1049k')
   })
 })

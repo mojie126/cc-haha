@@ -1238,6 +1238,9 @@ describe('ContextUsageIndicator session usage', () => {
     totalCacheCreationInputTokens: 0,
     totalWebSearchRequests: 0,
     models: [],
+    // 网关侧算好的速率；没有这两个字段时前端回退本地推导并需要轮询。
+    tokensPerSecond: 2_400 / 42,
+    cacheHitRate: 9_000 / (1_000 + 9_000),
   }
 
   beforeEach(() => {
@@ -1267,7 +1270,26 @@ describe('ContextUsageIndicator session usage', () => {
     expect(sessionsApiMock.getSessionUsage).not.toHaveBeenCalled()
   })
 
-  it('fetches the stats-row usage once for an idle session and stops polling', async () => {
+  it('keeps polling when the gateway snapshot has no rates', async () => {
+    vi.useFakeTimers()
+    try {
+      // 旧版 CLI 不带速率字段，行内数字靠本地推导，总量在变化时必须继续刷新。
+      sessionsApiMock.getSessionUsage.mockResolvedValue(
+        usageInspection({ ...baseUsage, tokensPerSecond: undefined, cacheHitRate: undefined }),
+      )
+      render(
+        <ContextUsageIndicator sessionId="session-1" chatState="idle" messageCount={1} showSessionStatsRow />,
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
+      expect(sessionsApiMock.getSessionUsage.mock.calls.length).toBeGreaterThanOrEqual(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops polling once a gateway snapshot carries the rates', async () => {
     vi.useFakeTimers()
     try {
       render(
@@ -1275,7 +1297,6 @@ describe('ContextUsageIndicator session usage', () => {
       )
       await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
-      // 空闲且已有数据后不再产生后台请求。
       await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
       expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
     } finally {
@@ -1283,15 +1304,24 @@ describe('ContextUsageIndicator session usage', () => {
     }
   })
 
-  it('keeps polling the stats-row usage while the turn is running', async () => {
+  it('fetches the stats-row usage when the turn completes and does not poll otherwise', async () => {
     vi.useFakeTimers()
     try {
-      render(
+      const { rerender } = render(
         <ContextUsageIndicator sessionId="session-1" chatState="thinking" messageCount={1} showSessionStatsRow />,
       )
       await act(async () => { await vi.advanceTimersByTimeAsync(0) })
       expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
-      await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+      // 回合进行中不再轮询用量。
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
+
+      // 回合结束的边界刷新带动用量再取一次。
+      rerender(<ContextUsageIndicator sessionId="session-1" chatState="idle" messageCount={1} showSessionStatsRow />)
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(2)
+      // 空闲后没有后台请求。
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
       expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
@@ -1317,11 +1347,39 @@ describe('ContextUsageIndicator session usage', () => {
     expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledWith('session-1', expect.anything())
   })
 
+  it('updates the rows as soon as a newer gateway snapshot arrives', async () => {
+    sessionsApiMock.getSessionUsage
+      .mockResolvedValueOnce(usageInspection(baseUsage))
+      .mockResolvedValue(usageInspection({
+        ...baseUsage,
+        totalOutputTokens: 4_800,
+        tokensPerSecond: 114,
+        cacheHitRate: 0.95,
+      }))
+    const { rerender } = render(
+      <ContextUsageIndicator sessionId="session-1" chatState="thinking" messageCount={1} />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('context-usage-indicator')).toHaveTextContent('21%')
+    })
+    fireEvent.click(screen.getByTestId('context-usage-indicator'))
+    expect(await screen.findByTestId('session-speed')).toHaveTextContent('57')
+
+    // 下一次触发拿到的新快照立即替换旧读数，不等轮询。
+    rerender(<ContextUsageIndicator sessionId="session-1" chatState="idle" messageCount={2} />)
+
+    await waitFor(() => expect(screen.getByTestId('session-speed')).toHaveTextContent('114'))
+    expect(screen.getByTestId('session-cache-hit')).toHaveTextContent('95.00%')
+  })
+
   it('never reports a partial cache as a perfect one', async () => {
     sessionsApiMock.getSessionUsage.mockResolvedValue(usageInspection({
       ...baseUsage,
       totalInputTokens: 4,
       totalCacheReadInputTokens: 9_996,
+      // 走本地推导路径，验证前端不会把部分命中显示成 100%。
+      tokensPerSecond: undefined,
+      cacheHitRate: undefined,
     }))
 
     render(
@@ -1343,6 +1401,8 @@ describe('ContextUsageIndicator session usage', () => {
       ...baseUsage,
       totalAPIDuration: 0,
       totalDecodeDuration: 0,
+      tokensPerSecond: undefined,
+      cacheHitRate: undefined,
     }))
 
     render(
@@ -1410,7 +1470,7 @@ describe('ContextUsageIndicator session usage', () => {
     }
   })
 
-  it('polls while open and stops when the panel closes', async () => {
+  it('loads once when the breakdown opens instead of polling', async () => {
     vi.useFakeTimers()
     try {
       render(
@@ -1426,20 +1486,11 @@ describe('ContextUsageIndicator session usage', () => {
       })
       expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(6_000)
-      })
-      expect(sessionsApiMock.getSessionUsage.mock.calls.length).toBeGreaterThanOrEqual(3)
-
-      const callsWhileOpen = sessionsApiMock.getSessionUsage.mock.calls.length
-      fireEvent.click(screen.getByTestId('context-usage-indicator'))
+      // 用量改由网关侧随会话快照传回，面板不再自行定时刷新。
       await act(async () => {
         await vi.advanceTimersByTimeAsync(9_000)
       })
-
-      // Nothing keeps ticking after the popover is dismissed — the timer is owned by the
-      // open state, not by the component's lifetime.
-      expect(sessionsApiMock.getSessionUsage.mock.calls.length).toBe(callsWhileOpen)
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }

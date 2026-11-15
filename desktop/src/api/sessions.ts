@@ -215,6 +215,9 @@ export type SessionUsageSnapshot = {
   totalCacheReadInputTokens: number
   totalCacheCreationInputTokens: number
   totalWebSearchRequests: number
+  /** 网关侧（CLI 进程）计算好传回的速率，前端直接展示不再自行推导。 */
+  tokensPerSecond?: number | null
+  cacheHitRate?: number | null
   models: Array<{
     model: string
     displayName: string
