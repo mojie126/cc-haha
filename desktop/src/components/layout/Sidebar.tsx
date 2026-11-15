@@ -1116,7 +1116,7 @@ export function Sidebar({
               />
             </span>
             <a
-              href="https://github.com/NanmiCoder/cc-haha"
+              href="https://github.com/mojie126/cc-haha"
               target="_blank"
               rel="noopener noreferrer"
               className={`sidebar-copy ${expanded ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-sidebar-item-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)]`}
