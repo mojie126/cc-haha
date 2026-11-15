@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# 同一时间只允许一个构建写草稿，避免并发派发互相覆盖。
+concurrency:
+  group: fork-build
+  cancel-in-progress: false
+
 jobs:
   prepare:
     name: 构建前校验
@@ -61,6 +66,7 @@ jobs:
     name: Windows-x64 安装包
     runs-on: windows-latest
     timeout-minutes: 90
+    needs: prepare
     steps:
       - uses: actions/checkout@v7
         with:
@@ -148,8 +154,13 @@ jobs:
             exit 1
           fi
           round_date="$(sed -n 's/^## 本轮改动详情（\(.*\)）$/\1/p' "$fork_doc" | head -n1)"
-          round="$(sed -n '/^## 本轮改动详情/,/^## /p' "$fork_doc" | sed '1d;$d' | sed 's/^### /#### /')"
-          history="$(sed -n '/^## 历史轮次/,/^## /p' "$fork_doc" | sed '1d;$d')"
+          # 用 awk 取两节正文，避免该节是文件末节时 sed 的结束地址误删末行。
+          round="$(awk '/^## 本轮改动详情/{found=1; next} /^## /{if(found) exit} found{print}' "$fork_doc" | sed 's/^### /#### /')"
+          history="$(awk '/^## 历史轮次/{found=1; next} /^## /{if(found) exit} found{print}' "$fork_doc")"
+          if [[ -z "${round//[[:space:]]/}" ]]; then
+            echo "::error::变更文档的「本轮改动详情」为空，请先补充本轮改动"
+            exit 1
+          fi
           {
             echo "## Claude Code Haha ${TITLE}（fork 构建）"
             echo
@@ -186,17 +197,17 @@ jobs:
             exit 1
           fi
 
-      - name: 清理同名草稿 Release
-        # release-action 按 tag 匹配旧草稿，创建时未绑定 tag 的残留草稿
-        # （tag_name 显示为 untagged-* 开头的占位名）匹配不上，重跑会累积
-        # 多个同名草稿，先删除同名的草稿再创建，只影响草稿，已发布的
-        # Release 不动。
+      - name: 清理同版本草稿 Release
+        # release-action 按 tag 匹配旧草稿：创建时未绑定 tag 的残留草稿匹配
+        # 不上，已发布版本重跑生成的 -r 后缀标题也与原草稿不同名，重跑会累积
+        # 多个同版本草稿。这里按版本前缀清掉本版本的全部草稿（含 -r 后缀），
+        # 只删草稿，已发布的 Release 不动。
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TITLE: ${{ needs.prepare.outputs.title }}
+          VERSION_TAG: v${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          ids="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | select(.draft and .name == $ENV.RELEASE_TITLE) | .id')"
+          ids="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | select(.draft and ((.name == $ENV.VERSION_TAG) or (.name | startswith($ENV.VERSION_TAG + "-r")))) | .id')"
           count=0
           while IFS= read -r id; do
             if [[ -n "$id" ]]; then
