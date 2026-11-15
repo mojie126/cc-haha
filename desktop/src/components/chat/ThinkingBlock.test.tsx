@@ -159,6 +159,32 @@ describe('ThinkingBlock', () => {
     expect(getDisclosure('think-default')).toBeUndefined()
   })
 
+  it('keeps the body open for the rest of the turn after deltas stop', () => {
+    // Codex Responses：增量结束后回合仍可能在写正文或跑工具，正文保持展开，
+    // 只有回合结束才折回总结行。
+    const { container, rerender } = render(
+      <ThinkingBlock content="reasoning..." isActive={false} isTurnActive />,
+    )
+    expect(container.querySelector('[data-thinking-content="expanded"]')).not.toBeNull()
+
+    rerender(<ThinkingBlock content="reasoning..." isActive={false} isTurnActive={false} />)
+
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+  })
+
+  it('keeps a reader-collapsed body shut while the turn is still running', () => {
+    clearDisclosureMemory()
+    const { container, rerender } = render(
+      <ThinkingBlock content="reasoning..." isTurnActive disclosureKey="think-turn" />,
+    )
+    fireEvent.click(screen.getByRole('button'))
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+
+    rerender(<ThinkingBlock content="reasoning..." isTurnActive disclosureKey="think-turn" />)
+
+    expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+  })
+
   it('keeps the expanded state across a virtualized row unmount and remount', () => {
     // Virtualization unmounts rows outside the window. Losing the reader's
     // disclosure choice changes the row height on the way back, which is the

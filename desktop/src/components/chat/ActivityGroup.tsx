@@ -199,6 +199,7 @@ export const ActivityGroup = memo(function ActivityGroup({
             key={step.message.id}
             content={step.message.content}
             isActive={step.message.id === activeThinkingId}
+            isTurnActive={isLive}
           />
         ) : step.kind === 'text' ? (
           <TimelineCommentary key={step.message.id} content={step.message.content} />
@@ -355,6 +356,7 @@ export const ActivityGroup = memo(function ActivityGroup({
                 key={step.message.id}
                 content={step.message.content}
                 isActive={step.message.id === activeThinkingId}
+                isTurnActive={isLive}
               />
             ) : step.kind === 'text' ? (
               <TimelineCommentary key={step.message.id} content={step.message.content} />
@@ -371,14 +373,14 @@ export const ActivityGroup = memo(function ActivityGroup({
 })
 
 /** A thought on the rail: a small hollow stop, its row hung on the text column. */
-const TimelineThinking = memo(function TimelineThinking({ content, isActive }: { content: string; isActive: boolean }) {
+const TimelineThinking = memo(function TimelineThinking({ content, isActive, isTurnActive }: { content: string; isActive: boolean; isTurnActive?: boolean }) {
   return (
     <div className="relative pl-[30px]">
       <span
         aria-hidden="true"
         className="absolute left-[7px] top-[10px] h-2 w-2 rounded-full border border-[var(--color-outline)] bg-[var(--color-surface)]"
       />
-      <ThinkingBlock content={content} isActive={isActive} />
+      <ThinkingBlock content={content} isActive={isActive} isTurnActive={isTurnActive} />
     </div>
   )
 })

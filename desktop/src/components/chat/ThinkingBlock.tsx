@@ -12,10 +12,11 @@ import {
 /**
  * One line: the label, a preview of the reasoning, and the full text on demand.
  *
- * While the block is streaming the body is open by default — the Codex
- * Responses flow shows the reasoning as it arrives and folds it back into its
- * summary row once the step settles. A reader's own click (kept in the local
- * state or the disclosure memory) always beats that default.
+ * The Codex Responses flow keeps the reasoning on screen for the whole turn —
+ * a block streams open and stays open after its deltas stop, because the turn
+ * is still writing text or running tools. Only when the turn ends does it fold
+ * back into its summary row. A reader's own click (kept in the local state or
+ * the disclosure memory) always beats that default.
  *
  * There used to be a second, larger `standalone` form for a thinking block that
  * was the only thing in its run — it made sense when rows lived behind a
@@ -29,11 +30,14 @@ import {
 export function ThinkingBlock({
   content,
   isActive = false,
+  isTurnActive = false,
   disclosureKey,
   durationMs,
 }: {
   content: string
   isActive?: boolean
+  /** The turn this block belongs to is still running, so it stays open even after its deltas stop. */
+  isTurnActive?: boolean
   /** Stable key that survives virtualized row unmount/remount. */
   disclosureKey?: string
   /** Streaming-to-next-event span, for the Codex-style 用时 summary on the collapsed row. */
@@ -41,10 +45,10 @@ export function ThinkingBlock({
 }) {
   const t = useTranslation()
   // null means "the reader has not clicked this row in this mount"; a boolean
-  // is their choice, which outranks both the memory and the streaming default.
+  // is their choice, which outranks both the memory and the turn default.
   const [localExpanded, setLocalExpanded] = useState<boolean | null>(null)
   const storedExpanded = disclosureKey ? getDisclosure(disclosureKey) : undefined
-  const expanded = storedExpanded ?? localExpanded ?? isActive
+  const expanded = storedExpanded ?? localExpanded ?? (isActive || isTurnActive)
   const contentRef = useRef<HTMLDivElement>(null)
   const displayContent = useMemo(() => content.replace(/\r\n?/g, '\n').trimEnd(), [content])
   const hasDisplayContent = displayContent.trim().length > 0

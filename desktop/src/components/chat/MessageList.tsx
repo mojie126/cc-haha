@@ -1,4 +1,4 @@
-import { getDisclosure, setDisclosure } from '@/lib/disclosureMemory'
+import { getDisclosure } from '@/lib/disclosureMemory'
 import { ScheduledTaskCard } from '@/components/tasks/ScheduledTaskCard'
 import { ScheduledTaskTrigger } from '@/components/tasks/ScheduledTaskTrigger'
 import { parseScheduledTaskResult } from '@/lib/scheduledTask'
@@ -2603,17 +2603,17 @@ export function MessageList({
   const streamingText = sessionState?.streamingText ?? ''
   const streamingToolInput = sessionState?.streamingToolInput ?? ''
   const activeThinkingId = sessionState?.activeThinkingId ?? null
-  // Responses-style reasoning handoff: when a new thinking block starts
-  // streaming, the previous one folds back into its summary row, so at most
-  // one reasoning body stays open at a time.
-  const previousActiveThinkingIdRef = useRef<string | null>(null)
-  useEffect(() => {
-    const previous = previousActiveThinkingIdRef.current
-    previousActiveThinkingIdRef.current = activeThinkingId
-    if (activeThinkingId && previous && previous !== activeThinkingId) {
-      setDisclosure(previous, false)
+  // Codex 的 Responses 流程在整个回合期间都展示推理：增量停止后正文仍保持
+  // 展开，回合结束（会话回到空闲）后才折叠为总结行，回合中途不因新推理开始
+  // 而收起上一条，回合边界取最后一条用户消息。
+  const isTurnRunning = chatState !== 'idle' || isPreparingTurn
+  const lastUserMessageTimestamp = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const entry = messages[index]
+      if (entry?.type === 'user_text') return entry.timestamp
     }
-  }, [activeThinkingId])
+    return 0
+  }, [messages])
   // Codex 风格的折叠摘要：思考块的时长取自它与下一条消息的时间戳差；
   // 流式中的末尾思考块没有下一条消息，折叠行退回「思考中」标签。
   const thinkingDurations = useMemo(() => {
@@ -4241,6 +4241,9 @@ export function MessageList({
               message={item.message}
               team={memberSessionTeam ?? undefined}
               activeThinkingId={activeThinkingId}
+              reasoningTurnActive={
+                isTurnRunning && item.message.timestamp >= lastUserMessageTimestamp
+              }
               thinkingDurationMs={thinkingDurations.get(item.message.id)}
               agentTaskNotifications={agentTaskNotifications}
               toolResult={
@@ -4519,6 +4522,7 @@ export const MessageBlock = memo(function MessageBlock({
   message,
   team,
   activeThinkingId,
+  reasoningTurnActive = false,
   thinkingDurationMs,
   agentTaskNotifications,
   toolResult,
@@ -4536,6 +4540,8 @@ export const MessageBlock = memo(function MessageBlock({
   message: UIMessage
   team?: TeamDetail
   activeThinkingId: string | null
+  /** 该消息属于仍在运行的回合，思考正文在增量停止后继续保持展开。 */
+  reasoningTurnActive?: boolean
   /** 该思考块从开始到下一条消息的时长，用于折叠行的「用时」摘要。 */
   thinkingDurationMs?: number
   agentTaskNotifications: Record<string, AgentTaskNotification>
@@ -4625,6 +4631,7 @@ export const MessageBlock = memo(function MessageBlock({
         <ThinkingBlock
           content={message.content}
           isActive={message.id === activeThinkingId}
+          isTurnActive={reasoningTurnActive}
           disclosureKey={message.id}
           durationMs={thinkingDurationMs}
         />

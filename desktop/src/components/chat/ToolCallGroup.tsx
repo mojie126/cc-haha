@@ -303,6 +303,7 @@ function ToolCallGroupContent({
             key={step.message.id}
             content={step.message.content}
             isActive={step.message.id === activeThinkingId}
+            isTurnActive={isLive}
           />
         ) : step.kind === 'text' ? (
           <div key={step.message.id} className="text-[13px] text-[var(--color-text-secondary)]">

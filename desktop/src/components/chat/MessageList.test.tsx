@@ -4768,15 +4768,13 @@ describe('MessageList nested tool calls', () => {
     clearDisclosureMemory()
   })
 
-  it('folds the previous reasoning body when a new thinking block starts streaming', async () => {
+  it('keeps every reasoning body open until the turn ends, then folds them together', async () => {
     dropSession(ACTIVE_TAB)
     clearDisclosureMemory()
     const messages: UIMessage[] = [
       { id: 'user-1', type: 'user_text', content: '第一轮提问', timestamp: 1 },
       { id: 'thinking-1', type: 'thinking', content: '第一轮推理', timestamp: 2 },
     ]
-    // 用户在上一轮手动展开了推理正文。
-    setDisclosure('thinking-1', true)
     useChatStore.setState({
       sessions: {
         [ACTIVE_TAB]: makeSessionState({
@@ -4786,9 +4784,11 @@ describe('MessageList nested tool calls', () => {
         }),
       },
     })
-    render(<MessageList />)
-    expect(getDisclosure('thinking-1')).toBe(true)
+    const { container } = render(<MessageList />)
+    const openBodies = () => container.querySelectorAll('[data-thinking-content="expanded"]')
+    expect(openBodies()).toHaveLength(1)
 
+    // Codex Responses：回合还没结束，新一段推理开始也不收起上一块。
     act(() => useChatStore.setState({
       sessions: {
         [ACTIVE_TAB]: makeSessionState({
@@ -4798,9 +4798,19 @@ describe('MessageList nested tool calls', () => {
         }),
       },
     }))
+    expect(openBodies()).toHaveLength(2)
 
-    // Responses 式交接：新一轮推理开始，上一块折回摘要行。
-    expect(getDisclosure('thinking-1')).toBe(false)
+    // 回合结束，全部折回总结行。
+    act(() => useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'idle',
+          activeThinkingId: null,
+          messages: [...messages, { id: 'thinking-2', type: 'thinking', content: '第二轮推理', timestamp: 3 }],
+        }),
+      },
+    }))
+    expect(openBodies()).toHaveLength(0)
     clearDisclosureMemory()
   })
 
