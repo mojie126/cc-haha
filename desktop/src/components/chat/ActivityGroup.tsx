@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getDisclosure, setDisclosure } from '../../lib/disclosureMemory'
 import { toolResultImagesFor, type ToolResultImageExtraction } from '@/lib/toolResultContent'
 import { Check, ChevronRight, CirclePause, CircleX, LoaderCircle } from 'lucide-react'
@@ -119,6 +119,13 @@ export const ActivityGroup = memo(function ActivityGroup({
     setPinnedCollapsedLocal(next)
     if (disclosureKey && next !== null) setDisclosure(disclosureKey, next)
   }
+  // 完成即折叠：直播态结束自动折回摘要行（Responses 风格），
+  // 此后手动展开仍会保留，直到下一次直播态开始。
+  const wasLiveRef = useRef(isLive)
+  useEffect(() => {
+    if (wasLiveRef.current && !isLive) setPinnedCollapsed(true)
+    wasLiveRef.current = isLive
+  }, [isLive])
 
   const toolCalls = useMemo(() => activityStepToolCalls(steps), [steps])
   const revealsHere = revealToolUseId !== undefined && toolCalls.some((toolCall) => toolCall.toolUseId === revealToolUseId)

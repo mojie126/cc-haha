@@ -1065,10 +1065,12 @@ describe('ContextUsageIndicator presentation', () => {
     const trigger = screen.getByTestId('context-usage-indicator')
     expect(trigger).toHaveClass('h-7')
     // The desktop toolbar shows the ring and the percentage side by side; the
-    // number is visible text in mono 11, not just the accessible name.
+    // number is visible text in the toolbar's shared 12px size, not just the
+    // accessible name.
     const percent = within(trigger).getByText('21%')
     expect(percent).not.toHaveClass('sr-only')
-    expect(percent).toHaveClass('font-mono', 'text-[11px]')
+    expect(percent).not.toHaveClass('font-mono')
+    expect(percent).toHaveClass('text-xs', 'tabular-nums')
     expect(within(trigger).getByTestId('context-usage-ring')).toBeInTheDocument()
     expect(screen.queryByTestId('context-usage-popover')).not.toBeInTheDocument()
 
@@ -1276,7 +1278,7 @@ describe('ContextUsageIndicator session usage', () => {
     fireEvent.click(screen.getByTestId('context-usage-indicator'))
 
     // Cache reads stay in the hit-rate row; they are not a separate headline.
-    expect(await screen.findByTestId('session-cache-hit')).toHaveTextContent('90.0%')
+    expect(await screen.findByTestId('session-cache-hit')).toHaveTextContent('90.00%')
     // 2400 output / 42s API time, including prefill — not the 12s decode span (200 tok/s).
     expect(screen.getByTestId('session-speed')).toHaveTextContent('57')
     expect(screen.getByTestId('session-speed')).toHaveTextContent('tok/s')

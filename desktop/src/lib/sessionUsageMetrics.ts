@@ -76,11 +76,9 @@ export function formatCacheHitRate(rate: number): string {
   if (!Number.isFinite(rate) || rate <= 0) return '0%'
   if (rate >= 1) return '100%'
   const percent = rate * 100
-  const oneDecimal = percent.toFixed(1)
-  if (oneDecimal !== '100.0') return `${oneDecimal}%`
   const twoDecimals = percent.toFixed(2)
-  // 99.995% and up still rounds to 100.00; floor it so the maximum shown below
-  // a true hit is visibly below a true hit.
+  // 保留两位小数；99.995% 及以上四舍五入到 100.00 时封顶 99.99%，
+  // 显示 100% 会对账单与提示词稳定性说谎。
   return twoDecimals === '100.00' ? '99.99%' : `${twoDecimals}%`
 }
 
@@ -90,16 +88,12 @@ export function formatTokensPerSecond(value: number): string {
   return value >= 10 ? `${Math.round(value)}` : `${value.toFixed(1)}`
 }
 
-/** `1.2M`, `375K`, `812` — compact enough for a stat row, never a lie about magnitude. */
+/** `1.2m`, `375k`, `812` — 单位统一为 k/m，紧凑到足够放进状态行。 */
 export function formatCompactTokens(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0'
   if (value < 1_000) return `${Math.round(value)}`
   const thousands = value / 1_000
   const decimals = thousands >= 100 ? 0 : 1
-  // Rounding can push a value just under the next unit up to a full thousand of the smaller one
-  // (999_949 reads as "1000K"); promote it so the row never shows four digits of a smaller unit.
-  if (Number(thousands.toFixed(decimals)) >= 1_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`
-  }
-  return `${thousands.toFixed(decimals)}K`
+  // 单位统一为 k：百万级上下文窗口显示为 1048.6k，不再引入 m 档
+  return `${thousands.toFixed(decimals)}k`
 }

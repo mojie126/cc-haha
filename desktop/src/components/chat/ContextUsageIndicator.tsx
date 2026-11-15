@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Database, Zap } from 'lucide-react'
 import {
   sessionsApi,
   type SessionContextSnapshot,
@@ -10,7 +11,12 @@ import type { ChatState } from '../../types/chat'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { useDismissable } from '../../hooks/useDismissable'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
-import { deriveSessionUsageMetrics } from '../../lib/sessionUsageMetrics'
+import {
+  deriveSessionUsageMetrics,
+  formatCacheHitRate,
+  formatCompactTokens,
+  formatTokensPerSecond,
+} from '../../lib/sessionUsageMetrics'
 import { useContextUsageStore, type ContextUsageRevision } from '@/stores/contextUsageStore'
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet'
 import {
@@ -41,6 +47,11 @@ type Props = {
    * of spending a 44px toolbar slot on it.
    */
   hideTrigger?: boolean
+  /**
+   * Fork 定制：把触发器升级为信息行——tok/s、缓存命中与上下文环常驻展示，
+   * 悬停环位显示已用/总量。桌面宽版专用，窄版回落为环。
+   */
+  showSessionStatsRow?: boolean
 }
 
 export type ContextUsageIndicatorHandle = {
@@ -190,6 +201,7 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
   compact = false,
   refreshNonce = 0,
   hideTrigger = false,
+  showSessionStatsRow = false,
 }, handleRef) {
   const t = useTranslation()
   // `compact` also fires for the desktop composer, which narrows for the right
@@ -199,6 +211,7 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
   // Narrow composer (Workbench / small window) and real H5 share the sheet
   // presentation so the breakdown is never clipped by chat-column overflow.
   const preferSheet = compact || isMobileBrowser
+  const showStatsRow = showSessionStatsRow && !isMobileBrowser && !preferSheet && !hideTrigger
   const contextEnabled = shouldFetchContext(sessionId, draft, messageCount, chatState)
   const cached = useContextUsageStore((state) => sessionId ? state.bySession[sessionId] : undefined)
   const context = contextEnabled ? cached?.context ?? null : null
@@ -311,8 +324,9 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
   // single-control `usageOnly` one, so a 3s cadence costs far less than the context refresh it
   // sits next to, and closing the panel takes the timer with it — nothing runs in the
   // background, and a hidden document skips its ticks rather than queueing them.
+  const statsRowWantsUsage = showStatsRow && contextEnabled
   useEffect(() => {
-    if (!detailsOpen || !sessionId) return
+    if ((!detailsOpen && !statsRowWantsUsage) || !sessionId) return
     if (typeof sessionsApi.getSessionUsage !== 'function') return
     let cancelled = false
     // The poll interval is shorter than the request deadline, so a slow server would otherwise
@@ -347,7 +361,8 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
       controller.abort()
       clearInterval(timer)
     }
-  }, [detailsOpen, sessionId])
+  // 信息行只在会话活跃或尚无数据时轮询；空闲且有数据的会话不产生后台请求。
+  }, [detailsOpen, statsRowWantsUsage, sessionId])
 
   // If the presentation mode flips (Workbench drag, H5 resize), drop any open
   // shell so we don't leave a desktop popover stranded on a sheet layout.
@@ -534,7 +549,12 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
         aria-expanded={detailsOpen}
         aria-haspopup="dialog"
         onClick={handleTriggerClick}
-        title={t('contextIndicator.title')}
+        title={displayContext
+          ? t('contextIndicator.usedOfTotal', {
+            used: formatCompactTokens(usedTokens),
+            total: formatCompactTokens(maxTokens),
+          })
+          : t('contextIndicator.title')}
         data-testid="context-usage-indicator"
         // Desktop: a 28px toolbar control showing the ring and the percentage
         // side by side. The phone shell keeps a 44px square touch target and
@@ -544,18 +564,38 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
           isMobileBrowser ? 'h-11 w-11 justify-center' : 'h-7 gap-1.5 px-1.5'
         } ${detailsOpen ? 'bg-[var(--color-surface-hover)]' : ''}`}
       >
-        <ContextRing
-          size={isMobileBrowser ? 18 : 16}
-          loading={loading && !displayContext}
-          percentage={displayContext ? percentage : null}
-          color={strokeColor}
-        />
-        <span
-          className={isMobileBrowser
-            ? 'sr-only'
-            : 'font-mono text-[11px] tabular-nums text-[var(--color-text-tertiary)]'}
-        >
-          {displayPercent}
+        {showStatsRow && sessionStats ? (
+          <>
+            {sessionStats.tokensPerSecond !== null && (
+              <span className="inline-flex items-center gap-1 text-xs tabular-nums text-[var(--color-text-tertiary)]">
+                <Zap size={12} strokeWidth={2} aria-hidden="true" />
+                {formatTokensPerSecond(sessionStats.tokensPerSecond)}{' '}
+                {t('contextIndicator.sessionSpeedUnit')}
+              </span>
+            )}
+            {sessionStats.cacheHitRate !== null && (
+              <span className="inline-flex items-center gap-1 text-xs tabular-nums text-[var(--color-text-tertiary)]">
+                <Database size={12} strokeWidth={2} aria-hidden="true" />
+                {t('contextIndicator.sessionCacheHit')}{' '}
+                {formatCacheHitRate(sessionStats.cacheHitRate)}
+              </span>
+            )}
+          </>
+        ) : null}
+        <span className="inline-flex items-center gap-1">
+          <ContextRing
+            size={isMobileBrowser ? 18 : 16}
+            loading={loading && !displayContext}
+            percentage={displayContext ? percentage : null}
+            color={strokeColor}
+          />
+          <span
+            className={isMobileBrowser
+              ? 'sr-only'
+            : 'text-xs tabular-nums text-[var(--color-text-tertiary)]'}
+          >
+            {displayPercent}
+          </span>
         </span>
       </button>
 

@@ -12,7 +12,7 @@ describe('chat appearance preferences', () => {
     expect(normalizeChatAppearance({ fontSize: 100 }).fontSize).toBe(24)
     expect(normalizeChatAppearance({ fontSize: 1 }).fontSize).toBe(12)
     expect(normalizeChatAppearance({ fontSize: 16.6 }).fontSize).toBe(17)
-    expect(getChatAppearanceStyle({ font: 'serif', fontSize: 20, width: 'wide' })).toMatchObject({
+    expect(getChatAppearanceStyle({ font: 'serif', fontSize: 20, width: 'wide', customWidth: '1200px' })).toMatchObject({
       '--chat-font-size': '20px', '--chat-content-max-width': '1200px',
     })
     const font = getChatAppearanceStyle(DEFAULT_CHAT_APPEARANCE)['--chat-font-family']
@@ -22,22 +22,23 @@ describe('chat appearance preferences', () => {
   })
 
   it('defaults to 15px text on the 800px standard measure without rewriting saved values', () => {
-    expect(DEFAULT_CHAT_APPEARANCE).toEqual({ font: 'system', fontSize: 15, width: 'standard' })
+    expect(DEFAULT_CHAT_APPEARANCE).toEqual({ font: 'system', fontSize: 15, width: 'standard', customWidth: '1200px' })
     expect(normalizeChatAppearance({}).fontSize).toBe(15)
     expect(getChatAppearanceStyle(DEFAULT_CHAT_APPEARANCE)).toMatchObject({
       '--chat-font-size': '15px', '--chat-content-max-width': '800px',
     })
     // A v1 record saved under the old default keeps its explicit size; only the
-    // `standard` width it names now resolves to the new measure.
+    // `standard` width it names now resolves to the new measure. The custom
+    // width field is additive: the migration writes the normalized default in.
     localStorage.setItem(CHAT_APPEARANCE_STORAGE_KEY, JSON.stringify({ version: 1, font: 'system', fontSize: 14, width: 'standard' }))
-    expect(migrateChatAppearance(localStorage)).toBe(false)
-    expect(readChatAppearance()).toEqual({ font: 'system', fontSize: 14, width: 'standard' })
+    expect(migrateChatAppearance(localStorage)).toBe(true)
+    expect(readChatAppearance()).toEqual({ font: 'system', fontSize: 14, width: 'standard', customWidth: '1200px' })
   })
 
   it('round trips preferences while preserving unknown fields', () => {
     localStorage.setItem(CHAT_APPEARANCE_STORAGE_KEY, JSON.stringify({ version: 1, extra: 'keep' }))
-    persistChatAppearance({ font: 'serif', fontSize: 18, width: 'full' })
-    expect(readChatAppearance()).toEqual({ font: 'serif', fontSize: 18, width: 'full' })
+    persistChatAppearance({ font: 'serif', fontSize: 18, width: 'full', customWidth: '1200px' })
+    expect(readChatAppearance()).toEqual({ font: 'serif', fontSize: 18, width: 'full', customWidth: '1200px' })
     expect(JSON.parse(localStorage.getItem(CHAT_APPEARANCE_STORAGE_KEY)!)).toHaveProperty('extra', 'keep')
   })
 
@@ -46,7 +47,7 @@ describe('chat appearance preferences', () => {
     localStorage.setItem(CHAT_APPEARANCE_STORAGE_KEY, raw)
     expect(readChatAppearance()).toEqual(DEFAULT_CHAT_APPEARANCE)
     expect(migrateChatAppearance(localStorage)).toBe(false)
-    persistChatAppearance({ font: 'mono', fontSize: 24, width: 'full' })
+    persistChatAppearance({ font: 'mono', fontSize: 24, width: 'full', customWidth: '1200px' })
     expect(localStorage.getItem(CHAT_APPEARANCE_STORAGE_KEY)).toBe(raw)
   })
 

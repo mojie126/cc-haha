@@ -689,7 +689,7 @@ describe('MessageList nested tool calls', () => {
   it.each(['local', 'other window'])('retains the reading row and invalidates measurements after a font change from %s', async (source) => {
     const sessionId = 'appearance-anchor'
     dropSession(sessionId)
-    useChatAppearanceStore.setState({ appearance: { font: 'system', fontSize: 14, width: 'standard' } })
+    useChatAppearanceStore.setState({ appearance: { font: 'system', fontSize: 14, width: 'standard', customWidth: '1200px' } })
     localStorage.setItem(CHAT_APPEARANCE_STORAGE_KEY, JSON.stringify({ version: 1, font: 'system', fontSize: 14, width: 'standard' }))
     const dispose = initializeChatAppearance()
     let rowHeight = 100
@@ -726,7 +726,7 @@ describe('MessageList nested tool calls', () => {
     expect(scroller.scrollTop).toBe(250)
     expect(getHeightsForSession(sessionId).has('appearance-row-100')).toBe(false)
     expect(getHeightsForSession(sessionId).get('appearance-row-1')).toBe(200)
-    act(() => useChatAppearanceStore.setState({ appearance: { font: 'system', fontSize: 14, width: 'standard' } }))
+    act(() => useChatAppearanceStore.setState({ appearance: { font: 'system', fontSize: 14, width: 'standard', customWidth: '1200px' } }))
     dispose()
     localStorage.removeItem(CHAT_APPEARANCE_STORAGE_KEY)
     dropSession(sessionId)
@@ -4611,6 +4611,42 @@ describe('MessageList nested tool calls', () => {
     // geometry cannot be used for this 40px collapsed offscreen row.
     expect(heights.get('thinking-new-0')).not.toBe(300)
     expect(heights.get('thinking-new-1')).toBe(40)
+    clearDisclosureMemory()
+  })
+
+  it('folds the previous reasoning body when a new thinking block starts streaming', async () => {
+    dropSession(ACTIVE_TAB)
+    clearDisclosureMemory()
+    const messages: UIMessage[] = [
+      { id: 'user-1', type: 'user_text', content: '第一轮提问', timestamp: 1 },
+      { id: 'thinking-1', type: 'thinking', content: '第一轮推理', timestamp: 2 },
+    ]
+    // 用户在上一轮手动展开了推理正文。
+    setDisclosure('thinking-1', true)
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'thinking',
+          activeThinkingId: 'thinking-1',
+          messages,
+        }),
+      },
+    })
+    render(<MessageList />)
+    expect(getDisclosure('thinking-1')).toBe(true)
+
+    act(() => useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'thinking',
+          activeThinkingId: 'thinking-2',
+          messages: [...messages, { id: 'thinking-2', type: 'thinking', content: '第二轮推理', timestamp: 3 }],
+        }),
+      },
+    }))
+
+    // Responses 式交接：新一轮推理开始，上一块折回摘要行。
+    expect(getDisclosure('thinking-1')).toBe(false)
     clearDisclosureMemory()
   })
 

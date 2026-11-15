@@ -644,7 +644,7 @@ export function TabBar() {
           resource tabs do. The space around them stays inside the scroll
           region, which carries the window drag region; the chips do not.
         */
-        className="tab-strip-scroll flex flex-1 items-center gap-0.5 overflow-x-hidden px-1"
+        className="tab-strip-scroll flex flex-1 items-center gap-1.5 overflow-x-hidden px-1"
         onDragOver={(e) => e.preventDefault()}
       >
         {tabs.map((tab, index) => {

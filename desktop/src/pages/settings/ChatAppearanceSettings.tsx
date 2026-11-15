@@ -1,5 +1,7 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { SelectField } from '@/components/ui/SelectField'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import {
   SettingsBlock,
@@ -22,6 +24,21 @@ export function ChatAppearanceSettings() {
   const { placement, setPlacement } = useSelectionMenuPlacementStore()
   const sizeId = useId()
   const previewId = useId()
+  const widthMatch = /^(\d+(?:\.\d+)?)(px|%)$/.exec(appearance.customWidth)
+  const [customAmountDraft, setCustomAmountDraft] = useState(widthMatch?.[1] ?? '1200')
+  const [customUnitDraft, setCustomUnitDraft] = useState<'px' | '%'>((widthMatch?.[2] as 'px' | '%') ?? 'px')
+  useEffect(() => {
+    const match = /^(\d+(?:\.\d+)?)(px|%)$/.exec(appearance.customWidth)
+    if (match) {
+      setCustomAmountDraft(match[1]!)
+      setCustomUnitDraft(match[2] as 'px' | '%')
+    }
+  }, [appearance.customWidth, appearance.width])
+  // 失焦或单位切换时才合成并应用，输入过程不做钳制回退
+  const applyCustomWidthDraft = (unit?: 'px' | '%') => {
+    const unitValue = unit ?? customUnitDraft
+    setAppearance({ customWidth: `${customAmountDraft.trim()}${unitValue}` })
+  }
 
   return (
     <SettingsSection
@@ -76,8 +93,45 @@ export function ChatAppearanceSettings() {
               { value: 'standard', label: t('settings.chatAppearance.widthStandard') },
               { value: 'wide', label: t('settings.chatAppearance.widthWide') },
               { value: 'full', label: t('settings.chatAppearance.widthFull') },
+              { value: 'custom', label: t('settings.chatAppearance.widthCustom') },
             ]}
           />
+          {appearance.width === 'custom' && (
+            <>
+              <Input
+                size="sm"
+                inputMode="decimal"
+                value={customAmountDraft}
+                spellCheck={false}
+                aria-label={t('settings.chatAppearance.widthCustom')}
+                placeholder="1200"
+                onChange={(event) => setCustomAmountDraft(event.currentTarget.value)}
+                onBlur={() => applyCustomWidthDraft()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') applyCustomWidthDraft()
+                }}
+                className="w-[110px]"
+              />
+              <SelectField<'px' | '%'>
+                label={t('settings.chatAppearance.widthUnit')}
+                labelHidden
+                size="sm"
+                value={customUnitDraft}
+                onChange={(unit) => {
+                  setCustomUnitDraft(unit)
+                  applyCustomWidthDraft(unit)
+                }}
+                options={[
+                  { value: 'px', label: 'px' },
+                  { value: '%', label: '%' },
+                ]}
+                containerClassName="w-[76px]"
+              />
+              <span className="text-xs text-[var(--color-text-tertiary)]">
+                {t('settings.chatAppearance.widthCustomHint')}
+              </span>
+            </>
+          )}
         </SettingsRow>
         <SettingsRow
           title={t('settings.chatAppearance.selectionMenuPlacement')}

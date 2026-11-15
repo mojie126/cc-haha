@@ -362,6 +362,8 @@ export const MentionComposer = forwardRef<MentionComposerHandle, MentionComposer
           role: 'textbox',
           'aria-multiline': 'true',
           'data-composer-editor': 'true',
+          // 输入的是原样 markdown 源文本，浏览器的拼写检查红线只会造成干扰。
+          spellcheck: 'false',
           class: 'composer-pm',
         },
         editable: () => !propsRef.current.disabled,

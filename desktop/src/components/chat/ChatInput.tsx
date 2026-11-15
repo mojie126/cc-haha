@@ -2075,6 +2075,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   ref={contextUsageRef}
                   // A member page has no "+" sheet to open the breakdown from.
                   hideTrigger={isMobileComposer && !isMemberSession}
+                  showSessionStatsRow={!isMobileComposer && !useCompactControls}
                   sessionId={memberCliSessionId ?? activeTabId}
                   chatState={chatState}
                   messageCount={messageCount}

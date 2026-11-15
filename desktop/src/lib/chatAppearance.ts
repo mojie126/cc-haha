@@ -4,7 +4,9 @@ export const CHAT_APPEARANCE_VERSION = 1
 export type ChatAppearance = {
   font: 'system' | 'sans' | 'serif' | 'mono'
   fontSize: number
-  width: 'standard' | 'wide' | 'full'
+  width: 'standard' | 'wide' | 'full' | 'custom'
+  /** `width: 'custom'` 时的值，接受 `1200px` 或 `85%` 两种形态。 */
+  customWidth: string
 }
 
 /**
@@ -13,8 +15,22 @@ export type ChatAppearance = {
  * user already saved (including the old 14px default written by the migration)
  * is kept as theirs.
  */
-export const DEFAULT_CHAT_APPEARANCE: ChatAppearance = { font: 'system', fontSize: 15, width: 'standard' }
 export type AppearanceStorage = Pick<Storage, 'getItem' | 'setItem'>
+
+const DEFAULT_CUSTOM_WIDTH = '1200px'
+
+/**
+ * Porcelain reading defaults: 15px conversation text on an 800px measure.
+ * Only defaults changed — the stored shape is the same v1 record, so a value a
+ * user already saved (including the old 14px default written by the migration)
+ * is kept as theirs.
+ */
+export const DEFAULT_CHAT_APPEARANCE: ChatAppearance = {
+  font: 'system',
+  fontSize: 15,
+  width: 'standard',
+  customWidth: DEFAULT_CUSTOM_WIDTH,
+}
 
 const FONT_STACKS: Record<ChatAppearance['font'], string> = {
   system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
@@ -23,6 +39,24 @@ const FONT_STACKS: Record<ChatAppearance['font'], string> = {
   mono: '"JetBrains Mono", ui-monospace, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace',
 }
 const WIDTHS = { standard: '800px', wide: '1200px', full: '100%' }
+const CUSTOM_WIDTH_RE = /^(\d+(?:\.\d+)?)(px|%)$/
+
+/**
+ * 自定义宽度的白名单校验，px 钳到 480–4000，% 钳到 20–100，
+ * 不合法的输入整体回退默认，避免任意字符串进入 CSS 自定义属性
+ */
+export function normalizeCustomChatWidth(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_CUSTOM_WIDTH
+  const match = CUSTOM_WIDTH_RE.exec(value.trim())
+  if (!match) return DEFAULT_CUSTOM_WIDTH
+  const amount = Number(match[1])
+  if (match[2] === 'px') {
+    const clamped = Math.min(4000, Math.max(480, Math.round(amount)))
+    return `${clamped}px`
+  }
+  const clamped = Math.min(100, Math.max(20, Math.round(amount * 10) / 10))
+  return `${clamped}%`
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -34,7 +68,10 @@ export function normalizeChatAppearance(value: unknown): ChatAppearance {
     font: record.font === 'sans' || record.font === 'serif' || record.font === 'mono' ? record.font : 'system',
     fontSize: typeof record.fontSize === 'number' && Number.isFinite(record.fontSize)
       ? Math.round(Math.min(24, Math.max(12, record.fontSize))) : DEFAULT_CHAT_APPEARANCE.fontSize,
-    width: record.width === 'wide' || record.width === 'full' ? record.width : 'standard',
+    width: record.width === 'wide' || record.width === 'full' || record.width === 'custom'
+      ? record.width
+      : 'standard',
+    customWidth: normalizeCustomChatWidth(record.customWidth),
   }
 }
 
@@ -88,7 +125,9 @@ export function getChatAppearanceStyle(appearance: ChatAppearance): Record<strin
   return {
     '--chat-font-family': FONT_STACKS[normalized.font],
     '--chat-font-size': `${normalized.fontSize}px`,
-    '--chat-content-max-width': WIDTHS[normalized.width],
+    '--chat-content-max-width': normalized.width === 'custom'
+      ? normalized.customWidth
+      : WIDTHS[normalized.width],
   }
 }
 

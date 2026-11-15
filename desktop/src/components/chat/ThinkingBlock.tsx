@@ -25,11 +25,14 @@ export function ThinkingBlock({
   content,
   isActive = false,
   disclosureKey,
+  durationMs,
 }: {
   content: string
   isActive?: boolean
   /** Stable key that survives virtualized row unmount/remount. */
   disclosureKey?: string
+  /** Streaming-to-next-event span, for the Codex-style 用时 summary on the collapsed row. */
+  durationMs?: number
 }) {
   const t = useTranslation()
   const [localExpanded, setLocalExpanded] = useState(false)
@@ -48,9 +51,17 @@ export function ThinkingBlock({
     }
   }, [displayContent, expanded, isActive])
 
+  const durationSeconds = durationMs && durationMs > 0
+    ? Math.max(1, Math.round(durationMs / 1000))
+    : null
+  const labelText = isActive
+    ? t('thinking.label')
+    : durationSeconds !== null
+      ? t('thinking.duration', { seconds: durationSeconds })
+      : t('thinking.labelDone')
   const label = (
     <>
-      {isActive ? t('thinking.label') : t('thinking.labelDone')}
+      {labelText}
       {isActive && <span className="thinking-dots" />}
     </>
   )

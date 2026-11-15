@@ -30,6 +30,7 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { SelectField } from '@/components/ui/SelectField'
 import { PermissionModeSelector } from '../../components/controls/PermissionModeSelector'
+import { PromptDocSettings } from './PromptDocSettings'
 import { ReasoningEffortPopover } from '../../components/controls/ReasoningEffortPopover'
 import { isDarkThemeMode, isLightThemeMode, isMaxConcurrentSubagents } from '../../types/settings'
 import type { ThemeMode, NetworkProxyMode, WebSearchMode, AppMode, ChatSendBehavior, OutputStyleSource, ReasoningEffortLevel } from '../../types/settings'
@@ -1274,6 +1275,8 @@ export function GeneralSettings() {
           />
         </SettingsGroup>
       </SettingsSection>
+
+      <PromptDocSettings />
 
       <SettingsSection title={t('settings.general.notificationsTitle')} description={t('settings.general.notificationsDescription')}>
         <SettingsGroup>

@@ -31,6 +31,7 @@ import { handleH5AccessApi } from './api/h5-access.js'
 import { handleActivityStatsApi } from './api/activityStats.js'
 import { handleOpenTargetsApi } from './api/open-targets.js'
 import { handleMemoryApi } from './api/memory.js'
+import { handlePromptsApi } from './api/prompts.js'
 import { handleDesktopUiApi } from './api/desktop-ui.js'
 import { handleTracesApi } from './api/traces.js'
 import { handleWorkflowsApi } from './api/workflows.js'
@@ -211,6 +212,9 @@ async function routeApiRequest(req: Request, url: URL): Promise<Response> {
 
     case 'memory':
       return handleMemoryApi(req, url, segments)
+
+    case 'prompts':
+      return handlePromptsApi(req, url, segments)
 
     case 'desktop-ui':
       return handleDesktopUiApi(req, url, segments)

@@ -42,7 +42,7 @@ describe('Chat appearance settings', () => {
     fireEvent.change(screen.getByRole('slider', { name: 'Chat font size' }), { target: { value: '24' } })
     fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Conversation width' })).getByRole('radio', { name: 'Fill available space' }))
 
-    expect(useChatAppearanceStore.getState().appearance).toEqual({ font: 'serif', fontSize: 24, width: 'full' })
+     expect(useChatAppearanceStore.getState().appearance).toEqual({ font: 'serif', fontSize: 24, width: 'full', customWidth: '1200px' })
     expect(preview.style.getPropertyValue('--chat-font-family')).toContain('Songti SC')
     expect(preview.style.getPropertyValue('--chat-font-size')).toBe('24px')
     expect(document.documentElement.style.getPropertyValue('--chat-content-max-width')).toBe('100%')

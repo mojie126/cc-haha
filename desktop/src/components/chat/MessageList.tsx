@@ -1,4 +1,4 @@
-import { getDisclosure } from '@/lib/disclosureMemory'
+import { getDisclosure, setDisclosure } from '@/lib/disclosureMemory'
 import { ScheduledTaskCard } from '@/components/tasks/ScheduledTaskCard'
 import { ScheduledTaskTrigger } from '@/components/tasks/ScheduledTaskTrigger'
 import { parseScheduledTaskResult } from '@/lib/scheduledTask'
@@ -2556,6 +2556,29 @@ export function MessageList({
   const streamingText = sessionState?.streamingText ?? ''
   const streamingToolInput = sessionState?.streamingToolInput ?? ''
   const activeThinkingId = sessionState?.activeThinkingId ?? null
+  // Responses-style reasoning handoff: when a new thinking block starts
+  // streaming, the previous one folds back into its summary row, so at most
+  // one reasoning body stays open at a time.
+  const previousActiveThinkingIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const previous = previousActiveThinkingIdRef.current
+    previousActiveThinkingIdRef.current = activeThinkingId
+    if (activeThinkingId && previous && previous !== activeThinkingId) {
+      setDisclosure(previous, false)
+    }
+  }, [activeThinkingId])
+  // Codex 风格的折叠摘要：思考块的时长取自它与下一条消息的时间戳差；
+  // 流式中的末尾思考块没有下一条消息，折叠行退回「思考中」标签。
+  const thinkingDurations = useMemo(() => {
+    const durations = new Map<string, number>()
+    for (let index = 0; index < messages.length - 1; index++) {
+      const entry = messages[index]
+      if (!entry || entry.type !== 'thinking') continue
+      const durationMs = (messages[index + 1]?.timestamp ?? 0) - entry.timestamp
+      if (durationMs > 0) durations.set(entry.id, durationMs)
+    }
+    return durations
+  }, [messages])
   const hasApiRetry = Boolean(sessionState?.apiRetry)
   const hasStreamingFallback = Boolean(sessionState?.streamingFallback)
   const agentTaskNotifications = sessionState?.agentTaskNotifications ?? EMPTY_AGENT_TASK_NOTIFICATIONS
@@ -2895,6 +2918,7 @@ export function MessageList({
 
     releaseBottomRestoration()
     restoringScrollAnchorRef.current = null
+
     disclosureLayoutUntilRef.current = performance.now() + DISCLOSURE_FOLLOW_SUPPRESS_MS
 
     // Suppression only covers the resize frame. Once the block is open the
@@ -4106,6 +4130,7 @@ export function MessageList({
               message={item.message}
               team={memberSessionTeam ?? undefined}
               activeThinkingId={activeThinkingId}
+              thinkingDurationMs={thinkingDurations.get(item.message.id)}
               agentTaskNotifications={agentTaskNotifications}
               toolResult={
                 item.message.type === 'tool_use'
@@ -4383,6 +4408,7 @@ export const MessageBlock = memo(function MessageBlock({
   message,
   team,
   activeThinkingId,
+  thinkingDurationMs,
   agentTaskNotifications,
   toolResult,
   branchAction,
@@ -4399,6 +4425,8 @@ export const MessageBlock = memo(function MessageBlock({
   message: UIMessage
   team?: TeamDetail
   activeThinkingId: string | null
+  /** 该思考块从开始到下一条消息的时长，用于折叠行的「用时」摘要。 */
+  thinkingDurationMs?: number
   agentTaskNotifications: Record<string, AgentTaskNotification>
   toolResult?: { content: unknown; isError: boolean } | null
   branchAction?: {
@@ -4482,7 +4510,14 @@ export const MessageBlock = memo(function MessageBlock({
     case 'thinking':
       // No wrapper padding: the row's own `-mx-2 … px-2` already lands its text
       // on the column's left edge, the same as one inside a run.
-      return <ThinkingBlock content={message.content} isActive={message.id === activeThinkingId} disclosureKey={message.id} />
+      return (
+        <ThinkingBlock
+          content={message.content}
+          isActive={message.id === activeThinkingId}
+          disclosureKey={message.id}
+          durationMs={thinkingDurationMs}
+        />
+      )
     case 'tool_use': {
       const scheduledResult = toolResult && parseScheduledTaskResult(message.toolName, toolResult.content, toolResult.isError)
       if (scheduledResult) return <ScheduledTaskCard result={scheduledResult} />

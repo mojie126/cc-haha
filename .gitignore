@@ -33,6 +33,7 @@ artifacts/
 desktop/dist/
 desktop/electron-dist/
 desktop/build-artifacts/
+desktop/.bun-cache/
 desktop/src-tauri/binaries/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
