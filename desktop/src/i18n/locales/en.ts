@@ -263,7 +263,6 @@ export const en = {
   "settings.chatAppearance.widthWide": "Wide",
   "settings.chatAppearance.widthFull": "Fill available space",
   "settings.chatAppearance.widthCustom": "Custom",
-  "settings.chatAppearance.widthCustomPlaceholder": "e.g. 1200px or 85%",
   "settings.chatAppearance.widthCustomHint": "Accepts px or % width",
   "settings.chatAppearance.widthUnit": "Width unit",
   "settings.chatAppearance.hint": "Fonts use those available on your system. Code stays monospace. Width applies to messages and the composer; narrow windows fit automatically.",

@@ -395,6 +395,17 @@ describe('EmptySession', () => {
     await waitFor(() => expect(getComposerText()).toBe('unsent idea for a new session'))
   })
 
+  it('flushes the draft when the composer unmounts inside the debounce window', () => {
+    const { unmount } = render(<EmptySession />)
+    setComposerText('typed right before leaving', 25)
+
+    // 300ms 防抖尚未到期，离开设置页或切换标签会卸载组件；卸载清理必须把
+    // 最后这次输入补写到草稿里。
+    unmount()
+
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)?.input).toBe('typed right before leaving')
+  })
+
   it('drops a starter into the draft and keeps what was already typed', async () => {
     render(<EmptySession />)
 

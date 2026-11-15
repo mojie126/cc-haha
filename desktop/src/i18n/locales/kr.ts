@@ -264,7 +264,6 @@ export const kr: Record<TranslationKey, string> = {
   "settings.chatAppearance.widthWide": "넓게",
   "settings.chatAppearance.widthFull": "사용 가능한 너비 채우기",
   "settings.chatAppearance.widthCustom": "사용자 지정",
-  "settings.chatAppearance.widthCustomPlaceholder": "예: 1200px 또는 85%",
   "settings.chatAppearance.widthCustomHint": "px 또는 % 너비 지원",
   "settings.chatAppearance.widthUnit": "너비 단위",
   "settings.chatAppearance.hint": "시스템에 있는 글꼴을 사용합니다. 코드는 고정폭을 유지합니다. 너비는 메시지와 입력창에 적용되며 작은 창에서는 자동 조정됩니다.",
@@ -3622,7 +3621,7 @@ export const kr: Record<TranslationKey, string> = {
   'settings.prompts.refHint': '@상대경로 로 같은 디렉터리의 다른 문서(예: @RTK.md)를 참조하면 실행 때 자동으로 가져옵니다',
   'settings.prompts.scopeGlobal': '전역',
   'settings.prompts.scopeProject': '프로젝트',
-  'settings.prompts.notCreated': '생성되지 않음。저장 시 생성',
+  'settings.prompts.notCreated': '생성되지 않음, 저장 시 생성',
 
   // ─── Tool Calls ──────────────────────────────────────
   'tool.errorOutput': '오류 출력',

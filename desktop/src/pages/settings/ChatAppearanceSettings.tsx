@@ -104,7 +104,7 @@ export function ChatAppearanceSettings() {
                 value={customAmountDraft}
                 spellCheck={false}
                 aria-label={t('settings.chatAppearance.widthCustom')}
-                placeholder="1200"
+                placeholder={customUnitDraft === '%' ? '85' : '1200'}
                 onChange={(event) => setCustomAmountDraft(event.currentTarget.value)}
                 onBlur={() => applyCustomWidthDraft()}
                 onKeyDown={(event) => {

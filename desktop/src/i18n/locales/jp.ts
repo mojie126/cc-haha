@@ -264,7 +264,6 @@ export const jp: Record<TranslationKey, string> = {
   "settings.chatAppearance.widthWide": "広い",
   "settings.chatAppearance.widthFull": "利用可能な幅に合わせる",
   "settings.chatAppearance.widthCustom": "カスタム",
-  "settings.chatAppearance.widthCustomPlaceholder": "例: 1200px または 85%",
   "settings.chatAppearance.widthCustomHint": "px または % 幅を指定",
   "settings.chatAppearance.widthUnit": "幅の単位",
   "settings.chatAppearance.hint": "システムにあるフォントを使用します。コードは等幅のままです。幅はメッセージと入力欄に適用され、小さいウィンドウでは自動調整されます。",

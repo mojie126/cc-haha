@@ -1267,6 +1267,37 @@ describe('ContextUsageIndicator session usage', () => {
     expect(sessionsApiMock.getSessionUsage).not.toHaveBeenCalled()
   })
 
+  it('fetches the stats-row usage once for an idle session and stops polling', async () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <ContextUsageIndicator sessionId="session-1" chatState="idle" messageCount={1} showSessionStatsRow />,
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
+      // 空闲且已有数据后不再产生后台请求。
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps polling the stats-row usage while the turn is running', async () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <ContextUsageIndicator sessionId="session-1" chatState="thinking" messageCount={1} showSessionStatsRow />,
+      )
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(3_000) })
+      expect(sessionsApiMock.getSessionUsage).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('renders lifetime totals once the breakdown opens', async () => {
     render(
       <ContextUsageIndicator sessionId="session-1" chatState="idle" messageCount={1} />,

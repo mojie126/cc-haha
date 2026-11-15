@@ -278,6 +278,11 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     }, 300)
     return () => clearTimeout(timer)
   }, [input, mentions, attachments])
+  // 防抖窗口内被切走或卸载时补一次落盘，避免最后几个字符丢失。
+  useEffect(() => () => {
+    const draft = draftComposerRef.current
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, draft)
+  }, [])
   // Shell-style prompt recall, same as the session composer.
   const historyIndexRef = useRef(0)
   const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
@@ -831,6 +836,8 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       setInput('')
       setMentions([])
       setAttachments([])
+      // 同步清空落盘快照，避免卸载补写把已发送内容复活成草稿。
+      draftComposerRef.current = { input: '', attachments: [], mentions: [] }
     } catch (error) {
       addToast({
         type: 'error',

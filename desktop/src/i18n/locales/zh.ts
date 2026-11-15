@@ -264,7 +264,6 @@ export const zh: Record<TranslationKey, string> = {
   "settings.chatAppearance.widthWide": "宽",
   "settings.chatAppearance.widthFull": "铺满可用区域",
   "settings.chatAppearance.widthCustom": "自定义",
-  "settings.chatAppearance.widthCustomPlaceholder": "如 1200px 或 85%",
   "settings.chatAppearance.widthCustomHint": "支持 px 或 % 宽度",
   "settings.chatAppearance.widthUnit": "宽度单位",
   "settings.chatAppearance.hint": "字体使用系统已有字体，代码保持等宽。宽度同时应用于消息和输入框，小窗口会自动适配。",

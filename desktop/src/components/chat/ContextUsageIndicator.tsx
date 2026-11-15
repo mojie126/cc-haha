@@ -320,13 +320,16 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
     return () => clearInterval(timer)
   }, [chatState, refresh])
 
-  // Lifetime session totals, polled only while the breakdown is on screen. The request is the
-  // single-control `usageOnly` one, so a 3s cadence costs far less than the context refresh it
-  // sits next to, and closing the panel takes the timer with it — nothing runs in the
-  // background, and a hidden document skips its ticks rather than queueing them.
+  // Lifetime session totals: polled while the breakdown is open or the turn is
+  // running. An idle session that already has numbers fetches nothing in the
+  // background — the row keeps showing the last turn's reading.
+  const statsRowHasUsage = usageSessionIdRef.current === sessionId
   const statsRowWantsUsage = showStatsRow && contextEnabled
+  const statsRowNeedsPolling = showStatsRow && chatState !== 'idle'
+  const shouldPollUsage = detailsOpen
+    || (statsRowWantsUsage && (statsRowNeedsPolling || !statsRowHasUsage))
   useEffect(() => {
-    if ((!detailsOpen && !statsRowWantsUsage) || !sessionId) return
+    if (!shouldPollUsage || !sessionId) return
     if (typeof sessionsApi.getSessionUsage !== 'function') return
     let cancelled = false
     // The poll interval is shorter than the request deadline, so a slow server would otherwise
@@ -355,14 +358,16 @@ export const ContextUsageIndicator = forwardRef<ContextUsageIndicatorHandle, Pro
     }
 
     load()
-    const timer = setInterval(load, USAGE_POLL_MS)
+    // 空闲且已有数据时只补一次，不启动定时器。
+    const timer = (detailsOpen || statsRowNeedsPolling)
+      ? setInterval(load, USAGE_POLL_MS)
+      : null
     return () => {
       cancelled = true
       controller.abort()
-      clearInterval(timer)
+      if (timer !== null) clearInterval(timer)
     }
-  // 信息行只在会话活跃或尚无数据时轮询；空闲且有数据的会话不产生后台请求。
-  }, [detailsOpen, statsRowWantsUsage, sessionId])
+  }, [detailsOpen, shouldPollUsage, statsRowNeedsPolling, sessionId])
 
   // If the presentation mode flips (Workbench drag, H5 resize), drop any open
   // shell so we don't leave a desktop popover stranded on a sheet layout.
