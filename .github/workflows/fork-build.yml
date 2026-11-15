@@ -135,12 +135,12 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           TITLE: ${{ needs.prepare.outputs.title }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # 发布说明按版本累积：同一版本的每次构建（含 -r 后缀标题）把本轮
-          # 「本轮改动详情」放在最前，上一个同版本 Release 的改动区原样附在
-          # 后面，升级版本后没有同版本 Release，正文重新开始；官方更新记录
+          # 与参考项目 A2API 相同，变更文档就是累积载体：同版本的历轮改动
+          # 在文档里整合或追加，工作流整体取用「本轮改动详情」与「历史轮次」
+          # 两节，不拼接旧 Release 正文，避免同一轮内容重复；升级版本时把
+          # 上一版本的轮次从「历史轮次」清掉，正文即重新开始。官方更新记录
           # 以链接引用，不复制正文。
           fork_doc="$(ls FORK_*.md 2>/dev/null | sort | tail -n1 || true)"
           if [[ -z "$fork_doc" ]]; then
@@ -149,8 +149,7 @@ jobs:
           fi
           round_date="$(sed -n 's/^## 本轮改动详情（\(.*\)）$/\1/p' "$fork_doc" | head -n1)"
           round="$(sed -n '/^## 本轮改动详情/,/^## /p' "$fork_doc" | sed '1d;$d' | sed 's/^### /#### /')"
-          prev_body="$(TAG_BASE="v${VERSION}" TAG_RPREFIX="v${VERSION}-r" gh api "repos/${GITHUB_REPOSITORY}/releases" --jq '[.[] | select((.tag_name == $ENV.TAG_BASE) or (.tag_name | startswith($ENV.TAG_RPREFIX))) | {created_at, body}] | sort_by(.created_at) | last | .body // ""')"
-          prev_changes="$(printf '%s' "$prev_body" | awk 'found{print} /^### /&&!found{found=1; next}')"
+          history="$(sed -n '/^## 历史轮次/,/^## /p' "$fork_doc" | sed '1d;$d')"
           {
             echo "## Claude Code Haha ${TITLE}（fork 构建）"
             echo
@@ -161,9 +160,9 @@ jobs:
             echo "### ${round_date:-本轮改动}"
             echo
             echo "$round"
-            if [[ -n "$prev_changes" ]]; then
+            if [[ -n "${history//[[:space:]]/}" ]]; then
               echo
-              echo "$prev_changes"
+              echo "$history"
             fi
           } > body.md
 
