@@ -31,6 +31,10 @@ jobs:
             const owner = context.repo.owner
             const repo = context.repo.repo
             const issue_number = context.payload.pull_request?.number ?? Number(core.getInput('pr_number'))
+            // Fork policy: manual dispatch carries no pull_request payload, so the
+            // PR metadata is fetched when the event does not provide it.
+            const pullRequest = context.payload.pull_request
+              ?? (await github.rest.pulls.get({ owner, repo, pull_number: issue_number })).data
 
             const managedLabels = {
               'area:desktop': '1d76db',
@@ -52,7 +56,7 @@ jobs:
               per_page: 100,
             })
             const filenames = files.map((file) => file.filename)
-            const currentLabels = new Set((context.payload.pull_request.labels || []).map((label) => label.name))
+            const currentLabels = new Set((pullRequest.labels || []).map((label) => label.name))
 
             const areas = new Set()
             const cliCoreFiles = []
@@ -98,7 +102,7 @@ jobs:
             // base branch so the PR cannot add its author. Mirrors scripts/pr/change-policy.ts.
             let codeOwners = new Set()
             try {
-              const { data } = await github.rest.repos.getContent({ owner, repo, path: '.github/CODEOWNERS', ref: context.payload.pull_request.base.ref })
+              const { data } = await github.rest.repos.getContent({ owner, repo, path: '.github/CODEOWNERS', ref: pullRequest.base.ref })
               const text = Buffer.from(data.content || '', 'base64').toString('utf8')
               codeOwners = new Set(text.split(/\r?\n/)
                 .map((line) => line.replace(/#.*$/, '').trim())
@@ -109,7 +113,7 @@ jobs:
             } catch (error) {
               core.warning(`Could not read base CODEOWNERS: ${error.message}`)
             }
-            const authorIsCodeOwner = codeOwners.has(String(context.payload.pull_request.user?.login || '').toLowerCase())
+            const authorIsCodeOwner = codeOwners.has(String(pullRequest.user?.login || '').toLowerCase())
             const cliCoreApproved = currentLabels.has('allow-cli-core-change') || authorIsCodeOwner
 
             if (cliCoreFiles.length > 0 && !cliCoreApproved) {

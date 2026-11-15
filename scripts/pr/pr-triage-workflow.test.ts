@@ -9,10 +9,13 @@ describe('PR triage workflow comment', () => {
     expect(workflow).not.toContain('@dosubot')
   })
 
-  test('does not execute untrusted PR code from pull_request_target', () => {
+  test('runs only on manual dispatch and never executes untrusted PR code', () => {
     const workflow = readFileSync('.github/workflows/pr-triage.yml', 'utf8')
 
-    expect(workflow).toContain('pull_request_target:')
+    // Fork policy: the upstream pull_request_target trigger is removed entirely.
+    expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).not.toContain('pull_request_target:')
+    expect(workflow).not.toMatch(/^ {2}pull_request:/m)
     expect(workflow).not.toContain('actions/checkout')
     expect(workflow).not.toContain('bun install')
     expect(workflow).not.toContain('pull_request.head.sha')
@@ -23,7 +26,9 @@ describe('PR triage workflow comment', () => {
   test('exempts CODEOWNER-authored CLI core changes using base-branch CODEOWNERS', () => {
     const workflow = readFileSync('.github/workflows/pr-triage.yml', 'utf8')
 
-    expect(workflow).toContain("path: '.github/CODEOWNERS', ref: context.payload.pull_request.base.ref")
+    // Manual dispatch carries no PR payload, so the base branch is read from the
+    // PR metadata fetched through the API.
+    expect(workflow).toContain("path: '.github/CODEOWNERS', ref: pullRequest.base.ref")
     expect(workflow).toContain("const cliCoreApproved = currentLabels.has('allow-cli-core-change') || authorIsCodeOwner")
     expect(workflow).toContain('if (cliCoreFiles.length > 0 && !cliCoreApproved) {')
   })
