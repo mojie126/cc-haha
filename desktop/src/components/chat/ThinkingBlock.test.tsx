@@ -185,15 +185,15 @@ describe('ThinkingBlock', () => {
     expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
   })
 
-  it('collapses by default when the reasoning-fold setting is off', () => {
-    // 关闭开关回到旧模式：推理始终折叠为一行摘要，点击才展开。
+  it('expands by default when the reasoning-fold setting is off', () => {
+    // 关闭开关：推理正文默认全部展开（含历史回合），点击仍可收起。
     useSettingsStore.setState({ reasoningFoldEnabled: false })
     try {
-      const { container } = render(<ThinkingBlock content="reasoning..." isActive isTurnActive />)
-      expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+      const { container } = render(<ThinkingBlock content="reasoning..." isActive={false} isTurnActive={false} />)
+      expect(container.querySelector('[data-thinking-content="expanded"]')).not.toBeNull()
 
       fireEvent.click(screen.getByRole('button'))
-      expect(container.querySelector('[data-thinking-content="expanded"]')).not.toBeNull()
+      expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
     } finally {
       useSettingsStore.setState({ reasoningFoldEnabled: true })
     }

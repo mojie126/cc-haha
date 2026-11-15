@@ -4814,6 +4814,45 @@ describe('MessageList nested tool calls', () => {
     clearDisclosureMemory()
   })
 
+  it('applies the reasoning-fold switch to a running turn', async () => {
+    dropSession(ACTIVE_TAB)
+    clearDisclosureMemory()
+    const messages: UIMessage[] = [
+      { id: 'user-1', type: 'user_text', content: '提问', timestamp: 1 },
+      { id: 'thinking-1', type: 'thinking', content: '推理', timestamp: 2 },
+    ]
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'thinking',
+          activeThinkingId: 'thinking-1',
+          messages,
+        }),
+      },
+    })
+    useSettingsStore.setState({ reasoningFoldEnabled: true })
+    const { container } = render(<MessageList />)
+    const openBodies = () => container.querySelectorAll('[data-thinking-content="expanded"]')
+    expect(openBodies()).toHaveLength(1)
+
+    // 关闭开关：进行中的推理仍展开。
+    act(() => useSettingsStore.setState({ reasoningFoldEnabled: false }))
+    expect(openBodies()).toHaveLength(1)
+
+    // 关闭开关：回合结束后历史推理也保持展开。
+    act(() => useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({ chatState: 'idle', activeThinkingId: null, messages }),
+      },
+    }))
+    expect(openBodies()).toHaveLength(1)
+
+    // 重新打开：已结束的回合折回摘要行。
+    act(() => useSettingsStore.setState({ reasoningFoldEnabled: true }))
+    expect(openBodies()).toHaveLength(0)
+    clearDisclosureMemory()
+  })
+
   it.each([0, 1])('preserves the reading position when standalone tool-result button %s expands (idle)', async (buttonIndex) => {
     const sessionId = 'review-idle-tool-result'
     dropSession(sessionId)

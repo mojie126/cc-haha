@@ -2886,7 +2886,7 @@ Row 9, all 8 cells: continuing from straight down, turning left through lower-le
   'settings.general.leanModeDescription': 'Choose Standard or Lean in new chats. The mode is fixed after the first message; turning this off leaves existing lean chats unchanged.',
   'settings.general.leanModeSaveFailed': 'Could not save. Your previous setting is unchanged. Toggle again to retry.',
   'settings.general.reasoningFoldEnabled': 'Fold reasoning',
-  'settings.general.reasoningFoldDescription': 'Keep the reasoning visible while a turn runs, then fold it into a one-line summary when the turn ends. When off, reasoning stays collapsed until you open it.',
+  'settings.general.reasoningFoldDescription': 'Keep the reasoning visible while a turn runs, then fold it into a one-line summary when the turn ends. When off, reasoning and tool activity stay fully expanded, including past turns.',
   'settings.general.reasoningFoldSaveFailed': 'Could not save. Your previous setting is unchanged. Toggle again to retry.',
   'settings.general.agentTeamsEnabled': 'Enable Agent Teams',
   'agentTeams.name': 'Agent Teams',

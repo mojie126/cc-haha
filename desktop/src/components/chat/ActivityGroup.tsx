@@ -18,6 +18,7 @@ import {
   type ActivityStep,
 } from './activityGroupModel'
 import { useTranslation } from '../../i18n'
+import { useSettingsStore } from '../../stores/settingsStore'
 import type { UIMessage } from '../../types/chat'
 
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
@@ -116,23 +117,38 @@ export const ActivityGroup = memo(function ActivityGroup({
   const pinnedCollapsed = disclosureKey
     ? (getDisclosure(disclosureKey) ?? pinnedCollapsedLocal)
     : pinnedCollapsedLocal
+  // 读者一旦手动开合，自动折叠就不再覆盖这次选择。
+  const userPinnedRef = useRef(false)
   const setPinnedCollapsed = (next: boolean | null) => {
+    userPinnedRef.current = next !== null
     setPinnedCollapsedLocal(next)
     if (disclosureKey && next !== null) setDisclosure(disclosureKey, next)
   }
   // 完成即折叠：直播态结束自动折回摘要行（Responses 风格），
-  // 此后手动展开仍会保留，直到下一次直播态开始。
+  // 此后手动展开仍会保留，直到下一次直播态开始。关闭推理折叠时不做这次
+  // 自动折叠，历史回合的工具过程保持展开。
+  const reasoningFoldEnabled = useSettingsStore((state) => state.reasoningFoldEnabled)
   const wasLiveRef = useRef(isLive)
   useEffect(() => {
-    if (wasLiveRef.current && !isLive) setPinnedCollapsed(true)
+    if (reasoningFoldEnabled && wasLiveRef.current && !isLive && !userPinnedRef.current) {
+      setPinnedCollapsedLocal(true)
+    }
     wasLiveRef.current = isLive
-  }, [isLive])
+  }, [isLive, reasoningFoldEnabled])
+  // 开关切换时清掉自动折叠与读者 pin，让新的默认值立即生效。
+  const previousFoldEnabledRef = useRef(reasoningFoldEnabled)
+  useEffect(() => {
+    if (previousFoldEnabledRef.current === reasoningFoldEnabled) return
+    previousFoldEnabledRef.current = reasoningFoldEnabled
+    userPinnedRef.current = false
+    setPinnedCollapsedLocal(null)
+  }, [reasoningFoldEnabled])
 
   const toolCalls = useMemo(() => activityStepToolCalls(steps), [steps])
   const revealsHere = revealToolUseId !== undefined && toolCalls.some((toolCall) => toolCall.toolUseId === revealToolUseId)
   useEffect(() => {
-    if (revealsHere) setPinnedCollapsed(false)
-    // Pin once per request; `setPinnedCollapsed` is recreated every render.
+    if (revealsHere) setPinnedCollapsedLocal(false)
+    // Pin once per request; `setPinnedCollapsedLocal` is recreated every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealsHere, revealToolUseId])
   const failedCount = countFailedToolCalls(toolCalls, resultMap, childToolCallsByParent)
@@ -154,7 +170,9 @@ export const ActivityGroup = memo(function ActivityGroup({
   // reader while they were trying to watch it.
   // Open in the same render the request arrives in, so the row is in the DOM
   // for the scroll that follows; the effect above makes it stick.
-  const collapsed = revealsHere ? false : (pinnedCollapsed ?? !isLive)
+  const collapsed = revealsHere
+    ? false
+    : (pinnedCollapsed ?? (reasoningFoldEnabled ? !isLive : false))
   const rowProps = {
     resultMap,
     childToolCallsByParent,

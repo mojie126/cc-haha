@@ -73,7 +73,7 @@ function snapshot(calls: ToolCall[], results: ToolResult[], children: Array<[str
 
 describe('ActivityGroup re-rendering while a run streams (#1480)', () => {
   beforeEach(() => {
-    useSettingsStore.setState({ locale: 'en' })
+    useSettingsStore.setState({ locale: 'en', reasoningFoldEnabled: true })
     rendered.length = 0
     rowRenders.length = 0
   })
@@ -129,6 +129,23 @@ describe('ActivityGroup re-rendering while a run streams (#1480)', () => {
     rerender(<ActivityGroup {...snapshot(calls, results)} isLive={false} />)
     expect(group).toHaveAttribute('data-expanded', 'true')
     expect(row()).toHaveAttribute('data-tool-status', 'idle')
+  })
+
+  it('keeps a finished run open when the reasoning-fold setting is off', () => {
+    useSettingsStore.setState({ reasoningFoldEnabled: false })
+    try {
+      const calls = [bash(0), bash(1)]
+      const { rerender } = render(<ActivityGroup {...snapshot(calls, [])} isLive />)
+      const group = screen.getByTestId('activity-group')
+      expect(group).toHaveAttribute('data-expanded', 'true')
+
+      rerender(<ActivityGroup {...snapshot(calls, [])} isLive={false} />)
+
+      // 关闭推理折叠：历史回合的工具过程也不自动折回摘要行。
+      expect(group).toHaveAttribute('data-expanded', 'true')
+    } finally {
+      useSettingsStore.setState({ reasoningFoldEnabled: true })
+    }
   })
 
   it('moves the locate-in-chat highlight onto a row and off it again', () => {

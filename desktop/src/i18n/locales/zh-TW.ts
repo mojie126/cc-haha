@@ -2886,7 +2886,7 @@ export const zh: Record<TranslationKey, string> = {
   'settings.general.leanModeDescription': '開啟後可在新聊天中選擇標準或精簡模式。首次傳送後模式固定；關閉此開關不影響既有精簡對話。',
   'settings.general.leanModeSaveFailed': '無法儲存，已保留原設定。請重新切換以重試。',
   'settings.general.reasoningFoldEnabled': '推理折疊',
-  'settings.general.reasoningFoldDescription': '回合進行中顯示推理正文，回合結束後折疊為一行摘要；關閉時推理保持折疊，點擊才展開。',
+  'settings.general.reasoningFoldDescription': '回合進行中顯示推理正文，回合結束後折疊為一行摘要；關閉時推理與工具過程預設全部展開，包含歷史回合。',
   'settings.general.reasoningFoldSaveFailed': '無法儲存，已保留原設定。請重新切換以重試。',
   'settings.general.agentTeamsEnabled': '啟用 智慧體團隊',
   'agentTeams.name': '智慧體團隊',

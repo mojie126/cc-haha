@@ -2889,7 +2889,7 @@ export const kr: Record<TranslationKey, string> = {
   'settings.general.leanModeDescription': '새 채팅에서 표준 또는 경량 모드를 선택합니다. 첫 메시지 전송 후에는 모드가 고정됩니다. 꺼도 기존 경량 채팅은 변경되지 않습니다.',
   'settings.general.leanModeSaveFailed': '저장하지 못했습니다. 이전 설정이 유지됩니다. 다시 전환하여 재시도하세요.',
   'settings.general.reasoningFoldEnabled': '추론 접기',
-  'settings.general.reasoningFoldDescription': '턴이 실행되는 동안 추론을 표시하고, 턴이 끝나면 한 줄 요약으로 접습니다. 끄면 펼칠 때까지 접힌 상태로 유지됩니다.',
+  'settings.general.reasoningFoldDescription': '턴이 실행되는 동안 추론을 표시하고, 턴이 끝나면 한 줄 요약으로 접습니다. 끄면 지난 턴을 포함해 추론과 도구 과정이 펼쳐진 상태로 표시됩니다.',
   'settings.general.reasoningFoldSaveFailed': '저장하지 못했습니다. 이전 설정이 유지됩니다. 다시 전환하여 재시도하세요.',
   'settings.general.agentTeamsEnabled': '에이전트 팀 사용',
   'agentTeams.name': '에이전트 팀',

@@ -2887,7 +2887,7 @@ export const jp: Record<TranslationKey, string> = {
   'settings.general.leanModeDescription': '新しいチャットで標準・軽量モードを選べます。最初の送信後はモードが固定されます。無効にしても既存の軽量チャットは変わりません。',
   'settings.general.leanModeSaveFailed': '保存できませんでした。以前の設定を保持しています。もう一度切り替えて再試行してください。',
   'settings.general.reasoningFoldEnabled': '推論を折りたたむ',
-  'settings.general.reasoningFoldDescription': 'ターン実行中は推論を表示し、ターン終了時に 1 行の要約へ折りたたみます。オフの場合は、開くまで折りたたまれたままです。',
+  'settings.general.reasoningFoldDescription': 'ターン実行中は推論を表示し、ターン終了時に 1 行の要約へ折りたたみます。オフの場合は推論とツールの過程を、過去のターンも含めて展開したまま表示します。',
   'settings.general.reasoningFoldSaveFailed': '保存できませんでした。以前の設定を保持しています。もう一度切り替えて再試行してください。',
   'settings.general.agentTeamsEnabled': 'エージェントチーム を有効にする',
   'agentTeams.name': 'エージェントチーム',
