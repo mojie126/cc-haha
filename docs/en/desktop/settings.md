@@ -38,6 +38,7 @@ General covers four areas: appearance and replies, how the agent works, network 
 - **Language:** changes only the interface, with English, Simplified and Traditional Chinese, Japanese, and Korean choices. It does not set the response language.
 - **UI Zoom:** scales the whole window. Use `⌘+` / `⌘-` on macOS or `Ctrl+` / `Ctrl-` on Windows; press `0` to reset to 100%.
 - **Message sending:** defaults to Enter to send and Shift+Enter for a newline. If you write long prompts, choose `Ctrl/Cmd+Enter` to send.
+- **Fold reasoning:** on by default. The reasoning stays visible while a turn runs, then folds into a “Thought for Ns” row when the turn ends. Turn it off to keep reasoning collapsed until you open it.
 - **Default editor:** chooses which detected local editor appears as the default under a file's **Open with** menu.
 
 ### For more involved agent workflows
