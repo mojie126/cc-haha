@@ -163,6 +163,8 @@ export type UserSettings = {
   modelContext?: string
   effort?: EffortLevel
   alwaysThinkingEnabled?: boolean
+  /** 推理折叠：回合中展开正文、结束折叠为总结行；关闭回到始终折叠的旧模式。 */
+  reasoningFoldEnabled?: boolean
   workflowKeywordTriggerEnabled?: boolean
   /** Desktop composer next-prompt suggestions; absent means off (opt-in, costs tokens). */
   nextPromptSuggestionsEnabled?: boolean

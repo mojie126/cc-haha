@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { getDisclosure, setDisclosure } from '../../lib/disclosureMemory'
 import { Brain, ChevronRight } from 'lucide-react'
 import { useTranslation } from '../../i18n'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import {
   EMPTY_STREAMING_MARKDOWN_SEGMENTS,
@@ -44,11 +45,15 @@ export function ThinkingBlock({
   durationMs?: number
 }) {
   const t = useTranslation()
+  // 关闭推理折叠时回到旧模式：默认收起，只有读者点击才展开。
+  const reasoningFoldEnabled = useSettingsStore((state) => state.reasoningFoldEnabled)
   // null means "the reader has not clicked this row in this mount"; a boolean
   // is their choice, which outranks both the memory and the turn default.
   const [localExpanded, setLocalExpanded] = useState<boolean | null>(null)
   const storedExpanded = disclosureKey ? getDisclosure(disclosureKey) : undefined
-  const expanded = storedExpanded ?? localExpanded ?? (isActive || isTurnActive)
+  const expanded = storedExpanded
+    ?? localExpanded
+    ?? (reasoningFoldEnabled && (isActive || isTurnActive))
   const contentRef = useRef<HTMLDivElement>(null)
   const displayContent = useMemo(() => content.replace(/\r\n?/g, '\n').trimEnd(), [content])
   const hasDisplayContent = displayContent.trim().length > 0

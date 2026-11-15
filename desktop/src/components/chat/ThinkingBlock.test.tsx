@@ -185,6 +185,20 @@ describe('ThinkingBlock', () => {
     expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
   })
 
+  it('collapses by default when the reasoning-fold setting is off', () => {
+    // 关闭开关回到旧模式：推理始终折叠为一行摘要，点击才展开。
+    useSettingsStore.setState({ reasoningFoldEnabled: false })
+    try {
+      const { container } = render(<ThinkingBlock content="reasoning..." isActive isTurnActive />)
+      expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
+
+      fireEvent.click(screen.getByRole('button'))
+      expect(container.querySelector('[data-thinking-content="expanded"]')).not.toBeNull()
+    } finally {
+      useSettingsStore.setState({ reasoningFoldEnabled: true })
+    }
+  })
+
   it('keeps the expanded state across a virtualized row unmount and remount', () => {
     // Virtualization unmounts rows outside the window. Losing the reader's
     // disclosure choice changes the row height on the way back, which is the

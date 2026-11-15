@@ -474,6 +474,10 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Show the Standard / Lean selector for new desktop chats. Default: false. Existing sessions keep their profile.'),
+      reasoningFoldEnabled: z
+        .boolean()
+        .optional()
+        .describe('Keep reasoning visible during a turn and fold it into a summary row when the turn ends. Default: true.'),
       agentTeamsEnabled: z
         .boolean()
         .optional()

@@ -67,6 +67,8 @@ type SettingsStore = {
   currentModel: ModelInfo | null
   effortLevel: EffortLevel
   thinkingEnabled: boolean
+  /** 回合进行中展示推理正文、回合结束折叠为总结行；关闭时回到始终折叠的旧模式。 */
+  reasoningFoldEnabled: boolean
   workflowKeywordTriggerEnabled: boolean
   nextPromptSuggestionsEnabled: boolean
   maxOutputTokensEscalationMode: 'auto' | 'enabled' | 'disabled'
@@ -119,6 +121,7 @@ type SettingsStore = {
   setEffort: (level: EffortLevel) => Promise<void>
   setThinkingEnabled: (enabled: boolean) => Promise<void>
   setWorkflowKeywordTriggerEnabled: (enabled: boolean) => Promise<void>
+  setReasoningFoldEnabled: (enabled: boolean) => Promise<void>
   setNextPromptSuggestionsEnabled: (enabled: boolean) => Promise<void>
   setMaxOutputTokensEscalationMode: (mode: 'auto' | 'enabled' | 'disabled') => Promise<void>
   setLeanModeEnabled: (enabled: boolean) => Promise<void>
@@ -231,6 +234,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   currentModel: null,
   effortLevel: 'low',
   thinkingEnabled: true,
+  reasoningFoldEnabled: true,
   workflowKeywordTriggerEnabled: true,
   nextPromptSuggestionsEnabled: false,
   maxOutputTokensEscalationMode: 'auto',
@@ -334,6 +338,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         currentModel: model,
         effortLevel: level,
         thinkingEnabled: userSettings.alwaysThinkingEnabled !== false,
+        reasoningFoldEnabled: userSettings.reasoningFoldEnabled !== false,
         workflowKeywordTriggerEnabled: userSettings.workflowKeywordTriggerEnabled !== false,
         // Opt-in: every suggestion is an extra model request.
         nextPromptSuggestionsEnabled: userSettings.nextPromptSuggestionsEnabled === true,
@@ -430,6 +435,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await settingsApi.updateUser({ workflowKeywordTriggerEnabled: enabled })
     } catch (error) {
       set({ workflowKeywordTriggerEnabled: prev })
+      throw error
+    }
+  },
+
+  setReasoningFoldEnabled: async (enabled) => {
+    const prev = get().reasoningFoldEnabled
+    set({ reasoningFoldEnabled: enabled })
+    try {
+      await settingsApi.updateUser({ reasoningFoldEnabled: enabled })
+    } catch (error) {
+      set({ reasoningFoldEnabled: prev })
       throw error
     }
   },

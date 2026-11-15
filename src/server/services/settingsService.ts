@@ -225,6 +225,9 @@ export class SettingsService {
     if (Object.hasOwn(settings, 'leanModeEnabled') && typeof settings.leanModeEnabled !== 'boolean') {
       throw ApiError.badRequest('leanModeEnabled must be a boolean')
     }
+    if (Object.hasOwn(settings, 'reasoningFoldEnabled') && typeof settings.reasoningFoldEnabled !== 'boolean') {
+      throw ApiError.badRequest('reasoningFoldEnabled must be a boolean')
+    }
     if (Object.hasOwn(settings, 'autoUpdateEnabled') && typeof settings.autoUpdateEnabled !== 'boolean') {
       throw ApiError.badRequest('autoUpdateEnabled must be a boolean')
     }
