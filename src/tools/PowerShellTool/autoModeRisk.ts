@@ -30,6 +30,10 @@ const SERVICE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
     reason: 'Command starts, stops, or reconfigures a Windows service',
   },
   {
+    pattern: /\b(?:stop|restart)-computer\b/i,
+    reason: 'Command shuts down or restarts the machine',
+  },
+  {
     pattern:
       /\bsc(?:\.exe)?\s+(?:start|stop|pause|continue|delete|create|config|failure|sdset)\b/i,
     reason: 'Command controls a Windows service through sc.exe',
@@ -42,11 +46,12 @@ const SERVICE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 
 const DESTRUCTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
-    pattern: /\b(?:remove-item|rm|ri|del|erase|rd|rmdir)\b[^|;&\n]*(?:^|\s)-(?:recurse|r)\b/i,
+    // PowerShell 允许参数前缀缩写（-Rec 即 -Recurse），cmd 的递归删除用 /s。
+    pattern: /\b(?:remove-item|rm|ri|del|erase|rd|rmdir)\b[^|;&\n]*(?:\s-(?:recurse|rec|r)\b|\/s\b)/i,
     reason: 'Command recursively deletes files',
   },
   {
-    pattern: /\b(?:remove-item|rm|ri|del|erase|rd|rmdir)\b\s+(?:-\S+\s+)*\*/i,
+    pattern: /\b(?:remove-item|rm|ri|del|erase|rd|rmdir)\b[^|;&\n]*\*/i,
     reason: 'Command deletes a wildcard path',
   },
   {
@@ -56,7 +61,7 @@ const DESTRUCTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   },
   {
     pattern:
-      /\b(?:remove-item|rm|ri|del|erase|rd|rmdir)\b[^|;&\n]*\$(?:env:)?home\b/i,
+      /\b(?:remove-item|rm|ri|del|erase|rd|rmdir)\b[^|;&\n]*(?:\$(?:env:)?home\b|\$env:userprofile\b|(?:^|\s)~(?=[\\/\s]|$))/i,
     reason: 'Command deletes the user home directory',
   },
   {
@@ -77,7 +82,7 @@ const SECURITY_WEAKENING_PATTERNS: Array<{ pattern: RegExp; reason: string }> = 
   },
   {
     pattern:
-      /\bset-executionpolicy\b[^|;&\n]*(?:bypass|unrestricted)\b/i,
+      /\bset-executionpolicy\b[^|;&\n]*(?:bypass|byp|unrestricted)\b/i,
     reason: 'Command weakens the PowerShell execution policy',
   },
 ]
@@ -100,13 +105,19 @@ const DOWNLOAD_EXECUTE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
       /\b(?:invoke-expression|iex)\b[^|;&\n]*(?:invoke-webrequest|\biwr\b|invoke-restmethod|\birm\b|downloadstring|downloadfile|net\.webclient|start-bitstransfer|\bcurl\b|\bwget\b)/i,
     reason: 'Command downloads and executes remote code',
   },
+  {
+    // 最常见的写法是下载结果直接通过管道交给 iex（`iwr URL | iex`）。
+    pattern:
+      /\b(?:invoke-webrequest|iwr|invoke-restmethod|irm|downloadstring|downloadfile|net\.webclient|start-bitstransfer|curl|wget)\b[^|;&\n]*\|\s*(?:invoke-expression|iex)\b/i,
+    reason: 'Command downloads and executes remote code',
+  },
 ]
 
 const REGISTRY_SYSTEM_HIVE =
   /\b(?:hklm(?::|[\\/])|hkey_local_machine\b|hkcr(?::|[\\/])|hkey_classes_root\b|hku(?::|[\\/])|hkey_users\b)/i
 const REGISTRY_WRITE =
   /\b(?:set|new|remove|rename|move|copy|clear|add|restore)-(?:item|itemproperty)\b|\breg(?:\.exe)?\s+(?:add|delete|import|restore|load)\b/i
-const REGISTRY_RUN_KEY = /\bcurrentversion[\\/]+run\b/i
+const REGISTRY_RUN_KEY = /\bcurrentversion[\\/]+run(?:once)?\b/i
 
 const ALL_PATTERN_GROUPS = [
   ELEVATION_PATTERNS,
@@ -121,8 +132,8 @@ const ALL_PATTERN_GROUPS = [
 export function getPowerShellAutoModeRisk(
   command: string,
 ): PowerShellAutoModeRisk | null {
-  // 统一各类破折号前缀，便于 `–Verb RunAs` 之类写法命中同一规则
-  const normalized = command.replace(/[\u2013\u2014\u2015]/g, '-')
+  // 统一各类破折号与全角减号前缀，便于 `–Verb RunAs` 之类写法命中同一规则
+  const normalized = command.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uff0d]/g, '-')
   for (const group of ALL_PATTERN_GROUPS) {
     for (const { pattern, reason } of group) {
       if (pattern.test(normalized)) return { reason }
