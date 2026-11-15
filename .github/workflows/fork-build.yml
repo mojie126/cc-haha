@@ -134,18 +134,37 @@ jobs:
         id: notes
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          TITLE: ${{ needs.prepare.outputs.title }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # 发布说明只写 fork 的定制内容，取自 FORK 文档的「本轮改动详情」
-          # 一节；官方更新记录以链接引用，不复制正文。
+          # 发布说明按版本累积：同一版本的每次构建（含 -r 后缀标题）把本轮
+          # 「本轮改动详情」放在最前，上一个同版本 Release 的改动区原样附在
+          # 后面，升级版本后没有同版本 Release，正文重新开始；官方更新记录
+          # 以链接引用，不复制正文。
+          fork_doc="$(ls FORK_*.md 2>/dev/null | sort | tail -n1 || true)"
+          if [[ -z "$fork_doc" ]]; then
+            echo "::error::未找到 FORK_*.md 变更文档"
+            exit 1
+          fi
+          round_date="$(sed -n 's/^## 本轮改动详情（\(.*\)）$/\1/p' "$fork_doc" | head -n1)"
+          round="$(sed -n '/^## 本轮改动详情/,/^## /p' "$fork_doc" | sed '1d;$d' | sed 's/^### /#### /')"
+          prev_body="$(TAG_BASE="v${VERSION}" TAG_RPREFIX="v${VERSION}-r" gh api "repos/${GITHUB_REPOSITORY}/releases" --jq '[.[] | select((.tag_name == $ENV.TAG_BASE) or (.tag_name | startswith($ENV.TAG_RPREFIX))) | {created_at, body}] | sort_by(.created_at) | last | .body // ""')"
+          prev_changes="$(printf '%s' "$prev_body" | awk 'found{print} /^### /&&!found{found=1; next}')"
           {
-            echo "## Claude Code Haha v${VERSION}（fork 构建）"
+            echo "## Claude Code Haha ${TITLE}（fork 构建）"
             echo
             echo "基于官方 v${VERSION} 的 fork 定制构建，官方更新记录见 [NanmiCoder/cc-haha v${VERSION}](https://github.com/NanmiCoder/cc-haha/releases/tag/v${VERSION})。"
             echo
             echo "### fork 定制内容"
             echo
-            sed -n '/^## 本轮改动详情/,/^## /p' FORK_2026-11-14.md | sed '1d;$d'
+            echo "### ${round_date:-本轮改动}"
+            echo
+            echo "$round"
+            if [[ -n "$prev_changes" ]]; then
+              echo
+              echo "$prev_changes"
+            fi
           } > body.md
 
 
