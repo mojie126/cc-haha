@@ -157,7 +157,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
     // Thinking stays with the remainder: the memory card is a summary of files
     // touched, not a place reasoning belongs.
     const regularSteps = resolvedSteps.filter(
-      (step) => step.kind === 'thinking' || !isMemoryToolCall(step.toolCall),
+      (step) => step.kind !== 'tool' || !isMemoryToolCall(step.toolCall),
     )
     return (
       <div className={regularSteps.length > 0 ? 'space-y-2' : ''}>
@@ -234,7 +234,7 @@ function ToolCallGroupContent({
   const toolCalls = activityStepToolCalls(steps)
   const hasImageGeneration = toolCalls.some((toolCall) => isImageGenerationToolName(toolCall.toolName))
   const hasNonImageSteps = steps.some(
-    (step) => step.kind === 'thinking' || !isImageGenerationToolName(step.toolCall.toolName),
+    (step) => step.kind !== 'tool' || !isImageGenerationToolName(step.toolCall.toolName),
   )
   if (hasImageGeneration && hasNonImageSteps) {
     const segments: Array<
@@ -304,6 +304,14 @@ function ToolCallGroupContent({
             content={step.message.content}
             isActive={step.message.id === activeThinkingId}
           />
+        ) : step.kind === 'text' ? (
+          <div key={step.message.id} className="text-[13px] text-[var(--color-text-secondary)]">
+            <MarkdownRenderer
+              content={step.message.content}
+              variant="compact"
+              className="chat-reading-markdown text-[var(--color-text-secondary)]"
+            />
+          </div>
         ) : null)}
       </>
     )

@@ -13,6 +13,7 @@ import {
 } from './workspace/persistence'
 import { CHAT_APPEARANCE_STORAGE_KEY, DEFAULT_CHAT_APPEARANCE } from './chatAppearance'
 import { PREVENT_SLEEP_STORAGE_KEY } from './preventSleepPreference'
+import { COMPOSER_DRAFT_STORAGE_KEY } from './composerDraftPersistence'
 
 describe('desktop persistence migrations', () => {
   beforeEach(() => {
@@ -34,6 +35,24 @@ describe('desktop persistence migrations', () => {
     localStorage.setItem(PREVENT_SLEEP_STORAGE_KEY, 'true')
     runDesktopPersistenceMigrations()
     expect(localStorage.getItem(PREVENT_SLEEP_STORAGE_KEY)).toBe('0')
+  })
+
+  test('keeps valid persisted composer drafts and drops an unparseable record', () => {
+    localStorage.setItem(DESKTOP_PERSISTENCE_VERSION_KEY, '7')
+    const payload = JSON.stringify({
+      version: 1,
+      drafts: {
+        'session-1': { input: 'unsent', mentions: [], attachments: [], updatedAt: 1 },
+      },
+    })
+    localStorage.setItem(COMPOSER_DRAFT_STORAGE_KEY, payload)
+
+    expect(runDesktopPersistenceMigrations().migratedKeys).not.toContain(COMPOSER_DRAFT_STORAGE_KEY)
+    expect(localStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBe(payload)
+
+    localStorage.setItem(COMPOSER_DRAFT_STORAGE_KEY, '{broken')
+    expect(runDesktopPersistenceMigrations().migratedKeys).toContain(COMPOSER_DRAFT_STORAGE_KEY)
+    expect(localStorage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBeNull()
   })
 
   test('upgrades a frozen schema-4 install with reading defaults without changing zoom or theme', () => {

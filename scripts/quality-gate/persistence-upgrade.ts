@@ -147,6 +147,11 @@ const checks: Check[] = [
     command: ['bun', 'run', 'test', '--', '--run', 'src/lib/persistenceMigrations.test.ts'],
     cwd: 'desktop',
   },
+  {
+    title: 'Desktop unsent composer drafts survive a restart and drop oversized payloads',
+    command: ['bun', 'run', 'test', '--', '--run', 'src/lib/composerDraftPersistence.test.ts'],
+    cwd: 'desktop',
+  },
 ]
 
 async function runCheck(check: Check): Promise<number> {

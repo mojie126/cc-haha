@@ -10,7 +10,14 @@ import type { TeamMemberActivity, TeamMemberAutoRetry } from './team'
 export type ClientMessage =
   | { type: 'prewarm_session' }
   | { type: 'sync_state' }
-  | { type: 'user_message'; content: string; attachments?: AttachmentRef[]; sessionReferences?: Array<{ sessionId: string }> }
+  | {
+      type: 'user_message'
+      content: string
+      attachments?: AttachmentRef[]
+      sessionReferences?: Array<{ sessionId: string }>
+      /** `next` steers a running turn; omitted queues it for the turn's end. */
+      priority?: 'next'
+    }
   | {
       type: 'permission_response'
       requestId: string

@@ -9,6 +9,7 @@ import type { Tool, ToolPermissionContext, ToolUseContext } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../../tools/AgentTool/constants.js'
 import { shouldUseSandbox } from '../../tools/BashTool/shouldUseSandbox.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
+import { getPowerShellAutoModeRisk } from '../../tools/PowerShellTool/autoModeRisk.js'
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
 import { REPL_TOOL_NAME } from '../../tools/REPLTool/constants.js'
 import type { AssistantMessage } from '../../types/message.js'
@@ -557,6 +558,31 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
         (appState.toolPermissionContext.mode === 'plan' &&
           (autoModeStateModule?.isAutoModeActive() ?? false)))
     ) {
+      // PowerShell static risk gate. Windows has no system sandbox to contain
+      // a misjudged command, so these destructive patterns must reach the
+      // human approval dialog instead of being approvable by the classifier.
+      // Overriding `result` reuses the non-approvable safetyCheck handling
+      // immediately below.
+      if (tool.name === POWERSHELL_TOOL_NAME) {
+        const command = (input as { command?: unknown }).command
+        const risk =
+          typeof command === 'string'
+            ? getPowerShellAutoModeRisk(command)
+            : null
+        if (risk) {
+          const decisionReason: PermissionDecisionReason = {
+            type: 'safetyCheck',
+            reason: risk.reason,
+            classifierApprovable: false,
+          }
+          result = {
+            behavior: 'ask',
+            message: createPermissionRequestMessage(tool.name, decisionReason),
+            decisionReason,
+          }
+        }
+      }
+
       // Non-classifier-approvable safetyCheck decisions stay immune to ALL
       // auto-approve paths: the acceptEdits fast-path, the safe-tool allowlist,
       // and the classifier. Step 1g only guards bypassPermissions; this guards
@@ -592,11 +618,12 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
         createDenialTrackingState()
 
       // PowerShell requires explicit user permission in auto mode unless
-      // POWERSHELL_AUTO_MODE (ant-only build flag) is on. When disabled, this
-      // guard keeps PS out of the classifier and skips the acceptEdits
-      // fast-path below. When enabled, PS flows through to the classifier like
-      // Bash — the classifier prompt gets POWERSHELL_DENY_GUIDANCE appended so
-      // it recognizes `iex (iwr ...)` as download-and-execute, etc.
+      // POWERSHELL_AUTO_MODE is enabled (the CLI launcher and desktop sidecar
+      // build both enable it). When disabled, this guard keeps PS out of the
+      // classifier and skips the acceptEdits fast-path below. When enabled, PS
+      // flows through to the classifier like Bash — the classifier prompt gets
+      // POWERSHELL_DENY_GUIDANCE appended so it recognizes `iex (iwr ...)` as
+      // download-and-execute, etc.
       // Note: this runs inside the behavior === 'ask' branch, so allow rules
       // that fire earlier (step 2b toolAlwaysAllowedRule, PS prefix allow)
       // return before reaching here. Allow-rule protection is handled by

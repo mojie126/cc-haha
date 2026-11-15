@@ -38,6 +38,10 @@ import { hasRunningBackgroundTasks, hasRunningSubagentTasks } from '../lib/backg
 import { AGENT_LIFECYCLE_TYPES } from '../types/team'
 import type { ComposerAttachment } from '../lib/composerAttachments'
 import type { ComposerMention } from '../lib/composerMentions'
+import {
+  clearPersistedComposerDraft,
+  writeComposerDraft,
+} from '../lib/composerDraftPersistence'
 import type { MessageEntry } from '../types/session'
 import { stripAgentTeamRequest } from '../lib/agentTeamRequest'
 import type { PermissionMode } from '../types/settings'
@@ -469,7 +473,14 @@ type ChatStore = {
     sessionId: string,
     content: string,
     attachments?: AttachmentRef[],
-    options?: { sessionReferences?: Array<{ sessionId: string }>; displayContent?: string; displayAttachments?: AttachmentRef[]; hideDisplayContent?: boolean },
+    options?: {
+      sessionReferences?: Array<{ sessionId: string }>
+      displayContent?: string
+      displayAttachments?: AttachmentRef[]
+      hideDisplayContent?: boolean
+      /** `next` steers a running turn at its next tool boundary. */
+      priority?: 'next'
+    },
   ) => boolean
   respondToPermission: (
     sessionId: string,
@@ -544,7 +555,7 @@ type ChatStore = {
   ) => string
   updateQueuedUserMessage: (sessionId: string, messageId: string, content: string) => void
   removeQueuedUserMessage: (sessionId: string, messageId: string) => void
-  sendQueuedUserMessage: (sessionId: string, messageId: string) => void
+  sendQueuedUserMessage: (sessionId: string, messageId: string, options?: { priority?: 'next' }) => void
   clearMessages: (sessionId: string) => void
   dismissPromptSuggestion: (sessionId: string) => void
   handleServerMessage: (sessionId: string, msg: ServerMessage) => void
@@ -3551,6 +3562,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
       content,
       attachments,
       ...(options?.sessionReferences?.length ? { sessionReferences: options.sessionReferences } : {}),
+      ...(options?.priority ? { priority: options.priority } : {}),
     }
     if (!isDirectAgentSession) {
       // The server closes the socket (1009) for a frame over its input budget
@@ -4727,6 +4739,12 @@ export const useChatStore = create<ChatStore>((setState, get) => {
   },
 
   setComposerDraft: (sessionId, draft) => {
+    // 草稿同时写入本地存储，重启或刷新后仍能恢复；内存态仍以 store 为准
+    writeComposerDraft(sessionId, {
+      input: draft.input,
+      mentions: draft.mentions ?? [],
+      attachments: draft.attachments,
+    })
     set((state) => {
       const session = state.sessions[sessionId] ?? createDefaultSessionState()
       return {
@@ -4742,6 +4760,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
   },
 
   clearComposerDraft: (sessionId) => {
+    clearPersistedComposerDraft(sessionId)
     set((state) => ({
       sessions: updateSessionIn(state.sessions, sessionId, () => ({
         composerDraft: null,
@@ -4829,7 +4848,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
     }))
   },
 
-  sendQueuedUserMessage: (sessionId, messageId) => {
+  sendQueuedUserMessage: (sessionId, messageId, options) => {
     const session = get().sessions[sessionId]
     const queuedMessage = (session?.queuedUserMessages ?? []).find((message) => message.id === messageId)
     if (!session || !queuedMessage) return
@@ -4852,6 +4871,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
     const outgoing: ClientMessage = {
       type: 'user_message', content: queuedMessage.content, attachments: queuedMessage.attachments,
       ...(queuedMessage.sessionReferences?.length ? { sessionReferences: queuedMessage.sessionReferences } : {}),
+      ...(options?.priority ? { priority: options.priority } : {}),
     }
     if (rejectOversizedMessage(sessionId, outgoing)) return
 

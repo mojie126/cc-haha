@@ -20,6 +20,7 @@ const entrypoint =
 const command = [
   process.execPath,
   '--feature=TRANSCRIPT_CLASSIFIER',
+  '--feature=POWERSHELL_AUTO_MODE',
   ...envFileArgs,
   entrypoint,
   ...process.argv.slice(2),

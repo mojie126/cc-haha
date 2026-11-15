@@ -501,8 +501,10 @@ export async function buildYoloSystemPrompt(
   const includeBashPromptRules = feature('BASH_CLASSIFIER')
     ? !usingExternal
     : false
+  // PowerShell auto mode is enabled in this fork's builds for external users
+  // too, so the guidance must not depend on the ant-only permissions template.
   const includePowerShellGuidance = feature('POWERSHELL_AUTO_MODE')
-    ? !usingExternal
+    ? true
     : false
   const allowDescriptions = [
     ...(includeBashPromptRules ? getBashPromptAllowDescriptions(context) : []),

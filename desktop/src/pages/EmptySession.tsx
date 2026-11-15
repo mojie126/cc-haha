@@ -92,6 +92,7 @@ import { ComputerUseEnableDialog } from '@/components/computer-use/ComputerUseEn
 import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDialog'
 import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
 import { recordRecentSkills } from '@/lib/recentSkills'
+import { readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import { formatBytes } from '@/lib/formatBytes'
 import { checkUserMessageBudget } from '@/lib/userMessageBudget'
 import type { AttachmentRef, UIAttachment } from '../types/chat'
@@ -261,6 +262,43 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
   const runSubmittingRef = useRef(false)
   const draftComposerRef = useRef({ input, attachments, mentions })
   draftComposerRef.current = { input, attachments, mentions }
+  // Shell-style prompt recall, same as the session composer.
+  const historyIndexRef = useRef(0)
+  const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
+  const resetHistoryNavigation = () => {
+    historyIndexRef.current = 0
+    historyDraftRef.current = null
+  }
+  const applyHistoryPrompt = (text: string) => {
+    setInput(text)
+    setMentions([])
+    requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(text.length))
+  }
+  const recallPreviousPrompt = (): boolean => {
+    const history = readPromptHistory()
+    if (history.length === 0) return false
+    if (historyIndexRef.current === 0) {
+      historyDraftRef.current = { input, mentions }
+    }
+    if (historyIndexRef.current >= history.length) return false
+    historyIndexRef.current += 1
+    applyHistoryPrompt(history[historyIndexRef.current - 1]!)
+    return true
+  }
+  const recallNextPrompt = (): boolean => {
+    if (historyIndexRef.current === 0) return false
+    historyIndexRef.current -= 1
+    if (historyIndexRef.current > 0) {
+      applyHistoryPrompt(readPromptHistory()[historyIndexRef.current - 1] ?? '')
+      return true
+    }
+    const draft = historyDraftRef.current
+    historyDraftRef.current = null
+    setInput(draft?.input ?? '')
+    setMentions(draft?.mentions ?? [])
+    requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(draft?.input.length ?? 0))
+    return true
+  }
   const workspaceRequestAttemptRef = useRef(new Map<number, number>())
   const [materializationAttempt, setMaterializationAttempt] = useState(0)
   const composerContainerRef = useRef<HTMLDivElement>(null)
@@ -770,6 +808,7 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       connectToSession(sessionId)
       if (serializedText || attachmentPayload.length > 0) {
         sendMessage(sessionId, contentForModel, attachmentPayload, { displayContent: text })
+        recordPromptHistory(text || contentForModel)
       }
       recordRecentSkills(mentions.flatMap(mention => mention.kind === 'skill' && mention.id ? [mention.id] : []))
       if (sendAsTeam) capabilityMenu.disarmAgentTeam()
@@ -876,6 +915,7 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
   ])
 
   const handleComposerChange = (value: string, nextMentions: ComposerMention[]) => {
+    resetHistoryNavigation()
     setInput(value)
     setMentions(nextMentions)
     const cursorPos = composerRef.current?.getSelectionOffsets().start ?? value.length
@@ -972,6 +1012,35 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       if (event.key === 'Escape') {
         event.preventDefault()
         setSlashMenuOpen(false)
+        return true
+      }
+    }
+
+    // Shell-style prompt history, same rules as the session composer: Up starts
+    // recalling from an empty draft, Down walks back, Esc abandons the recall.
+    const plainArrow = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+    if (plainArrow) {
+      const navigatingHistory = historyIndexRef.current > 0
+      if (event.key === 'Escape' && navigatingHistory) {
+        event.preventDefault()
+        historyIndexRef.current = 0
+        const draft = historyDraftRef.current
+        historyDraftRef.current = null
+        setInput(draft?.input ?? '')
+        setMentions(draft?.mentions ?? [])
+        return true
+      }
+      if (
+        event.key === 'ArrowUp' &&
+        (navigatingHistory ||
+          (draftComposerRef.current.input.length === 0 && draftComposerRef.current.mentions.length === 0)) &&
+        recallPreviousPrompt()
+      ) {
+        event.preventDefault()
+        return true
+      }
+      if (event.key === 'ArrowDown' && navigatingHistory && recallNextPrompt()) {
+        event.preventDefault()
         return true
       }
     }

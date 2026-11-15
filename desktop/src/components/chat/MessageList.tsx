@@ -909,11 +909,16 @@ export function buildRenderModel(
     pendingAgentCount = 0
 
     if (toolCount === 0) {
-      // A run of pure reasoning has nothing to summarize into a header, so the
-      // thinking blocks keep their standalone inline form.
-      for (const step of steps) {
-        if (step.kind === 'thinking') items.push({ kind: 'message', message: step.message })
-      }
+      // A run of pure reasoning or commentary has no tool to count, but it is
+      // still process: Codex folds it into one summary row with the rest of the
+      // turn's work, so it does not compete with the final answer. Keep the
+      // same row form instead of spilling standalone thinking blocks.
+      items.push({
+        kind: 'tool_group',
+        toolCalls: [],
+        steps,
+        id: `group-${steps[0]!.kind === 'tool' ? steps[0]!.toolCall.id : steps[0]!.message.id}`,
+      })
       return
     }
 
@@ -944,6 +949,20 @@ export function buildRenderModel(
   const appendThinking = (message: Extract<UIMessage, { type: 'thinking' }>) => {
     if (pendingToolCount > 0 && pendingAgentCount === pendingToolCount) flushGroup()
     pendingSteps.push({ kind: 'thinking', message })
+  }
+  // Assistant prose is held until we know whether more work follows it. If a
+  // tool or a thought comes next, it was commentary and joins the run; if the
+  // turn ends instead, it is the final answer and stays in the transcript.
+  let pendingCommentary: Array<Extract<UIMessage, { type: 'assistant_text' }>> = []
+  const appendCommentaryToRun = () => {
+    if (pendingCommentary.length === 0) return
+    for (const message of pendingCommentary) pendingSteps.push({ kind: 'text', message })
+    pendingCommentary = []
+  }
+  const flushCommentaryAsMessages = () => {
+    if (pendingCommentary.length === 0) return
+    for (const message of pendingCommentary) items.push({ kind: 'message', message })
+    pendingCommentary = []
   }
   const ensureTeamCardForCoordination = (
     message: ToolCall,
@@ -1025,6 +1044,16 @@ export function buildRenderModel(
     }
     if (msg.type === 'tool_result' && msg.parentToolUseId && toolUseIds.has(msg.parentToolUseId)) {
       continue
+    }
+
+    if (msg.type === 'assistant_text') {
+      // Hold it until the next message decides whether it was commentary for
+      // the work that follows or the turn's final answer.
+      pendingCommentary.push(msg)
+      continue
+    }
+    if (msg.type === 'tool_use' || msg.type === 'thinking') {
+      appendCommentaryToRun()
     }
 
     if (msg.type === 'tool_use') {
@@ -1174,11 +1203,13 @@ export function buildRenderModel(
       continue
     } else {
       flushGroup()
+      flushCommentaryAsMessages()
       items.push({ kind: 'message', message: msg })
     }
   }
 
   flushGroup()
+  flushCommentaryAsMessages()
   return { renderItems: items, toolResultMap, childToolCallsByParent, supersededAskUserQuestionIds }
 }
 
@@ -3113,12 +3144,13 @@ export function MessageList({
     return () => observer.disconnect()
   }, [flushMeasuredHeightVersion, requestLiveFollow, shouldFollowContentResize])
 
-  // Touch-H5 only: the visual-viewport fit (touchH5.ts) shrinks the scroll
-  // container when the soft keyboard opens. If the user was reading the tail,
-  // keep the latest message pinned above the keyboard instead of letting the
-  // shorter container cut it off.
+  // The scroller itself changes height: the composer grows with every typed
+  // line, a permission card pushes it down, and on touch-H5 the soft keyboard
+  // shrinks the visual viewport. Resizing does not emit a scroll event, so a
+  // reader sitting at the tail silently loses it — the last message ends up
+  // covered by the taller composer. Re-pin the tail whenever the container's
+  // own height changes while follow is on.
   useEffect(() => {
-    if (!isTouchH5Document()) return
     const container = scrollContainerRef.current
     if (!container || typeof ResizeObserver === 'undefined') return
 

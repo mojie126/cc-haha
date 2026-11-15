@@ -8,6 +8,11 @@ import { normalizeSessionReferences } from '@/lib/sessionReferences'
 import { isComposerReferenceVisible, isComposerSlashCommandVisible } from '@/lib/composerCapabilityVisibility'
 import { formatBytes } from '@/lib/formatBytes'
 import { checkUserMessageBudget } from '@/lib/userMessageBudget'
+import {
+  readComposerDrafts,
+  type PersistedComposerDraft,
+} from '@/lib/composerDraftPersistence'
+import { readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ArrowUp, CornerDownRight, Cpu, Feather, Gauge, Pencil, Plus, ShieldCheck, Square, Trash2 } from 'lucide-react'
@@ -247,6 +252,51 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
       return next
     })
   }, [])
+  // Up/Down recall previously sent prompts, shell style. The index is kept in a
+  // ref so rapid keypresses read the value the previous press just wrote.
+  const historyIndexRef = useRef(0)
+  const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
+  const resetHistoryNavigation = useCallback(() => {
+    historyIndexRef.current = 0
+    historyDraftRef.current = null
+  }, [])
+  const applyHistoryPrompt = (text: string) => {
+    setComposerInput(text, [])
+    requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(text.length))
+  }
+  const recallPreviousPrompt = (): boolean => {
+    const history = readPromptHistory()
+    if (history.length === 0) return false
+    if (historyIndexRef.current === 0) {
+      historyDraftRef.current = { input: inputRef.current, mentions: mentionsRef.current }
+    }
+    if (historyIndexRef.current >= history.length) return false
+    historyIndexRef.current += 1
+    applyHistoryPrompt(history[historyIndexRef.current - 1]!)
+    return true
+  }
+  const recallNextPrompt = (): boolean => {
+    if (historyIndexRef.current === 0) return false
+    historyIndexRef.current -= 1
+    if (historyIndexRef.current > 0) {
+      applyHistoryPrompt(readPromptHistory()[historyIndexRef.current - 1] ?? '')
+      return true
+    }
+    const draft = historyDraftRef.current
+    historyDraftRef.current = null
+    setComposerInput(draft?.input ?? '', draft?.mentions ?? [])
+    requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(draft?.input.length ?? 0))
+    return true
+  }
+  const restoreHistoryDraft = () => {
+    if (historyIndexRef.current === 0) return false
+    historyIndexRef.current = 0
+    const draft = historyDraftRef.current
+    historyDraftRef.current = null
+    setComposerInput(draft?.input ?? '', draft?.mentions ?? [])
+    requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(draft?.input.length ?? 0))
+    return true
+  }
   const {
     sendMessage,
     stopGeneration,
@@ -511,6 +561,20 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     attachmentsRef.current = attachments
   }, [attachments])
 
+  // Drafts written by a previous run (and never sent) are re-read on mount, so
+  // a restart or a reload no longer silently discards them. Read once per
+  // session id: later switches fall back to the live store, which by then holds
+  // the authoritative copy.
+  const persistedDraftsRef = useRef<Record<string, PersistedComposerDraft> | null>(null)
+  const restoredSessionsRef = useRef(new Set<string>())
+  const readPersistedDraft = useCallback((sessionId: string): PersistedComposerDraft | undefined => {
+    if (restoredSessionsRef.current.has(sessionId)) return undefined
+    persistedDraftsRef.current ??= readComposerDrafts()
+    const draft = persistedDraftsRef.current[sessionId]
+    if (draft) restoredSessionsRef.current.add(sessionId)
+    return draft
+  }, [])
+
   useEffect(() => {
     const previousActiveTabId = previousActiveTabIdRef.current
 
@@ -520,8 +584,10 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
       saveComposerDraft(previousActiveTabId)
     }
 
-    const nextDraft = activeTabId ? useChatStore.getState().sessions[activeTabId]?.composerDraft : undefined
+    const sessionDraft = activeTabId ? useChatStore.getState().sessions[activeTabId]?.composerDraft : undefined
+    const nextDraft = sessionDraft ?? (activeTabId ? readPersistedDraft(activeTabId) : undefined)
     invalidatePendingPastes()
+    resetHistoryNavigation()
     setComposerInput(nextDraft?.input ?? '', nextDraft?.mentions ?? [])
     setComposerAttachments(nextDraft?.attachments ?? [])
     setPlusMenuOpen(false)
@@ -534,7 +600,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     setEditingQueuedMessageId(null)
     setEditingQueuedMessageText('')
     previousActiveTabIdRef.current = activeTabId
-  }, [activeTabId, invalidatePendingPastes, saveComposerDraft, setComposerAttachments, setComposerInput])
+  }, [activeTabId, invalidatePendingPastes, readPersistedDraft, resetHistoryNavigation, saveComposerDraft, setComposerAttachments, setComposerInput])
 
   useEffect(() => {
     return () => {
@@ -905,6 +971,9 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
   }, [])
 
   const handleComposerChange = (text: string, nextMentions: ComposerMention[]) => {
+    // Typing ends history navigation: the next Up should start from the live
+    // draft again, not from wherever the traversal had reached.
+    resetHistoryNavigation()
     setComposerInput(text, nextMentions)
     const cursorPos = composerRef.current?.getSelectionOffsets().start ?? text.length
     if (isMemberSession) {
@@ -1010,7 +1079,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     }
   }, [activeTabId, replaceEmptySession, t, updateRepositoryLaunchDraft])
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (submitOptions?: { steer?: boolean }) => {
     // Belt and braces: the composer is disabled too, but every send path (Enter,
     // slash-Enter, programmatic) funnels through here.
     if (questionPending) return
@@ -1203,13 +1272,18 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
 
     const targetChatState = useChatStore.getState().sessions[targetSessionId]?.chatState ?? 'idle'
     if (!isMemberSession && targetChatState !== 'idle') {
-      queueUserMessage(targetSessionId, {
+      const queuedId = queueUserMessage(targetSessionId, {
         content: contentForModel,
         sessionReferences,
         attachments: [...uploadAttachmentPayload, ...workspaceAttachmentPayload],
         displayContent,
         displayAttachments: visibleAttachmentPayload,
       })
+      // 引导：不排队等本轮结束，而是在下一个工具边界把消息交给模型；
+      // 复用排队条目的乐观消息展示，再标记为即时发送
+      if (submitOptions?.steer) {
+        sendQueuedUserMessage(targetSessionId, queuedId, { priority: 'next' })
+      }
     } else {
       sendMessage(targetSessionId, contentForModel, [...uploadAttachmentPayload, ...workspaceAttachmentPayload], {
         sessionReferences,
@@ -1217,6 +1291,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
         displayAttachments: visibleAttachmentPayload,
       })
     }
+    recordPromptHistory(displayContent || contentForModel)
     recordRecentSkills(mentions.flatMap(mention => mention.kind === 'skill' && mention.id ? [mention.id] : []))
     if (sendAsTeam) capabilityMenu.disarmAgentTeam()
     // The send can wait for the launch branch to be read again. If the user moved
@@ -1333,6 +1408,48 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
         dismissPromptSuggestion(activeTabId)
         return true
       }
+    }
+
+    // Shell-style prompt history. Up starts recalling once the draft is empty,
+    // Down walks back to it, Esc abandons the recall. While a traversal is
+    // active both arrows are captured, so a multi-line recalled prompt does not
+    // get its caret moved instead of continuing the walk.
+    const plainArrow = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+    if (plainArrow) {
+      const navigatingHistory = historyIndexRef.current > 0
+      if (event.key === 'Escape' && navigatingHistory && restoreHistoryDraft()) {
+        event.preventDefault()
+        return true
+      }
+      if (
+        event.key === 'ArrowUp' &&
+        (navigatingHistory ||
+          (inputRef.current.length === 0 && mentionsRef.current.length === 0)) &&
+        recallPreviousPrompt()
+      ) {
+        event.preventDefault()
+        return true
+      }
+      if (event.key === 'ArrowDown' && navigatingHistory && recallNextPrompt()) {
+        event.preventDefault()
+        return true
+      }
+    }
+
+    // Ctrl+Enter steers a running turn at its next tool boundary; plain Enter
+    // still queues behind it. The two shortcuts are deliberately the pair the
+    // UI names, so the same gesture never means "send" and "steer" in turn.
+    if (
+      stopOffer === 'turn' &&
+      canSubmit &&
+      chatSendBehavior !== 'modifierEnter' &&
+      event.key === 'Enter' &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey && !event.altKey
+    ) {
+      event.preventDefault()
+      void handleSubmit({ steer: true })
+      return true
     }
 
     if (shouldSubmitOnEnter(event, chatSendBehavior)) {
@@ -1745,6 +1862,30 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
             />
           )}
 
+          {stopOffer === 'turn' && canSubmit && (
+            // Codex 式的后续消息处理提示：运行中默认排队，Ctrl+Enter 引导当前
+            // 运行；两个按钮直接把这一条按对应方式发出去
+            <div
+              data-testid="follow-up-mode-row"
+              className="mx-1 mb-1 flex min-w-0 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-[var(--color-text-secondary)]">
+                  {t('chat.followUpModeTitle')}
+                </div>
+                <div className="truncate text-[11px] text-[var(--color-text-tertiary)]">
+                  {t('chat.followUpModeHint')}
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => void handleSubmit()}>
+                {t('chat.followUpQueue')}
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => void handleSubmit({ steer: true })}>
+                {t('chat.pendingMessageGuide')}
+              </Button>
+            </div>
+          )}
+
           {!isMemberSession && activeTabId && queuedUserMessages.length > 0 && (
             // Dashed outline cards stacked above the input, per §4 of the
             // handoff. They used to be a full-bleed filled strip pinned to the
@@ -2151,7 +2292,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                 variant={stopOffer === 'turn' ? 'primary' : 'accent'}
                 size="base"
                 shape="circle"
-                onClick={stopOffer === 'turn' ? () => stopGeneration(activeTabId!) : handleSubmit}
+                onClick={stopOffer === 'turn' ? () => stopGeneration(activeTabId!) : () => void handleSubmit()}
                 disabled={stopOffer === 'turn' ? false : !canSubmit}
                 aria-label={stopOffer === 'turn' ? t('common.stop') : isMemberSession ? t('common.send') : t('common.run')}
                 title={

@@ -190,6 +190,11 @@ type SendMessageOptions = {
    * extras such as next-prompt suggestions.
    */
   synthetic?: boolean
+  /**
+   * `next` steers a running turn at the next tool boundary; omitted queues the
+   * message for the end of the turn.
+   */
+  priority?: 'next'
 }
 
 type HandleSdkPayloadOptions = {
@@ -1136,6 +1141,7 @@ export class ConversationService {
       parent_tool_use_id: null,
       session_id: '',
       ...(options?.synthetic ? { isSynthetic: true } : {}),
+      ...(options?.priority ? { priority: options.priority } : {}),
     })
     if (sent) options?.onCommitted?.()
     return sent

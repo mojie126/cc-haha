@@ -1378,6 +1378,7 @@ async function handleUserMessage(
         canSend: () =>
           activeUserTurns.get(sessionId) === activeTurn && !activeTurn.cancelled,
         messageUuid: activeTurn.expectedReplayUuid,
+        priority: message.priority,
         onCommitted: () => {
           activeTurn.messageSent = true
         },

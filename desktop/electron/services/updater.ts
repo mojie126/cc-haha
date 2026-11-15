@@ -86,6 +86,11 @@ function isMissingUpdateMetadataError(error: unknown): boolean {
   if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND') {
     return referencesChannelMetadata
   }
+  // A repository whose releases are all drafts has no entry in releases.atom,
+  // so electron-updater treats it as "nothing published". That is a normal
+  // state for forks, not a failed check.
+  if (code === 'ERR_UPDATER_NO_PUBLISHED_VERSIONS') return true
+  if (/no published versions/i.test(message)) return true
   return referencesChannelMetadata && /cannot find|not found|404/i.test(message)
 }
 

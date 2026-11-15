@@ -19,17 +19,23 @@ import type { UIMessage } from '../../types/chat'
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
 type ThinkingMessage = Extract<UIMessage, { type: 'thinking' }>
+type AssistantTextMessage = Extract<UIMessage, { type: 'assistant_text' }>
 
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string
 
 /**
- * One entry in a turn's activity run. Thinking and tool calls share a single
- * ordered list so the collapsed header can say "Thinking · Read 5 files · ran 2
- * commands" in the order they actually happened (#1177) instead of emitting one
- * card per step.
+ * One entry in a turn's activity run. Thinking, commentary the model wrote
+ * between tool calls, and tool calls share a single ordered list so the
+ * collapsed header can say "Thinking · Read 5 files · ran 2 commands" in the
+ * order they actually happened (#1177) instead of emitting one card per step.
+ *
+ * `text` is the Responses-style `commentary` message: assistant prose that is
+ * followed by more work in the same turn. It folds into the run the way Codex
+ * folds it, so only the final answer stays outside the summary.
  */
 export type ActivityStep =
   | { kind: 'thinking'; message: ThinkingMessage }
+  | { kind: 'text'; message: AssistantTextMessage }
   | { kind: 'tool'; toolCall: ToolCall }
 
 export const THINKING_SEGMENT_KEY = '__thinking__'
@@ -127,6 +133,8 @@ export function buildActivitySegments(steps: ActivityStep[], t: Translate): Acti
   const editedFilePaths = new Set<string>()
 
   for (const step of steps) {
+    // Commentary is context for the steps around it, not a counted activity.
+    if (step.kind === 'text') continue
     const key = step.kind === 'thinking'
       ? THINKING_SEGMENT_KEY
       : TOOL_FAMILIES[step.toolCall.toolName] ?? step.toolCall.toolName
@@ -257,7 +265,7 @@ export function activityDurationMs(
   let end = Number.NEGATIVE_INFINITY
 
   for (const step of steps) {
-    const startedAt = step.kind === 'thinking' ? step.message.timestamp : step.toolCall.timestamp
+    const startedAt = step.kind === 'tool' ? step.toolCall.timestamp : step.message.timestamp
     if (Number.isFinite(startedAt)) start = Math.min(start, startedAt)
     if (step.kind === 'tool') {
       const result = resultMap.get(step.toolCall.toolUseId)

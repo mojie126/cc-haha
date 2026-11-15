@@ -366,12 +366,15 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(extractWindowsX64BunTarget(readBuildScript())).toBe('bun-windows-x64-baseline')
   })
 
-  it('compiles the sidecar with the transcript classifier feature', () => {
-    expect(readBuildScript()).toContain("features: ['TRANSCRIPT_CLASSIFIER']")
+  it('compiles the sidecar with the transcript and PowerShell auto-mode features', () => {
+    expect(readBuildScript()).toContain(
+      "features: ['TRANSCRIPT_CLASSIFIER', 'POWERSHELL_AUTO_MODE']",
+    )
   })
 
-  it('starts the development CLI with the transcript classifier feature', () => {
+  it('starts the development CLI with the transcript and PowerShell auto-mode features', () => {
     expect(readCliLauncher()).toContain('--feature=TRANSCRIPT_CLASSIFIER')
+    expect(readCliLauncher()).toContain('--feature=POWERSHELL_AUTO_MODE')
   })
 
   it('wires the opt-in compiled sidecar smoke into the native gate', () => {

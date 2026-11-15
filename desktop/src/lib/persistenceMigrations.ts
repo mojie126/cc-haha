@@ -11,9 +11,10 @@ import {
 } from './appZoom'
 
 import { CHAT_APPEARANCE_STORAGE_KEY, migrateChatAppearance } from './chatAppearance'
+import { COMPOSER_DRAFT_STORAGE_KEY } from './composerDraftPersistence'
 import { PREVENT_SLEEP_STORAGE_KEY } from './preventSleepPreference'
 
-export const CURRENT_DESKTOP_PERSISTENCE_SCHEMA_VERSION = 7
+export const CURRENT_DESKTOP_PERSISTENCE_SCHEMA_VERSION = 8
 export const DESKTOP_PERSISTENCE_VERSION_KEY = 'cc-haha.persistence.schemaVersion'
 
 type DesktopMigrationReport = {
@@ -377,6 +378,19 @@ export function runDesktopPersistenceMigrations(storage: StorageLike | null = ge
   runMigrationStep(report, WORKSPACE_STORAGE_KEY, () => migrateWorkspaceState(storage, report))
   runMigrationStep(report, CHAT_APPEARANCE_STORAGE_KEY, () => {
     if (migrateChatAppearance(storage)) report.migratedKeys.push(CHAT_APPEARANCE_STORAGE_KEY)
+  })
+  // Schema 8 adds persisted composer drafts. Nothing to backfill: a missing key
+  // is a valid "no unsent draft" state, and unknown versions are dropped by the
+  // reader rather than migrated forward.
+  runMigrationStep(report, COMPOSER_DRAFT_STORAGE_KEY, () => {
+    const raw = storage.getItem(COMPOSER_DRAFT_STORAGE_KEY)
+    if (raw === null) return
+    try {
+      JSON.parse(raw)
+    } catch {
+      storage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
+      report.migratedKeys.push(COMPOSER_DRAFT_STORAGE_KEY)
+    }
   })
   // Schema 7 adds an opt-in power preference. Old installs stay off; upgrades
   // preserve either explicit choice and normalize incomplete/invalid values.

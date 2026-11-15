@@ -6,6 +6,7 @@ import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet'
 import { ToolCallBlock, formatDuration } from './ToolCallBlock'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolResultImages } from './ToolResultImages'
+import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import {
   activityDurationMs,
   activityStepToolCalls,
@@ -199,6 +200,8 @@ export const ActivityGroup = memo(function ActivityGroup({
             content={step.message.content}
             isActive={step.message.id === activeThinkingId}
           />
+        ) : step.kind === 'text' ? (
+          <TimelineCommentary key={step.message.id} content={step.message.content} />
         ) : (
           <ActivityToolRow key={step.toolCall.id} toolCall={step.toolCall} {...rowProps} />
         ))}
@@ -351,6 +354,8 @@ export const ActivityGroup = memo(function ActivityGroup({
                 content={step.message.content}
                 isActive={step.message.id === activeThinkingId}
               />
+            ) : step.kind === 'text' ? (
+              <TimelineCommentary key={step.message.id} content={step.message.content} />
             ) : (
               <ActivityToolRow key={step.toolCall.id} toolCall={step.toolCall} {...rowProps} />
             ))}
@@ -370,6 +375,27 @@ const TimelineThinking = memo(function TimelineThinking({ content, isActive }: {
         className="absolute left-[7px] top-[10px] h-2 w-2 rounded-full border border-[var(--color-outline)] bg-[var(--color-surface)]"
       />
       <ThinkingBlock content={content} isActive={isActive} />
+    </div>
+  )
+})
+
+/**
+ * Assistant prose that sat between tool calls. Codex folds such commentary into
+ * the process instead of leaving it in the transcript, where it would compete
+ * with the final answer for attention.
+ */
+const TimelineCommentary = memo(function TimelineCommentary({ content }: { content: string }) {
+  return (
+    <div className="relative py-0.5 pl-[30px] text-[13px] text-[var(--color-text-secondary)]">
+      <span
+        aria-hidden="true"
+        className="absolute left-[9px] top-[10px] h-1.5 w-1.5 rounded-full bg-[var(--color-outline)]"
+      />
+      <MarkdownRenderer
+        content={content}
+        variant="compact"
+        className="chat-reading-markdown text-[var(--color-text-secondary)]"
+      />
     </div>
   )
 })

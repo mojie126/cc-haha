@@ -12,6 +12,8 @@ import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
 import { COMPUTER_USE_ENABLE_REQUEST } from '@/lib/computerUseEnable'
 import { AGENT_TEAMS_NOTICE_STORAGE_KEY, dismissAgentTeamsNotice } from '@/lib/agentTeamsNotice'
 import { readRecentSkills, RECENT_SKILLS_STORAGE_KEY } from '@/lib/recentSkills'
+import { COMPOSER_DRAFT_STORAGE_KEY, writeComposerDraft } from '@/lib/composerDraftPersistence'
+import { recordPromptHistory, PROMPT_HISTORY_STORAGE_KEY } from '@/lib/promptHistory'
 import { act, StrictMode } from 'react'
 
 const viewportMocks = vi.hoisted(() => ({
@@ -259,6 +261,9 @@ describe('ChatInput file mentions', () => {
     vi.clearAllMocks()
     localStorage.removeItem(RECENT_SKILLS_STORAGE_KEY)
     localStorage.removeItem(AGENT_TEAMS_NOTICE_STORAGE_KEY)
+    // 草稿现在跨进程持久化，用例之间必须清空，否则上一个用例的草稿会被回填
+    localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
+    localStorage.removeItem(PROMPT_HISTORY_STORAGE_KEY)
     useSideChatStore.setState({ entries: {} })
     useTeamPlanStore.setState({ bySession: {} })
     useTeamStore.setState({ workbenchesBySession: {} })
@@ -491,6 +496,19 @@ describe('ChatInput file mentions', () => {
     expect(tray.className).toMatch(/(^|\s)max-h-\[/)
     expect(tray).toHaveClass('overflow-y-auto')
     expect(tray).not.toContainElement(screen.getByRole('textbox'))
+  })
+
+  it('restores an unsent draft that was persisted by a previous run', async () => {
+    // A restart clears the in-memory store but not localStorage.
+    writeComposerDraft(sessionId, {
+      input: 'survives a restart',
+      mentions: [{ label: 'README.md', path: '/repo/README.md', isDirectory: false, tokenOrdinal: 0 }],
+      attachments: [],
+    })
+
+    render(<ChatInput compact />)
+
+    await waitFor(() => expect(getComposerText()).toBe('survives a restart'))
   })
 
   it('keeps unsent composer drafts isolated when switching between session tabs', async () => {
@@ -1195,6 +1213,66 @@ describe('ChatInput file mentions', () => {
     fireEvent.keyDown(getComposerElement(), { key: 'Enter' })
     await waitFor(() => expect(mocks.sideOpen).toHaveBeenCalledWith(sessionId, { question: undefined, submit: true }))
     expect(useChatStore.getState().sessions[sessionId]?.queuedUserMessages ?? []).toEqual([])
+  })
+
+  it('steers a running turn immediately with Ctrl+Enter', async () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          chatState: 'streaming',
+          streamingText: 'still answering',
+        },
+      },
+    })
+
+    render(<ChatInput compact />)
+    setComposerText('focus on the parser', 19)
+    fireEvent.keyDown(getComposerElement(), { key: 'Enter', ctrlKey: true })
+
+    expect(mocks.wsSend).toHaveBeenCalledWith(sessionId, {
+      type: 'user_message',
+      content: 'focus on the parser',
+      attachments: [],
+      priority: 'next',
+    })
+    expect(screen.queryByTestId('pending-user-message')).not.toBeInTheDocument()
+    expect(getComposerText()).toBe('')
+  })
+
+  it('recalls previous prompts with Up and restores the draft with Down', async () => {
+    recordPromptHistory('older prompt')
+    recordPromptHistory('newer prompt')
+    render(<ChatInput compact />)
+    setComposerText('draft in progress', 17)
+
+    // ---- Up on a non-empty draft must keep editing the draft
+    fireEvent.keyDown(getComposerElement(), { key: 'ArrowUp' })
+    expect(getComposerText()).toBe('draft in progress')
+
+    setComposerText('', 0)
+    fireEvent.keyDown(getComposerElement(), { key: 'ArrowUp' })
+    expect(getComposerText()).toBe('newer prompt')
+
+    fireEvent.keyDown(getComposerElement(), { key: 'ArrowUp' })
+    expect(getComposerText()).toBe('older prompt')
+
+    fireEvent.keyDown(getComposerElement(), { key: 'ArrowDown' })
+    expect(getComposerText()).toBe('newer prompt')
+
+    fireEvent.keyDown(getComposerElement(), { key: 'ArrowDown' })
+    expect(getComposerText()).toBe('')
+  })
+
+  it('leaves history recall on Escape', async () => {
+    recordPromptHistory('recalled prompt')
+    render(<ChatInput compact />)
+    fireEvent.keyDown(getComposerElement(), { key: 'ArrowUp' })
+    expect(getComposerText()).toBe('recalled prompt')
+
+    setComposerText('half-typed replacement', 22)
+    fireEvent.keyDown(getComposerElement(), { key: 'Escape' })
+    expect(getComposerText()).toBe('half-typed replacement')
   })
 
   it('queues prompts submitted while a turn is running until the user guides them', async () => {

@@ -136,3 +136,12 @@ test('OpenCode Go proxy already re-reads a replacement key for the same session 
     fetchMock.mockRestore()
   }
 })
+
+test('a steering message carries its mid-turn priority to the CLI', async () => {
+  const { service, sent } = await fixture()
+
+  expect(await service.sendMessage('running', 'steer this turn', undefined, { priority: 'next' })).toBe(true)
+
+  const userFrame = sent.find((frame) => frame.type === 'user') as { type: string; priority?: string } | undefined
+  expect(userFrame?.priority).toBe('next')
+})

@@ -129,6 +129,27 @@ describe('Electron updater service', () => {
     await expect(service.checkForUpdates()).resolves.toBeNull()
   })
 
+  it('treats a repository with only draft releases as no update', async () => {
+    // releases.atom lists only published releases, so an all-draft repository
+    // makes electron-updater throw ERR_UPDATER_NO_PUBLISHED_VERSIONS.
+    const service = new ElectronUpdaterService(updater)
+    updater.checkForUpdates.mockRejectedValueOnce(Object.assign(
+      new Error('No published versions on GitHub'),
+      { code: 'ERR_UPDATER_NO_PUBLISHED_VERSIONS' },
+    ))
+
+    await expect(service.checkForUpdates()).resolves.toBeNull()
+  })
+
+  it('treats a stringified unpublished repository error as no update', async () => {
+    const service = new ElectronUpdaterService(updater)
+    updater.checkForUpdates.mockRejectedValueOnce(
+      "Error invoking remote method 'desktop:update:check': Error: No published versions on GitHub",
+    )
+
+    await expect(service.checkForUpdates()).resolves.toBeNull()
+  })
+
   it('applies manual updater proxy before checking and clears it when returning to system proxy', async () => {
     const localUpdater = fakeUpdater()
     const proxyController = {

@@ -767,6 +767,50 @@ describe('MessageList nested tool calls', () => {
     dropSession(sessionId)
   })
 
+  it('re-pins the tail when the scroller shrinks under a growing composer', async () => {
+    const sessionId = 'composer-growth-follow'
+    const observers: Array<{ callback: ResizeObserverCallback, targets: Element[] }> = []
+    class TestResizeObserver {
+      targets: Element[] = []
+      observe = (target: Element) => { this.targets.push(target) }
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+      constructor(callback: ResizeObserverCallback) { observers.push({ callback, targets: this.targets }) }
+    }
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    dropSession(sessionId)
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: makeSessionState({
+          chatState: 'idle',
+          messages: Array.from({ length: 30 }, (_, i) => ({
+            id: `growth-row-${i}`, type: 'assistant_text' as const, content: `answer ${i}`, timestamp: i,
+          })),
+        }),
+      },
+    })
+    const { container } = render(<MessageList sessionId={sessionId} />)
+    const scroller = container.querySelector('.chat-scroll-area') as HTMLElement
+    let scrollTop = 3_400
+    let clientHeight = 600
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 4_000 })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => clientHeight })
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, get: () => scrollTop, set: (value) => { scrollTop = value } })
+    await waitForProgrammaticScrollReset()
+    fireEvent.scroll(scroller)
+    expect(scrollTop).toBe(3_400)
+
+    // The composer grew two lines: the scroller lost 200px, the tail is gone.
+    clientHeight = 400
+    const scrollerObserver = observers.find(o => o.targets.includes(scroller))!
+    expect(scrollerObserver).toBeTruthy()
+    act(() => scrollerObserver.callback([], {} as ResizeObserver))
+    await waitForProgrammaticScrollReset()
+
+    expect(scrollTop).toBe(3_600)
+    dropSession(sessionId)
+  })
+
   it('keeps fractional border-box jitter from invalidating a settled virtual row', async () => {
     const sessionId = 'virtual-row-measurement-jitter'
     const observers: Array<{
@@ -3062,7 +3106,7 @@ describe('MessageList nested tool calls', () => {
     expect(lone!.className).toBe(inRun!.className)
   })
 
-  it('leaves a run of pure reasoning as standalone thinking blocks', () => {
+  it('folds a run of pure reasoning into one summary row', () => {
     const messages: UIMessage[] = [
       { id: 'think-1', type: 'thinking', content: 'First consider the call sites.', timestamp: 1 },
       { id: 'think-2', type: 'thinking', content: 'Then the retry path.', timestamp: 2 },
@@ -3070,9 +3114,10 @@ describe('MessageList nested tool calls', () => {
 
     const { renderItems } = buildRenderModel(messages)
 
+    // Codex keeps process out of the transcript; a reasoning-only run folds the
+    // same way a tool run does.
     expect(renderItems.map((item) => item.kind === 'message' ? item.message.id : item.id)).toEqual([
-      'think-1',
-      'think-2',
+      'group-think-1',
     ])
   })
 
@@ -3092,12 +3137,12 @@ describe('MessageList nested tool calls', () => {
     const { renderItems } = buildRenderModel(messages)
 
     expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
-      'message:think-1',
+      'group:group-think-1',
       'group:group-tool-agent',
     ])
   })
 
-  it('ends an activity run at the assistant reply that narrates it', () => {
+  it('folds the assistant reply that narrates a run into that run', () => {
     const messages: UIMessage[] = [
       { id: 'think-1', type: 'thinking', content: 'Check the handler first.', timestamp: 1 },
       {
@@ -3123,8 +3168,37 @@ describe('MessageList nested tool calls', () => {
 
     expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
       'group:group-tool-read',
-      'message:assistant-1',
-      'group:group-tool-bash',
+    ])
+  })
+
+  it('keeps the final answer outside the run while folding mid-turn prose', () => {
+    const messages: UIMessage[] = [
+      { id: 'think-1', type: 'thinking', content: 'Check the handler first.', timestamp: 1 },
+      {
+        id: 'tool-read',
+        type: 'tool_use',
+        toolName: 'Read',
+        toolUseId: 'read-1',
+        input: { file_path: '/tmp/example.ts' },
+        timestamp: 2,
+      },
+      { id: 'assistant-mid', type: 'assistant_text', content: 'Found the unconditional delay.', timestamp: 3 },
+      {
+        id: 'tool-bash',
+        type: 'tool_use',
+        toolName: 'Bash',
+        toolUseId: 'bash-1',
+        input: { command: 'bun test' },
+        timestamp: 4,
+      },
+      { id: 'assistant-final', type: 'assistant_text', content: 'The delay is gone.', timestamp: 5 },
+    ]
+
+    const { renderItems } = buildRenderModel(messages)
+
+    expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
+      'group:group-tool-read',
+      'message:assistant-final',
     ])
   })
 
@@ -4575,7 +4649,10 @@ describe('MessageList nested tool calls', () => {
     ])
   })
 
-  it.each(['thinking', 'tool_result'] as const)('does not transfer expanded %s geometry into renamed collapsed rows', async (messageType) => {
+  // Reasoning folds into a run now, so it no longer owns a per-message row whose
+  // expanded geometry could be carried across a rename. The tool-result row is
+  // still a transcript item on its own.
+  it.each(['tool_result'] as const)('does not transfer expanded %s geometry into renamed collapsed rows', async (messageType) => {
     const sessionId = 'review-thinking-state'
     dropSession(sessionId)
     clearDisclosureMemory()
@@ -6755,29 +6832,29 @@ describe('MessageList nested tool calls', () => {
     render(<MessageList />)
 
     const userShell = screen.getByText('请把这条 prompt 放在右侧').closest('[data-message-shell="user"]')
-    const assistantShell = screen.getByText('这条回复应该停在左侧。').closest('[data-message-shell="assistant"]')
     const closingShell = screen.getByText('这条收尾回复带操作条。').closest('[data-message-shell="assistant"]')
     const userActions = screen.getByRole('button', { name: 'Copy prompt' }).closest('[data-message-actions]')
     const assistantActions = screen.getByRole('button', { name: 'Copy reply' }).closest('[data-message-actions]')
     const userTime = within(userActions as HTMLElement).getByText(formatMessageHoverTime(userTimestamp, 'en'))
 
-    // The bar the assistant does get belongs to the closing reply, not the
-    // mid-turn one, and it is the only one on that side.
+    // The mid-turn narration folds into the run that produced it, so the only
+    // assistant text on screen is the closing reply — and the only bar on that
+    // side belongs to it.
+    expect(screen.queryByText('这条回复应该停在左侧。')).toBeNull()
     expect(assistantActions?.closest('[data-message-shell="assistant"]')).toBe(closingShell)
-    expect(assistantShell?.querySelector('[data-message-actions]')).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Copy reply' })).toHaveLength(1)
 
     expect(userShell).toBeTruthy()
     expect(userShell?.className).toContain('items-end')
     expect(userShell?.className).toContain('group')
     expect(userShell?.className).not.toContain('w-full')
-    expect(assistantShell).toBeTruthy()
-    expect(assistantShell?.className).toContain('items-start')
-    expect(assistantShell?.className).toContain('group')
+    expect(closingShell).toBeTruthy()
+    expect(closingShell?.className).toContain('items-start')
+    expect(closingShell?.className).toContain('group')
     // Replies take the full column even when they are one short line — only the
     // user bubble hugs its text. Side is what distinguishes them, not width.
-    expect(assistantShell?.className).toContain('w-full')
-    expect(assistantShell?.className).not.toContain('ml-10')
+    expect(closingShell?.className).toContain('w-full')
+    expect(closingShell?.className).not.toContain('ml-10')
     expect(userActions?.getAttribute('data-align')).toBe('end')
     expect(assistantActions?.getAttribute('data-align')).toBe('start')
     // The prompt's bar hangs under the bubble as a zero-height row: hovering
@@ -6892,20 +6969,15 @@ describe('MessageList nested tool calls', () => {
       render(<MessageList />)
 
       // Caught in a real session: the last reply of the turn was an aside
-      // ("Now wire the duration at both call sites:") followed by edits, so a
-      // stamp there rendered above the work it introduced.
-      expect(stampFor('接下来把两处调用点都接上：')).toBeNull()
-      expect(stampFor('接着改')).toBeNull()
+      // ("Now wire the duration at both call sites:") followed by edits. It is
+      // commentary now, so it folds into the run and cannot carry a stamp over
+      // the work it introduced.
+      expect(screen.queryByText('接下来把两处调用点都接上：')).toBeNull()
+      expect(shellFor('接着改')?.querySelector('[data-turn-completion]')).toBeNull()
       // The prompt keeps its timestamp in the hover-gated bar.
       const promptBar = shellFor('接着改')?.querySelector('[data-message-actions]')
       expect(promptBar?.className).toContain('opacity-0')
       expect(within(promptBar as HTMLElement).getByText(formatMessageHoverTime(T0, 'en'))).toBeTruthy()
-
-      // The mid-turn reply has no bar, so it has no per-reply timestamp either —
-      // a deliberate trade for the 36px the bar reserved on every reply. The
-      // turn is still locatable in time: the prompt above stamps its start and
-      // the closing reply stamps its end.
-      expect(shellFor('接下来把两处调用点都接上：')?.querySelector('[data-message-actions]')).toBeNull()
     })
 
     it('leaves the running turn unstamped while keeping earlier turns stamped', () => {
@@ -8947,6 +9019,8 @@ describe('MessageList nested tool calls', () => {
       expect(screen.getAllByRole('button', { name: 'Open' })).toHaveLength(1)
     })
 
+    // Progress narration folds into the run; open it to inspect the lines.
+    fireEvent.click(document.querySelector('[data-testid="activity-group"] button[data-chat-disclosure="true"]') as HTMLElement)
     const firstProgressItem = screen.getByText('SKILL_PROGRESS').closest('[data-chat-render-item-key]')
     const secondProgressItem = screen.getByText('TOOLSEARCH_PROGRESS').closest('[data-chat-render-item-key]')
     const finalItem = screen.getByText('FINAL_DELIVERY').closest('[data-chat-render-item-key]')

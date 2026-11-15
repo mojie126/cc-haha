@@ -28,7 +28,7 @@ The small line under the session title is metadata: project path, branch, model.
 Claude doesn't just reply with a paragraph. Several kinds of card appear along the way:
 
 - **Tool cards** — reading files, searching, running commands. Consecutive operations of the same kind collapse into one line, like "Read 6 files" or "edited 3 files"; expand it to see the details. Skim them normally, open them when something goes wrong.
-- **Thinking blocks** — the reasoning before it acts, labelled **Thinking** while it runs and **Thought** once done. Collapsed by default.
+- **Thinking blocks** — the reasoning before Claude acts. Reasoning, mid-turn narration, and tool calls fold into one summary row once the reply finishes (for example "Thought twice, read 1 file"); click it to expand the timeline. The final answer always stays in the transcript.
 - **File edits** — shown as an inline diff right in the conversation, so you don't have to look anywhere else.
 - **Claude needs your input** — when it's genuinely unsure it asks, with buttons for the likely answers plus a free-text box.
 - **Images** — a local image a reply references with Markdown image syntax is shown right in the conversation, and it doesn't have to be inside the project: an absolute path, one starting with `~/`, a Windows `C:\...` path or a `file:///...` URL all work (for images under your home directory or the temporary directories). Pictures Claude looked at with a tool such as Read also appear as thumbnails under that tool call, without expanding it. Click any of them to zoom and drag; in the desktop app the viewer has **Open in system app** at the bottom right, which opens the original file. When you use the app from a browser (H5), pictures referenced by path don't load yet; the thumbnails of pictures Claude read with a tool are not affected.
@@ -136,9 +136,14 @@ With Agent Trace enabled in **Settings → General**, assistant lines also get a
 - **Attachments** — click `+`, drag files in, or paste a screenshot. Images, PDFs, and directories all work.
 - **Context usage ring** — the small ring shows how much of the context window is used; hover it for used, free, and window size. When it fills up, run `/compact`.
 - **Model and effort** — switch models at any time. Effort has five levels — low, medium, high, xhigh, max — and models that don't support a level ignore it.
+- **Prompt history** — with an empty composer, press `↑` to recall the most recent prompt and keep pressing to walk back; `↓` walks forward and restores the draft you started from; `Esc` abandons the recall. Typing ends it.
 - **Location** — shows the current project and branch. In a Git project you can switch branches here, or turn on **Isolated worktree** to keep an experiment off your main branch. See [Workspace](./workspace.md).
 
 Enter sends and Shift+Enter inserts a newline by default; **Settings → General** can swap that to `Ctrl/Cmd+Enter`. `⌘.` stops the current generation.
+
+While a turn is running, a new message queues until the turn ends. Press `Ctrl+Enter`, or click **Guide** above the composer, to hand it to the model at the next tool boundary so you can redirect the work in progress. If you swap the send shortcut to `Ctrl/Cmd+Enter`, the **Queue / Guide** buttons above the composer still choose the mode.
+
+Unsent drafts are saved automatically and come back after switching sessions or restarting the app. Inline image data from pasted screenshots is not written to local storage, so paste them again after a restart.
 
 ## Referencing sessions and delegating work
 

@@ -310,6 +310,58 @@ autoModeDescribe('auto mode classifier decisions', () => {
     })
   })
 
+  test('escalates a risky PowerShell command to human approval before the classifier', async () => {
+    classifierMode = 'allow'
+    const shellTool = {
+      name: 'PowerShell',
+      inputSchema: { parse: (input: unknown) => input },
+      toAutoClassifierInput: (input: unknown) => input,
+      checkPermissions: async () => ({
+        behavior: 'ask' as const,
+        message: 'PowerShell permission required',
+      }),
+    } as unknown as Tool
+
+    expect(
+      await hasPermissionsToUseTool(
+        shellTool,
+        { command: 'Remove-Item ./build -Recurse' },
+        context({ tool: shellTool }),
+        { message: { id: 'msg_agent' } } as never,
+        'toolu_powershell_risky',
+      ),
+    ).toMatchObject({
+      behavior: 'ask',
+      decisionReason: { type: 'safetyCheck', classifierApprovable: false },
+    })
+  })
+
+  test('denies a risky PowerShell command when prompts are unavailable', async () => {
+    classifierMode = 'allow'
+    const shellTool = {
+      name: 'PowerShell',
+      inputSchema: { parse: (input: unknown) => input },
+      toAutoClassifierInput: (input: unknown) => input,
+      checkPermissions: async () => ({
+        behavior: 'ask' as const,
+        message: 'PowerShell permission required',
+      }),
+    } as unknown as Tool
+
+    expect(
+      await hasPermissionsToUseTool(
+        shellTool,
+        { command: 'Set-ItemProperty -Path HKLM:\\Software\\App -Name X -Value 1' },
+        context({ tool: shellTool, headless: true }),
+        { message: { id: 'msg_agent' } } as never,
+        'toolu_powershell_risky_headless',
+      ),
+    ).toMatchObject({
+      behavior: 'deny',
+      decisionReason: { type: 'asyncAgent' },
+    })
+  })
+
   test('classifies PowerShell instead of returning its interactive guard under classifyAllShell', async () => {
     setCachedSettingsForSource('userSettings', {
       autoMode: { classifyAllShell: true },

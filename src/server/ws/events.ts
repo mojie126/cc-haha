@@ -20,7 +20,19 @@ export type PermissionMode =
 export type ClientMessage =
   | { type: 'prewarm_session' }
   | { type: 'sync_state' }
-  | { type: 'user_message'; content: string; attachments?: AttachmentRef[]; sessionReferences?: { sessionId: string }[]; powerActivityLeaseId?: string }
+  | {
+      type: 'user_message'
+      content: string
+      attachments?: AttachmentRef[]
+      sessionReferences?: { sessionId: string }[]
+      powerActivityLeaseId?: string
+      /**
+       * Mid-turn delivery override. `next` hands the message to the model at
+       * the next tool boundary (steering); omitted, the CLI queues it for the
+       * end of the turn.
+       */
+      priority?: 'next'
+    }
   | {
       type: 'permission_response'
       requestId: string

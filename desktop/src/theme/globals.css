@@ -1938,6 +1938,57 @@ body > :not(#root, [role="tooltip"]) * {
   font-weight: 500;
 }
 
+/* Input-side Markdown syntax marking (composerMarkdown.ts). Decoration only —
+   the document text and its plain-text projection stay exactly as typed. */
+.composer-md-marker {
+  color: var(--color-text-tertiary);
+  opacity: 0.75;
+}
+
+/* Markers on a line the caret is not on collapse to nothing, so the draft
+   reads like the sent message. The line being edited keeps its syntax, which
+   is the only way to edit a boundary (`**` and the next character). A zero
+   font size keeps the text in the DOM, so positions and the plain-text
+   projection are untouched; the marker span's own letter-spacing is zeroed
+   too, or the collapsed run would still nudge the following text. */
+.composer-md-marker[data-md-hidden="true"] {
+  font-size: 0;
+  letter-spacing: 0;
+  opacity: 0;
+}
+
+.composer-md-heading {
+  font-weight: 600;
+}
+
+.composer-md-strong {
+  font-weight: 600;
+}
+
+/* Matches how the sent message renders emphasis; user-authored content only. */
+.composer-md-em {
+  font-style: italic;
+}
+
+.composer-md-strike {
+  color: var(--color-text-tertiary);
+  text-decoration: line-through;
+}
+
+.composer-md-code,
+.composer-md-fence {
+  font-family: var(--font-mono);
+  background: var(--color-surface-container);
+  border-radius: var(--radius-xs);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 3px;
+}
+
+.composer-md-quote {
+  color: var(--color-text-secondary);
+}
+
 /* Dictated text that was just written into the draft. Held, then faded, so the
    eye can find where it landed; the same tint as a navigation target, because
    it answers the same question. `MentionComposer` drops the decoration after

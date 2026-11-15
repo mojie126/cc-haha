@@ -35,6 +35,7 @@ import {
 } from './composerEditor'
 import type { ComposerMention } from '../../lib/composerMentions'
 import { mentionsEqual } from '../../lib/composerMentions'
+import { composerMarkdownPlugin } from './composerMarkdown'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { COMPOSER_KBD } from './composerMenuStyles'
 
@@ -331,6 +332,8 @@ export const MentionComposer = forwardRef<MentionComposerHandle, MentionComposer
                 ),
               },
             }),
+            // 输入区按常用 Markdown 语法着色，纯视觉层，不参与投影与序列化
+            composerMarkdownPlugin(),
             insertionFlashPlugin(),
             promptSuggestionPlugin(ghostRef),
             history(),
