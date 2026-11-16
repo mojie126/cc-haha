@@ -584,18 +584,21 @@ describe('Settings > General tab', () => {
     expect(screen.getByRole('button', { name: 'Ink Blue' })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('keeps the theme swatches at preview size on a wide settings frame', () => {
-    // The settings frame is fluid up to 1120px; the swatch grid must not grow
-    // with it, in either picker layout.
+  it('lets the theme swatches fill a wide settings frame', () => {
+    // Settings width is user-controlled now: the grid fills the frame with
+    // auto-fit columns at preview size instead of stopping at 600px and leaving
+    // the right half empty.
     render(<Settings />)
     fireEvent.click(screen.getByText('General'))
-    expect(screen.getByRole('button', { name: 'Pure White' }).parentElement).toHaveClass('grid-cols-3', 'max-w-[600px]')
+    expect(screen.getByRole('button', { name: 'Pure White' }).parentElement)
+      .toHaveClass('grid-cols-[repeat(auto-fit,minmax(220px,1fr))]')
     cleanup()
 
     useUIStore.setState({ followSystemTheme: true, lightTheme: 'celadon', darkTheme: 'ink-blue', theme: 'ink-blue', activeSettingsTab: 'general' })
     render(<Settings />)
     for (const label of ['Pure White', 'Ink Night']) {
-      expect(screen.getByRole('button', { name: label }).parentElement, label).toHaveClass('grid-cols-4', 'max-w-[600px]')
+      expect(screen.getByRole('button', { name: label }).parentElement, label)
+        .toHaveClass('grid-cols-[repeat(auto-fit,minmax(180px,1fr))]')
     }
   })
 

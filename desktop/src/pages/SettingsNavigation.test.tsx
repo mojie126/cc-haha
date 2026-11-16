@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -69,6 +69,52 @@ describe('Settings section navigation', () => {
     expect(useUIStore.getState().pendingSettingsTab).toBeNull()
   })
 
+  it('keeps each pane at the scroll position it was left at', () => {
+    render(<Settings />)
+    const scroller = screen.getByTestId('settings-page-frame').parentElement!
+
+    scroller.scrollTop = 300
+    fireEvent.scroll(scroller)
+    fireEvent.click(screen.getByRole('button', { name: 'Diagnostics' }))
+    expect(scroller.scrollTop).toBe(0)
+
+    scroller.scrollTop = 420
+    fireEvent.scroll(scroller)
+    fireEvent.click(screen.getByRole('button', { name: 'Model Settings' }))
+    expect(scroller.scrollTop).toBe(300)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Diagnostics' }))
+    expect(scroller.scrollTop).toBe(420)
+  })
+
+  it('finds a setting by a fuzzy search and opens its pane', async () => {
+    render(<Settings />)
+
+    const search = screen.getByRole('searchbox')
+    fireEvent.change(search, { target: { value: 'log dir' } })
+    const results = screen.getByRole('listbox')
+    const first = within(results).getAllByRole('option')[0]!
+    expect(first).toHaveTextContent(/Log directory/)
+
+    fireEvent.click(first)
+    expect(useUIStore.getState().activeSettingsTab).toBe('diagnostics')
+    expect(search).toHaveValue('')
+
+    // The mark stays on the matched setting after the reveal, until the reader
+    // acts on it or searches again.
+    await waitFor(() => expect(document.querySelector('.settings-search-target')).not.toBeNull())
+    fireEvent.change(search, { target: { value: 'log' } })
+    expect(document.querySelector('.settings-search-target')).toBeNull()
+  })
+
+  it('says so when no setting matches the search', () => {
+    render(<Settings />)
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzzz-no-match' } })
+    expect(screen.getByText('No matching settings')).toBeInTheDocument()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
   it('no longer offers a Trace section; per-session traces live in the chat', () => {
     render(<Settings />)
 
@@ -113,10 +159,9 @@ describe('Settings section navigation', () => {
     render(<Settings />)
 
     const frameFor = () => screen.getByTestId('settings-page-frame')
-    // The old 700px cap left explorer-style panes (memory, skills) squeezed
-    // into the middle of an empty page. The frame now fills the column up to
-    // 1120px and is the only place a pane's width is set.
-    expect(frameFor()).toHaveClass('w-full', 'max-w-[1120px]')
+    // The frame is fluid and bounded by the user's settings-width preference.
+    expect(frameFor()).toHaveClass('w-full')
+    expect(frameFor().style.maxWidth).toBe('var(--settings-page-width, 1120px)')
     expect(frameFor().className).not.toContain('max-w-[700px]')
 
     // Switching panes must not move the header, so the frame is shared.

@@ -829,26 +829,17 @@ describe('SessionActivityPanel', () => {
     const panel = screen.getByTestId('session-activity-panel')
 
     expect(panel).toHaveAttribute('data-placement', 'rail')
-    // Out of flow, not an in-flow flex sibling. This is what lets the content
-    // column animate its own padding to make way: a width flex computed for it
-    // could not be transitioned. Anything that puts this panel back in the
-    // layout takes that transition away with it.
-    expect(panel).toHaveClass('absolute')
-    expect(panel).toHaveClass('top-4')
-    expect(panel).toHaveClass('right-5')
-    expect(panel).not.toHaveClass('shrink-0')
-    expect(panel).not.toHaveClass('self-start')
-    // 340px, 20px from the right edge and `--radius-xl` are the handoff's
-    // floating-panel numbers; the frosted fill, hairline and overlay shadow all
-    // come from `glass-panel` rather than the three hardcoded slate shadows
-    // this used to carry.
+    // Docked, in flow beside the conversation: it takes its own column so the
+    // transcript cannot sit underneath it, and it fills the session row's
+    // height instead of floating at a fixed overlay cap.
+    expect(panel).toHaveClass('h-full')
     expect(panel).toHaveClass('w-[340px]')
-    expect(panel).toHaveClass('rounded-[var(--radius-xl)]')
-    expect(panel).toHaveClass('glass-panel')
-    // Height is capped against the containing block now that the panel is
-    // absolute, rather than against the viewport as the in-flow rail was.
-    expect(panel).toHaveClass('max-h-[min(620px,calc(100%-80px))]')
-    expect(panel).not.toHaveClass('h-[calc(100%-24px)]')
+    expect(panel).toHaveClass('shrink-0')
+    expect(panel).toHaveClass('border-l')
+    expect(panel).toHaveClass('bg-[var(--color-surface)]')
+    expect(panel).not.toHaveClass('absolute')
+    expect(panel).not.toHaveClass('rounded-[var(--radius-xl)]')
+    expect(panel).not.toHaveClass('max-h-[min(620px,calc(100%-80px))]')
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Outside' }))
 
     expect(onClose).not.toHaveBeenCalled()

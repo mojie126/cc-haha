@@ -110,13 +110,15 @@ export function SessionChatSurface({
       data-agent-run-kind={agentRunKind}
       className="relative flex min-h-0 flex-1 overflow-hidden bg-background text-on-surface"
     >
-      <div data-testid={contentRowTestId} className="flex min-h-0 min-w-0 flex-1">
+      <div
+        data-testid={contentRowTestId}
+        data-activity-rail-open={activityRailOpen ? 'true' : 'false'}
+        className="flex min-h-0 min-w-0 flex-1"
+      >
         <div
           data-testid={chatColumnTestId}
           className={[
             'relative flex min-h-0 min-w-0 flex-col overflow-hidden',
-            'transition-[padding] duration-200 ease-out motion-reduce:transition-none',
-            activityRailOpen ? 'pr-[352px]' : '',
             chatColumnHidden ? 'hidden' : '',
             compact
               ? compactColumnClassName ?? 'min-w-[400px] flex-1 bg-[var(--color-surface)]'

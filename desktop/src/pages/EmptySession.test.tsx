@@ -216,6 +216,7 @@ import {
   NEW_SESSION_DRAFT_SESSION_ID,
   readComposerDraft,
 } from '../lib/composerDraftPersistence'
+import { promptHistoryScopeForProject, readPromptHistory } from '../lib/promptHistory'
 import { useVoiceInputStore } from '../stores/voiceInputStore'
 
 function okRepositoryContext(overrides: Partial<RepositoryContextResult> = {}): RepositoryContextResult {
@@ -473,6 +474,10 @@ describe('EmptySession', () => {
     await waitFor(() => {
       expect(mocks.wsSend).toHaveBeenCalledWith('phone-session', expect.objectContaining({ content: 'draft question' }))
     })
+    // A dispatched prompt is no longer a draft: it must not come back in a new
+    // empty session, only through Up-arrow recall for the same project.
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
+    expect(readPromptHistory(promptHistoryScopeForProject('/workspace/project'))).toContain('draft question')
   })
 
   it('uses compact composer controls on phone-sized H5 browsers', async () => {

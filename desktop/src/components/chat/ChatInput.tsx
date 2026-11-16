@@ -12,7 +12,7 @@ import {
   readComposerDrafts,
   type PersistedComposerDraft,
 } from '@/lib/composerDraftPersistence'
-import { readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
+import { GLOBAL_PROMPT_HISTORY_SCOPE, promptHistoryScopeForProject, readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { ArrowUp, CornerDownRight, Cpu, Feather, Gauge, Pencil, Plus, ShieldCheck, Square, Trash2 } from 'lucide-react'
@@ -256,6 +256,9 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
   // ref so rapid keypresses read the value the previous press just wrote.
   const historyIndexRef = useRef(0)
   const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
+  // Prompt recall is per project: Up in one repository must not replay another
+  // repository's prompts. Filled in below once the session's path is known.
+  const promptHistoryScopeRef = useRef(GLOBAL_PROMPT_HISTORY_SCOPE)
   const resetHistoryNavigation = useCallback(() => {
     historyIndexRef.current = 0
     historyDraftRef.current = null
@@ -265,7 +268,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(text.length))
   }
   const recallPreviousPrompt = (): boolean => {
-    const history = readPromptHistory()
+    const history = readPromptHistory(promptHistoryScopeRef.current)
     if (history.length === 0) return false
     if (historyIndexRef.current === 0) {
       historyDraftRef.current = { input: inputRef.current, mentions: mentionsRef.current }
@@ -279,7 +282,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     if (historyIndexRef.current === 0) return false
     historyIndexRef.current -= 1
     if (historyIndexRef.current > 0) {
-      applyHistoryPrompt(readPromptHistory()[historyIndexRef.current - 1] ?? '')
+      applyHistoryPrompt(readPromptHistory(promptHistoryScopeRef.current)[historyIndexRef.current - 1] ?? '')
       return true
     }
     const draft = historyDraftRef.current
@@ -487,6 +490,9 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
   const hasWorkspaceReferences = !isMemberSession && workspaceReferences.length > 0
   const isHeroComposer = variant === 'hero' && !isMemberSession && !compact
   const resolvedWorkDir = activeSession?.workDir || gitInfo?.workDir || undefined
+  promptHistoryScopeRef.current = promptHistoryScopeForProject(
+    activeSession?.projectRoot || activeSession?.workDir || resolvedWorkDir,
+  )
   const showLaunchControls = !isMemberSession && !sideChat && messageCount === 0
   const sideChatAvailable = !isLean && (Boolean(sideChat) || messageCount > 0)
   // `useCompactControls` is about room, so it asks the column how wide it is —
@@ -1300,7 +1306,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
         displayAttachments: visibleAttachmentPayload,
       })
     }
-    recordPromptHistory(displayContent || contentForModel)
+    recordPromptHistory(displayContent || contentForModel, promptHistoryScopeRef.current)
     recordRecentSkills(mentions.flatMap(mention => mention.kind === 'skill' && mention.id ? [mention.id] : []))
     if (sendAsTeam) capabilityMenu.disarmAgentTeam()
     // The send can wait for the launch branch to be read again. If the user moved
@@ -2250,7 +2256,9 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   ref={modelSelectorRef}
                   runtimeKey={activeTabId}
                   lockedProviderId={sideChat ? runtimeSelection?.providerId ?? null : undefined}
-                  disabled={isActive}
+                  // A running turn finishes on its model; the choice applies to
+                  // the messages that follow it, so it stays selectable.
+                  disabled={false}
                   compact={useCompactControls}
                   fluid={isMobileComposer}
                 />
@@ -2260,7 +2268,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   runtimeSelection={memberRuntimeSelection}
                   onRuntimeSelectionChange={handleMemberRuntimeChange}
                   effortEditable
-                  disabled={isActive || memberRuntimeSaving || !memberRuntimeEditable}
+                  disabled={memberRuntimeSaving || !memberRuntimeEditable}
                   compact={useCompactControls}
                   fluid={isMobileComposer}
                 />

@@ -1,6 +1,8 @@
-import { useId, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 import { cx } from '@/lib/cx'
+import { Dropdown } from './Dropdown'
 import { FIELD_BASE_CLASSES, FIELD_SIZE_CLASSES, fieldStateClasses, type FieldSize } from './Input'
 
 export type SelectOption<T extends string = string> = {
@@ -10,7 +12,7 @@ export type SelectOption<T extends string = string> = {
 }
 
 export type SelectFieldProps<T extends string = string> =
-  Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size' | 'onChange' | 'value' | 'children'> & {
+  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'size' | 'onChange' | 'value' | 'children' | 'type'> & {
     /**
      * Required. All 7 native selects in the app shipped without a label or an
      * `aria-label`, leaving them nameless in the accessibility tree.
@@ -27,12 +29,13 @@ export type SelectFieldProps<T extends string = string> =
   }
 
 /**
- * A native `<select>` with its label wired up.
+ * A single-select control that opens the shared card menu.
  *
- * Deliberately native rather than a custom listbox: the platform control gets
- * keyboard interaction, type-ahead, mobile pickers and screen-reader support
- * for free, and none of the 7 call sites needs custom option rendering. Use
- * `Dropdown` when the options need custom markup.
+ * The native `<select>` is deliberately gone: its option popup is drawn by the
+ * operating system, so it cannot follow the app's themes or corners, and it was
+ * the only control in Settings that still looked like a browser control. The
+ * trigger keeps the field chrome, focus ring and error wiring; the list and its
+ * keyboard handling belong to `Dropdown`.
  */
 export function SelectField<T extends string = string>({
   label,
@@ -47,13 +50,20 @@ export function SelectField<T extends string = string>({
   containerClassName,
   id,
   disabled,
+  'aria-describedby': ariaDescribedBy,
+  'aria-label': ariaLabel,
   ...props
 }: SelectFieldProps<T>) {
   const generatedId = useId()
   const selectId = id ?? generatedId
   const hintId = `${selectId}-hint`
   const errorId = `${selectId}-error`
-  const describedBy = error ? errorId : hint ? hintId : undefined
+  const describedBy = error
+    ? [errorId, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+    : hint
+      ? [hintId, ariaDescribedBy].filter(Boolean).join(' ') || undefined
+      : ariaDescribedBy
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? ''
 
   return (
     <div className={cx('flex flex-col gap-1', containerClassName)}>
@@ -62,23 +72,42 @@ export function SelectField<T extends string = string>({
           {label}
         </label>
       )}
-      <select
-        id={selectId}
+      <Dropdown<T>
+        items={options.map((option) => ({ ...option }))}
         value={value}
-        disabled={disabled}
-        aria-label={labelHidden ? label : undefined}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy}
-        onChange={(event) => onChange(event.target.value as T)}
-        className={cx(FIELD_BASE_CLASSES, FIELD_SIZE_CLASSES[size], fieldStateClasses(!!error), 'cursor-pointer', className)}
-        {...props}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value} disabled={option.disabled}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        label={label}
+        width="max-content"
+        maxHeight={320}
+        className="w-full"
+        trigger={(
+          <button
+            {...props}
+            type="button"
+            id={selectId}
+            role="combobox"
+            disabled={disabled}
+            aria-label={ariaLabel ?? (labelHidden ? label : undefined)}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
+            className={cx(
+              FIELD_BASE_CLASSES,
+              FIELD_SIZE_CLASSES[size],
+              fieldStateClasses(!!error),
+              'flex cursor-pointer items-center justify-between gap-2 text-left',
+              className,
+            )}
+          >
+            <span className="min-w-0 truncate">{selectedLabel}</span>
+            <ChevronDown
+              size={14}
+              strokeWidth={1.75}
+              aria-hidden="true"
+              className="shrink-0 text-[var(--color-text-tertiary)]"
+            />
+          </button>
+        )}
+      />
       {error
         ? <p id={errorId} role="alert" className="text-xs text-[var(--color-error)]">{error}</p>
         : hint

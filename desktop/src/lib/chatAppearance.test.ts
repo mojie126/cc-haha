@@ -16,6 +16,7 @@ describe('chat appearance preferences', () => {
       '--chat-font-size': '20px', '--chat-content-max-width': '1200px',
     })
     const font = getChatAppearanceStyle(DEFAULT_CHAT_APPEARANCE)['--chat-font-family']
+    expect(font).toContain("'Inter'")
     expect(font).toContain('PingFang SC')
     expect(font).toContain('Microsoft YaHei UI')
     expect(font).not.toContain('SimSun')

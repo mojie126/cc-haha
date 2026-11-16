@@ -1057,9 +1057,7 @@ function clearMemberSessionState(sessionIds: Iterable<string>): void {
       delete dismissedBackgroundTaskKeysBySession[sessionId]
     }
     return {
-      openSessionId: state.openSessionId && ids.has(state.openSessionId)
-        ? null
-        : state.openSessionId,
+      openSessionIds: state.openSessionIds.filter((sessionId) => !ids.has(sessionId)),
       selectedSectionBySession,
       dismissedBackgroundTaskKeysBySession,
     }
@@ -1725,15 +1723,10 @@ export const useTeamStore = create<TeamStore>((set, get) => ({
       team.leadSessionId,
       ...team.members.map((teamMember) => memberSessionIdForTeam(team, teamMember)),
     ].filter((value): value is string => Boolean(value)))
-    const openPanelTeam = activityPanel.openSessionId
-      ? get().getTeamByMemberSessionId(activityPanel.openSessionId)
-      : null
-    if (
-      activityPanel.openSessionId && (
-        relatedSessionIds.has(activityPanel.openSessionId) ||
-        openPanelTeam?.name === team.name
-      )
-    ) {
+    // A member page inherits the panel state of the team it came from: if the
+    // panel was open anywhere in that team, the member opens with it too.
+    const panelWasOpenForTeam = [...relatedSessionIds].some((id) => activityPanel.isOpen(id))
+    if (panelWasOpenForTeam) {
       activityPanel.open(openedSessionId)
     }
   },

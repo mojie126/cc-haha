@@ -1574,8 +1574,9 @@
   --shadow-button-primary: 0 1px 2px rgba(var(--cc-t1-rgb), 0.16);
   /* A row or chip lifted one hair off its ground (the selected sidebar row). */
   --shadow-raised: 0 1px 2px rgba(var(--cc-t1-rgb), 0.06);
-  /* The selected segment of a segmented control: lifted one hair off its track. */
-  --shadow-segment: 0 1px 2px rgba(var(--cc-t1-rgb), 0.10), 0 0 0 0.5px rgba(var(--cc-t1-rgb), 0.06);
+  /* The selected segment of a segmented control: lifted one hair off its track
+     without a directional offset, so the inset reads equally on all sides. */
+  --shadow-segment: 0 0 2px rgba(var(--cc-t1-rgb), 0.10), 0 0 0 0.5px rgba(var(--cc-t1-rgb), 0.06);
 
   /* Code + diff */
   --color-code-bg: var(--cc-code);
@@ -1736,7 +1737,7 @@
   --color-modal-scrim: rgba(var(--cc-scrim-rgb), 0.66);
   --color-overlay-scrim: rgba(var(--cc-scrim-rgb), 0.56);
   --shadow-button-primary: 0 2px 10px rgba(0, 0, 0, 0.4);
-  --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-segment: 0 0 2px rgba(0, 0, 0, 0.45);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.35);
   --color-activity-tooltip-border: rgba(var(--cc-bg-rgb), 0.28);
 }
@@ -1917,7 +1918,7 @@ body > :not(#root, [role="tooltip"]) * {
    so only space preservation needs `pre-wrap`. */
 .composer-pm {
   outline: none;
-  font-family: var(--font-body);
+  font-family: var(--chat-font-family);
 }
 
 .composer-pm p {
@@ -2370,9 +2371,16 @@ body.sidebar-resizing * {
   line-height: 1.7;
 }
 
-/* Code — inline chips and blocks alike — runs two steps under the prose
-   (13px at the default 15px), so a monospace run never out-shouts the
-   sentence it sits in. */
+/* Inline code is part of the sentence: it follows the reading face and scales
+   with the reader's font-size setting instead of pinning a monospace size.
+   Fenced blocks keep their own non-`pre` parent and stay monospace. */
+.markdown-prose :not(pre) > code {
+  font-family: var(--chat-font-family);
+  font-size: 0.88em;
+}
+
+/* Fenced blocks run two steps under the prose (13px at the default 15px), so a
+   monospace run never out-shouts the sentence it sits in. */
 .markdown-prose.chat-reading-markdown {
   --code-viewer-font-size: calc(var(--chat-font-size) - 2px);
 }
@@ -3564,5 +3572,22 @@ html[data-theme='neutral-dark'] .pet-panel-toggle:hover {
   .pet-session-indicator.is-running {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* A search result lands in a pane the reader may not have opened before. The
+   mark stays on the whole row until the row is used, another pane is opened or
+   a new search starts, so the reader can look at the setting without losing
+   which one matched. */
+.settings-search-target {
+  border-radius: var(--radius-sm);
+  background-color: var(--color-brand-soft);
+  box-shadow: inset 0 0 0 1px var(--color-primary-fixed-dim);
+  transition: background-color 180ms ease-out, box-shadow 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-search-target {
+    transition: none;
   }
 }

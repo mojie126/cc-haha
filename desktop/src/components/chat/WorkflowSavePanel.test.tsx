@@ -224,9 +224,8 @@ describe('WorkflowSavePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }))
     expect(await screen.findByText(/Saved as \/release-audit/)).toBeInTheDocument()
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Completed run' }), {
-      target: { value: 'workflow-task-first' },
-    })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Completed run' }))
+    fireEvent.click(screen.getByRole('option', { name: 'first-audit' }))
     await waitFor(() => {
       expect(getRunMock).toHaveBeenCalledWith(SESSION_ID, 'wf_first123-abc')
     })
@@ -336,8 +335,9 @@ describe('WorkflowSavePanel', () => {
 
     expect(await screen.findByText(/newest artifact is missing/)).toBeInTheDocument()
     const runs = screen.getByRole('combobox', { name: 'Completed run' })
-    expect(runs).toHaveValue('workflow-task-newer')
-    fireEvent.change(runs, { target: { value: 'workflow-task-older' } })
+    expect(runs).toHaveTextContent('newer-audit')
+    fireEvent.click(runs)
+    fireEvent.click(screen.getByRole('option', { name: 'older-audit' }))
 
     await waitFor(() => {
       expect(getRunMock).toHaveBeenCalledWith(SESSION_ID, 'wf_older123-abc')

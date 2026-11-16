@@ -58,6 +58,10 @@ describe('PromptDocSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: /edit/i }))
     const editor = await screen.findByRole('textbox')
     await waitFor(() => expect(editor).toHaveValue('# 全局约定'))
+    // Reading text, not code: same face and reader-controlled size as the
+    // composer, and never the monospace reserved for paths and identifiers.
+    expect(editor).toHaveClass('chat-reading-text')
+    expect(editor.className).not.toContain('font-mono')
     expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 

@@ -36,9 +36,22 @@ export type SegmentedControlProps<T extends string> = {
   className?: string
 }
 
+/**
+ * The framed track carries the inset, so the selected fill sits the same
+ * distance from all four edges: 3px above, below, left and right. The segment
+ * is therefore two pixels shorter than the tier it used to pin, and the
+ * selected shadow is symmetric so it cannot darken the bottom gap into looking
+ * thinner than the top one. The underline appearance has no track, so it keeps
+ * the full tier height.
+ */
 const SIZE_CLASSES = {
-  sm: 'h-7 text-xs',
-  md: 'h-8 text-sm',
+  sm: 'text-xs',
+  md: 'text-sm',
+} as const
+
+const SEGMENT_HEIGHT = {
+  solid: { sm: 'h-[22px]', md: 'h-[26px]' },
+  underline: { sm: 'h-7', md: 'h-8' },
 } as const
 
 const SEGMENT_PADDING = {
@@ -110,7 +123,7 @@ export function SegmentedControl<T extends string>({
         isChip ? 'flex flex-wrap items-center gap-1.5' : 'inline-flex items-center',
         appearance === 'underline'
           ? 'gap-1 border-b border-[var(--color-border)]'
-          : !isChip && 'gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-surface-container-high)] p-0.5',
+          : !isChip && 'gap-[3px] rounded-[var(--radius-md)] bg-[var(--color-surface-container-high)] p-[3px]',
         layout === 'fill' && 'flex w-full',
         !isChip && SIZE_CLASSES[size],
         className,
@@ -135,7 +148,9 @@ export function SegmentedControl<T extends string>({
               'transition-colors duration-150 cursor-pointer',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)]',
               'disabled:cursor-not-allowed disabled:opacity-50',
-              isChip ? CHIP_SIZE_CLASSES[size] : cx('h-full', SEGMENT_PADDING[size]),
+              isChip
+                ? CHIP_SIZE_CLASSES[size]
+                : cx(SEGMENT_HEIGHT[appearance === 'underline' ? 'underline' : 'solid'][size], SEGMENT_PADDING[size]),
               layout === 'fill' && 'flex-1',
               isChip
                 ? cx(

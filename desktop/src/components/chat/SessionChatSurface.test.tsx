@@ -37,7 +37,9 @@ describe('SessionChatSurface', () => {
     const surface = screen.getByTestId('session-chat-surface')
     expect(surface).toHaveAttribute('data-session-chat-kind', 'agent')
     expect(surface).toHaveAttribute('data-agent-run-kind', 'subagent')
-    expect(screen.getByTestId('session-chat-column')).toHaveClass('min-w-[360px]', 'pr-[352px]')
+    // The rail is a docked sibling now, not an overlay the column pads around.
+    expect(screen.getByTestId('session-chat-column')).toHaveClass('min-w-[360px]')
+    expect(screen.getByTestId('session-chat-content-row')).toHaveAttribute('data-activity-rail-open', 'true')
     expect(screen.getByText('Activity')).toBeInTheDocument()
 
     const header = screen.getByTestId('session-header')

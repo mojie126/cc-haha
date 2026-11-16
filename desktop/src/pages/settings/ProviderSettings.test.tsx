@@ -121,7 +121,7 @@ describe('image generation protocol settings', () => {
     render(<ProviderSettings />)
     fireEvent.click(within(await screen.findByTestId('provider-old-images')).getByRole('button', { name: 'Edit' }))
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getByRole('combobox', { name: 'Image API protocol' })).toHaveValue('openai_images')
+    expect(dialog.getByRole('combobox', { name: 'Image API protocol' })).toHaveTextContent('OpenAI-compatible Images')
     fireEvent.click(dialog.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(update).toHaveBeenCalledWith(provider.id, expect.objectContaining({
       imageGeneration: { model: 'old-image-model', protocol: 'openai_images' },
@@ -138,7 +138,8 @@ describe('image generation protocol settings', () => {
     fireEvent.click(dialog.getByRole('button', { name: 'AruHub' }))
     fireEvent.change(dialog.getAllByPlaceholderText('sk-...')[0]!, { target: { value: 'fake-new-key' } })
     fireEvent.click(dialog.getByRole('switch', { name: 'Enable image generation' }))
-    fireEvent.change(dialog.getByRole('combobox', { name: 'Image API protocol' }), { target: { value: 'gemini_native' } })
+    fireEvent.click(dialog.getByRole('combobox', { name: 'Image API protocol' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Google Gemini native' }))
     fireEvent.change(dialog.getByRole('textbox', { name: /Image model/ }), { target: { value: 'gemini-image-fixture' } })
     fireEvent.click(dialog.getByRole('button', { name: 'Add' }))
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -154,12 +155,12 @@ describe('image generation protocol settings', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Add Model/ }))
     const dialog = within(screen.getByRole('dialog'))
     fireEvent.click(dialog.getByRole('button', { name: 'AruHub' }))
-    expect(dialog.getByRole('combobox', { name: 'Image API protocol' })).toHaveValue('xai_images')
+    expect(dialog.getByRole('combobox', { name: 'Image API protocol' })).toHaveTextContent('xAI Grok Images')
     expect(dialog.getByRole('textbox', { name: /Image model/ })).toHaveValue('grok-image-fixture')
     fireEvent.click(dialog.getByRole('button', { name: 'Atlas Cloud' }))
     expect(dialog.getByRole('switch', { name: 'Enable image generation' })).not.toBeChecked()
     fireEvent.click(dialog.getByRole('switch', { name: 'Enable image generation' }))
-    expect(dialog.getByRole('combobox', { name: 'Image API protocol' })).toHaveValue('openai_images')
+    expect(dialog.getByRole('combobox', { name: 'Image API protocol' })).toHaveTextContent('OpenAI-compatible Images')
   })
 })
 
@@ -546,8 +547,9 @@ describe('provider request compatibility', () => {
     expect(budget).toHaveValue('64000')
     fireEvent.change(budget, { target: { value: '48000' } })
     fireEvent.click(dialog.getByRole('button', { name: 'Advanced compatibility' }))
-    expect(dialog.getByRole('combobox', { name: 'Sampling parameters' })).toHaveValue('unsupported')
-    fireEvent.change(dialog.getByRole('combobox', { name: 'Output token field' }), { target: { value: 'max_completion_tokens' } })
+    expect(dialog.getByRole('combobox', { name: 'Sampling parameters' })).toHaveTextContent('Unsupported')
+    fireEvent.click(dialog.getByRole('combobox', { name: 'Output token field' }))
+    fireEvent.click(screen.getByRole('option', { name: 'max_completion_tokens' }))
     fireEvent.click(dialog.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(providersApi.update).toHaveBeenCalledWith('compat-provider', expect.objectContaining({ requestCompatibility: { maxOutputTokens: 48000, sampling: 'unsupported', outputTokenField: 'max_completion_tokens', futureOption: { keep: true } } })))
     const settings = vi.mocked(providersApi.updateSettings).mock.calls.at(-1)?.[0]

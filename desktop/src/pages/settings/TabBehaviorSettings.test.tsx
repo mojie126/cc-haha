@@ -35,11 +35,12 @@ describe('tab settings in General', () => {
 
     const limit = screen.getByLabelText('最多保留的会话标签')
     const restore = screen.getByRole('switch', { name: '启动时恢复上次打开的标签' })
-    expect(limit).toHaveValue('unlimited')
+    expect(limit).toHaveTextContent('不限')
     expect(restore).toBeChecked()
     expect(screen.getByText(/关闭标签不会删除会话/)).toBeInTheDocument()
 
-    fireEvent.change(limit, { target: { value: '8' } })
+    fireEvent.click(limit)
+    fireEvent.click(screen.getByRole('option', { name: '8 个' }))
     expect(useTabBehaviorStore.getState().behavior.sessionTabLimit).toBe(8)
     expect(storedBehavior()).toMatchObject({ sessionTabLimit: 8, restoreOnLaunch: true })
 
@@ -48,7 +49,8 @@ describe('tab settings in General', () => {
     expect(screen.getByText('重新打开应用时标签栏为空，会话仍在左侧列表里。')).toBeInTheDocument()
     expect(storedBehavior()).toMatchObject({ sessionTabLimit: 8, restoreOnLaunch: false })
 
-    fireEvent.change(limit, { target: { value: 'unlimited' } })
+    fireEvent.click(limit)
+    fireEvent.click(screen.getByRole('option', { name: '不限' }))
     expect(storedBehavior()).toMatchObject({ sessionTabLimit: null, restoreOnLaunch: false })
   })
 })

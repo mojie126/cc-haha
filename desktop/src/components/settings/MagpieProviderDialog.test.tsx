@@ -94,7 +94,8 @@ describe('connecting Magpie', () => {
 
     render(<MagpieProviderDialog open onClose={vi.fn()} />)
     fireEvent.click(await screen.findByRole('radio', { name: /Claude Opus 5.5/ }))
-    fireEvent.change(screen.getByLabelText('Background tasks such as titles and summaries'), { target: { value: 'kimi/kimi-k3' } })
+    fireEvent.click(screen.getByLabelText('Background tasks such as titles and summaries'))
+    fireEvent.click(screen.getByRole('option', { name: /Kimi K3/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Connect and make default' }))
 
     await waitFor(() => expect(create).toHaveBeenCalled())

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   clearPromptHistory,
+  GLOBAL_PROMPT_HISTORY_SCOPE,
+  PROMPT_HISTORY_SCOPES_STORAGE_KEY,
   PROMPT_HISTORY_STORAGE_KEY,
+  promptHistoryScopeForProject,
   readPromptHistory,
   recordPromptHistory,
 } from './promptHistory'
@@ -53,16 +56,47 @@ describe('prompt history', () => {
     expect(readPromptHistory()[0]).toHaveLength(8_000)
   })
 
+  it('isolates recall between projects', () => {
+    const alpha = promptHistoryScopeForProject('/repo/alpha')
+    const beta = promptHistoryScopeForProject('C:\\repo\\beta')
+    recordPromptHistory('alpha prompt', alpha)
+    recordPromptHistory('beta prompt', beta)
+
+    expect(readPromptHistory(alpha)).toEqual(['alpha prompt'])
+    expect(readPromptHistory(beta)).toEqual(['beta prompt'])
+    // A project scope never inherits the legacy global list.
+    expect(readPromptHistory(GLOBAL_PROMPT_HISTORY_SCOPE)).toEqual([])
+  })
+
+  it('normalizes the project path so the same directory shares one scope', () => {
+    expect(promptHistoryScopeForProject('/repo/alpha/')).toBe(promptHistoryScopeForProject('/repo/alpha'))
+    expect(promptHistoryScopeForProject('C:\\repo\\beta')).toBe(promptHistoryScopeForProject('C:/repo/beta'))
+    expect(promptHistoryScopeForProject('  ')).toBe(GLOBAL_PROMPT_HISTORY_SCOPE)
+  })
+
+  it('reads the pre-scope list for the fallback scope', () => {
+    localStorage.setItem(PROMPT_HISTORY_STORAGE_KEY, JSON.stringify(['legacy one']))
+    expect(readPromptHistory()).toEqual(['legacy one'])
+    expect(readPromptHistory(promptHistoryScopeForProject('/repo/alpha'))).toEqual([])
+  })
+
   it('survives a corrupt payload', () => {
-    localStorage.setItem(PROMPT_HISTORY_STORAGE_KEY, '{not json')
+    localStorage.setItem(PROMPT_HISTORY_SCOPES_STORAGE_KEY, '{not json')
     expect(readPromptHistory()).toEqual([])
     recordPromptHistory('after corruption')
     expect(readPromptHistory()).toEqual(['after corruption'])
   })
 
-  it('clears the list', () => {
-    recordPromptHistory('one')
+  it('clears one scope without touching another', () => {
+    const alpha = promptHistoryScopeForProject('/repo/alpha')
+    recordPromptHistory('one', alpha)
+    recordPromptHistory('two', promptHistoryScopeForProject('/repo/beta'))
+
+    clearPromptHistory(alpha)
+    expect(readPromptHistory(alpha)).toEqual([])
+    expect(readPromptHistory(promptHistoryScopeForProject('/repo/beta'))).toEqual(['two'])
+
     clearPromptHistory()
-    expect(readPromptHistory()).toEqual([])
+    expect(readPromptHistory(promptHistoryScopeForProject('/repo/beta'))).toEqual([])
   })
 })

@@ -62,9 +62,11 @@ import {
   readStoredProjectOrder,
   readStoredProjectOrganization,
   readStoredProjectPins,
+  readStoredProjectRemembered,
   readStoredProjectSortBy,
   writeCachedSidebarProjectPreferences,
   writeStoredProjectCollapsed,
+  writeStoredProjectRemembered,
   type SidebarProjectOrganization,
   type SidebarProjectSortBy,
 } from './sidebarProjectPreferenceStorage'
@@ -92,6 +94,8 @@ type ProjectGroup = {
   subtitle: string | null
   workDir: string | undefined
   sessions: SessionListItem[]
+  /** Kept by the remembered-project list, not by a session or an archive. */
+  remembered?: boolean
 }
 
 type ProjectEditorState =
@@ -199,6 +203,7 @@ export function Sidebar({
   const [projectOrder, setProjectOrder] = useState<string[]>(() => readStoredProjectOrder())
   const [pinnedProjectKeys, setPinnedProjectKeys] = useState<Set<string>>(() => readStoredProjectPins())
   const [hiddenProjectKeys, setHiddenProjectKeys] = useState<Set<string>>(() => readStoredProjectHidden())
+  const [rememberedProjectKeys, setRememberedProjectKeys] = useState<Set<string>>(() => readStoredProjectRemembered())
   const [projectOrganization, setProjectOrganizationState] = useState<SidebarProjectOrganization>(() => readStoredProjectOrganization())
   const [projectSortBy, setProjectSortByState] = useState<SidebarProjectSortBy>(() => readStoredProjectSortBy())
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null)
@@ -293,9 +298,32 @@ export function Sidebar({
     () => groupByProject(filteredSessions, projectSortBy, resolveProjectDisplayName, projectArchivedTotals),
     [filteredSessions, projectDisplayNameRevision, projectSortBy, projectArchivedTotals],
   )
+  // A project the user opened is kept even after its last session is deleted:
+  // the folder is still a place they work, and "new session here" should not
+  // require finding it again. Groups with sessions win over a remembered
+  // work-dir spelling of the same place.
+  const projectGroupsWithRemembered = useMemo(() => {
+    if (rememberedProjectKeys.size === 0) return projectGroups
+    const extras: ProjectGroup[] = []
+    for (const key of rememberedProjectKeys) {
+      if (!key || key === 'unknown') continue
+      if (projectGroups.some((group) => (
+        projectPathMatches(group.key, key) || projectPathMatches(key, group.key)
+      ))) continue
+      extras.push({
+        key,
+        title: resolveProjectDisplayName(key) || projectTitle(key),
+        subtitle: projectSubtitle(key, key),
+        workDir: key,
+        sessions: [],
+        remembered: true,
+      })
+    }
+    return extras.length > 0 ? [...projectGroups, ...extras] : projectGroups
+  }, [projectDisplayNameRevision, projectGroups, rememberedProjectKeys])
   const orderedProjectGroups = useMemo(
-    () => applyProjectOrder(projectGroups, projectOrder, pinnedProjectKeys, projectOrganization, projectSortBy),
-    [projectGroups, projectOrder, pinnedProjectKeys, projectOrganization, projectSortBy],
+    () => applyProjectOrder(projectGroupsWithRemembered, projectOrder, pinnedProjectKeys, projectOrganization, projectSortBy),
+    [projectGroupsWithRemembered, projectOrder, pinnedProjectKeys, projectOrganization, projectSortBy],
   )
   const visibleProjectGroups = useMemo(() => {
     if (hiddenProjectKeys.size === 0) return orderedProjectGroups
@@ -303,6 +331,43 @@ export function Sidebar({
       !hiddenProjectKeys.has(project.key)
     ))
   }, [hiddenProjectKeys, orderedProjectGroups])
+
+  const rememberProjectKey = useCallback((workDir: string | null | undefined) => {
+    if (!workDir || workDir === 'unknown') return
+    setRememberedProjectKeys((current) => {
+      if (current.has(workDir)) return current
+      const next = new Set(current).add(workDir)
+      writeStoredProjectRemembered(next)
+      return next
+    })
+  }, [])
+
+  // Session loading is incremental, so an empty group list is not proof that
+  // the user has no projects. Only fold in what has arrived, and collapse a
+  // remembered work dir that a session now reports under a project root.
+  useEffect(() => {
+    if (projectGroups.length === 0) return
+    setRememberedProjectKeys((current) => {
+      let next: Set<string> | null = null
+      for (const group of projectGroups) {
+        if (!group.key || group.key === 'unknown') continue
+        if (!(next ?? current).has(group.key)) {
+          next = new Set(next ?? current).add(group.key)
+        }
+      }
+      for (const key of [...(next ?? current)]) {
+        if (projectGroups.some((group) => group.key !== key && projectPathMatches(group.key, key))) {
+          next = new Set(next ?? current)
+          next.delete(key)
+        }
+      }
+      if (!next) return current
+      const changed = next.size !== current.size || [...next].some((key) => !current.has(key))
+      if (!changed) return current
+      writeStoredProjectRemembered(next)
+      return next
+    })
+  }, [projectGroups])
   /**
    * 任务视图和「整理侧边栏 → 按时间顺序」是同一个状态：铃铛亮 ⟺ 组织方式是
    * `time`。这个选项本来就承诺按时间排，此前却仍旧按工作区分组，两个入口指向
@@ -519,6 +584,7 @@ export function Sidebar({
     useUIStore.getState().startNewSessionDraft(workDir)
     const draft = useUIStore.getState().newSessionDraft
     restoreHiddenProjectForWorkDir(draft?.workDir ?? workDir)
+    rememberProjectKey(draft?.workDir ?? workDir)
     // An empty draft has just moved to the requested project. Only one holding
     // unsent content stays where it was, and that is worth saying.
     if (draft && workDir !== undefined && draft.workDir !== workDir) {
@@ -526,7 +592,7 @@ export function Sidebar({
     }
     useSessionStore.getState().setActiveSession(null)
     useTabStore.getState().setActiveTab(null)
-  }, [addToast, restoreHiddenProjectForWorkDir, t])
+  }, [addToast, rememberProjectKey, restoreHiddenProjectForWorkDir, t])
 
   // "New session" and its Cmd+N shortcut: a session in the project of the
   // chat on screen, with profile selection before its first send.
@@ -1332,7 +1398,8 @@ export function Sidebar({
                 const hiddenCount = project.sessions.length - visibleItems.length
                 const projectSessionTotal = projectSessionTotals[project.key]
                 // Kept in the list only by its archive: no session left to show.
-                const archiveOnly = project.sessions.length === 0 && !projectSessionTotal
+                const rememberedOnly = project.remembered && project.sessions.length === 0
+                const archiveOnly = project.sessions.length === 0 && !projectSessionTotal && !rememberedOnly
                 const hasUnloadedSessions = projectSessionTotal === undefined
                   ? false
                   : projectSessionTotal > project.sessions.length
@@ -1553,6 +1620,13 @@ export function Sidebar({
                           // place; its menu opens the archive.
                           <div className="flex h-[30px] items-center pl-8 pr-2 text-[12px] text-[var(--color-text-tertiary)]">
                             {t('sidebar.projectAllArchived')}
+                          </div>
+                        )}
+                        {rememberedOnly && (
+                          // The project itself is remembered; there is simply
+                          // nothing to list yet.
+                          <div className="flex h-[30px] items-center pl-8 pr-2 text-[12px] text-[var(--color-text-tertiary)]">
+                            {t('sidebar.projectNoSessions')}
                           </div>
                         )}
                         {showSessionFoldControl && (

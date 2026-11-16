@@ -237,15 +237,22 @@ export function Dropdown<T extends string>({
       </div>
     )
 
+  // `max-content` lets a menu whose rows must not wrap grow past its trigger:
+  // it still starts at the trigger's width, but a longer option widens the card
+  // instead of breaking the label onto a second line.
+  const contentSized = width === 'max-content'
+  const contentSizedStyle: CSSProperties = contentSized
+    ? { minWidth: '100%', width: 'max-content', maxWidth: 'min(640px, 92vw)' }
+    : { width }
   const menuStyle: CSSProperties = portal
     ? {
       ...anchored.style,
-      width,
+      ...contentSizedStyle,
       maxHeight: maxHeight == null ? anchored.style.maxHeight
         : anchored.style.maxHeight == null ? maxHeight
         : `min(${typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight}, ${anchored.style.maxHeight}px)`,
     }
-    : { width, maxHeight }
+    : { ...contentSizedStyle, maxHeight }
   const menu = open ? (
     <div
       ref={listRef}
@@ -293,9 +300,9 @@ export function Dropdown<T extends string>({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium text-[var(--color-text-primary)]">{item.label}</div>
+            <div className="truncate whitespace-nowrap text-[13px] font-medium text-[var(--color-text-primary)]">{item.label}</div>
             {item.description && (
-              <div className="mt-0.5 text-xs text-[var(--color-text-tertiary)]">{item.description}</div>
+              <div className="mt-0.5 truncate whitespace-nowrap text-xs text-[var(--color-text-tertiary)]">{item.description}</div>
             )}
           </div>
           {item.value === value && (

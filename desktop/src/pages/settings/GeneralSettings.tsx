@@ -46,6 +46,7 @@ import { isTouchH5Document } from '../../lib/touchH5'
 import { MODEL_REASONING_EFFORTS } from '../../../../src/shared/modelReasoning'
 import { AUTO_QUESTION_TIMEOUT_OPTIONS } from '../../../../src/shared/autoQuestionSettings'
 import { ChatAppearanceSettings } from './ChatAppearanceSettings'
+import { SettingsPageWidthSettings } from './SettingsPageWidthSettings'
 import { DataMigrationSettings } from './DataMigrationSettings'
 import { TabBehaviorSettings } from './TabBehaviorSettings'
 import { LeanModeSettings } from './LeanModeSettings'
@@ -923,7 +924,7 @@ export function GeneralSettings() {
                   <p className="mb-2 text-xs text-[var(--color-text-tertiary)]">
                     {t('settings.general.appearance.lightThemeLabel')}
                   </p>
-                  <div className={`grid grid-cols-4 gap-3 ${THEME_GRID_WIDTH}`}>
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
                     {LIGHT_THEMES.map(({ value, label }) => (
                       <ThemeCard
                         key={value}
@@ -939,7 +940,7 @@ export function GeneralSettings() {
                   <p className="mb-2 text-xs text-[var(--color-text-tertiary)]">
                     {t('settings.general.appearance.darkThemeLabel')}
                   </p>
-                  <div className={`grid grid-cols-4 gap-3 ${THEME_GRID_WIDTH}`}>
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
                     {DARK_THEMES.map(({ value, label }) => (
                       <ThemeCard
                         key={value}
@@ -953,7 +954,7 @@ export function GeneralSettings() {
                 </div>
               </div>
             ) : (
-              <div className={`grid grid-cols-3 gap-3.5 ${THEME_GRID_WIDTH}`}>
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3.5">
                 {THEMES.map(({ value, label }) => (
                   <ThemeCard
                     key={value}
@@ -1005,6 +1006,8 @@ export function GeneralSettings() {
       </SettingsSection>
 
       <ChatAppearanceSettings />
+
+      <SettingsPageWidthSettings />
 
       {uiZoomSection}
 
@@ -1894,12 +1897,10 @@ const PickerButton = forwardRef<HTMLButtonElement, ButtonProps & { children: Rea
 )
 
 /**
- * The swatches are previews, not content, so they keep the size they were drawn
- * at (about 190px across three columns) however wide the settings frame grows,
- * rather than swelling into 330px posters on a large display. The grid sits at
- * the start of its block, the way the rows' labels do.
+ * Swatches are previews, not content: the grid uses auto-fit columns with a
+ * card-sized minimum, so a wide Settings frame fills with more cards instead of
+ * leaving the right half empty and stretching each poster.
  */
-const THEME_GRID_WIDTH = 'max-w-[600px]'
 
 /**
  * A palette card. The miniature is painted from the palette's own source

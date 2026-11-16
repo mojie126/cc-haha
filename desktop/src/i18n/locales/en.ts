@@ -265,7 +265,7 @@ export const en = {
   "settings.chatAppearance.widthCustom": "Custom",
   "settings.chatAppearance.widthCustomHint": "Accepts px or % width",
   "settings.chatAppearance.widthUnit": "Width unit",
-  "settings.chatAppearance.hint": "Fonts use those available on your system. Code stays monospace. Width applies to messages and the composer; narrow windows fit automatically.",
+  "settings.chatAppearance.hint": "Fonts use those available on your system. Inline code follows the reading font and code blocks stay monospace. Width applies to messages and the composer; narrow windows fit automatically.",
   "settings.chatAppearance.selectionMenuPlacement": "Selection menu",
   "settings.chatAppearance.selectionMenuPlacementHint": "The action menu that appears after you select text. Automatic puts it beside a multi-line selection; Above only always floats it over the selection so it never covers the text that follows.",
   "settings.chatAppearance.selectionMenuPlacementAuto": "Automatic",
@@ -5141,6 +5141,19 @@ Row 9, all 8 cells: continuing from straight down, turning left through lower-le
   'h5Settings.desktopOnly': "Change on the computer",
   'h5Settings.desktopOnlyHint': "These settings act on the computer itself, so only the computer can change them.",
   'h5Settings.allSettings': "All settings",
+  'settings.search.placeholder': "Search settings",
+  'settings.search.clear': "Clear search",
+  'settings.search.results': "Settings results",
+  'settings.search.noResults': "No matching settings",
+  'settings.pageWidth.title': "Settings width",
+  'settings.pageWidth.description': "Choose how much of the window the Settings page uses. Wider frames keep long descriptions on one line.",
+  'settings.pageWidth.standard': "Standard",
+  'settings.pageWidth.wide': "Wide",
+  'settings.pageWidth.full': "Fill",
+  'settings.pageWidth.custom': "Custom",
+  'settings.pageWidth.customHint': "Supports px or % width",
+  'settings.pageWidth.unit': "Width unit",
+  'sidebar.projectNoSessions': "No sessions yet",
 } as const
 
 export type TranslationKey = keyof typeof en

@@ -180,7 +180,7 @@ export function SettingsRow({
     </TitleTag>
   )
   return (
-    <div data-testid={testId} className={cx('min-h-[52px] px-4 py-3', className)}>
+    <div data-testid={testId} data-settings-row="" className={cx('min-h-[52px] px-4 py-3', className)}>
       <div className={cx('flex gap-x-6 gap-y-2.5', ROW_LAYOUT[layout])}>
         <div className="min-w-0 flex-1">
           {help ? (
@@ -191,7 +191,7 @@ export function SettingsRow({
           ) : titleNode}
           {description ? (
             // Capped so a description stays a readable line on the wide frame.
-            <div id={descriptionId} className="mt-0.5 max-w-[68ch] text-xs leading-[1.5] text-[var(--color-text-tertiary)]">
+            <div id={descriptionId} className="mt-0.5 text-xs leading-[1.5] text-[var(--color-text-tertiary)]">
               {description}
             </div>
           ) : null}
@@ -251,7 +251,7 @@ export function SettingsSwitchRow({
 
 /** A padded free-form cell inside a `SettingsGroup`, for content that is not a title/control row. */
 export function SettingsBlock({ className, children }: { className?: string; children?: ReactNode }) {
-  return <div className={cx('px-4 py-3', className)}>{children}</div>
+  return <div data-settings-row="" className={cx('px-4 py-3', className)}>{children}</div>
 }
 
 export type SettingsPillProps = {

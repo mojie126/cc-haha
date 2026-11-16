@@ -23,5 +23,11 @@ describe('chat reading preferences', () => {
     const code = conversation.querySelector<HTMLElement>('[data-code-viewer-content]')
     expect(code?.style.fontSize).toBe('var(--code-viewer-font-size, 13px)')
     expect(code?.style.fontFamily).toBe('var(--font-mono)')
+    // Inline code is sentence text, not a terminal: globals.css gives it the
+    // reading face and a relative size so it follows the font-size setting.
+    const inlineCode = conversation.querySelector('p code')
+    expect(inlineCode).toBeTruthy()
+    expect(conversation.className).not.toContain('prose-code:font-mono')
+    expect(conversation.className).not.toContain('prose-code:text-[13px]')
   })
 })

@@ -179,7 +179,7 @@ describe('NewTaskModal', () => {
       // All seven native selects in the app shipped without a label or an
       // `aria-label`, leaving them nameless in the accessibility tree.
       renderModal()
-      expect(screen.getByLabelText('Frequency')).toHaveValue('daily')
+      expect(screen.getByLabelText('Frequency')).toHaveTextContent('Daily')
     })
 
     it('names the time field even though it shares the frequency caption', () => {
@@ -191,7 +191,8 @@ describe('NewTaskModal', () => {
 
     it('announces an invalid custom cron instead of only printing it', () => {
       renderModal()
-      fireEvent.change(screen.getByLabelText('Frequency'), { target: { value: 'customCron' } })
+      fireEvent.click(screen.getByLabelText('Frequency'))
+      fireEvent.click(screen.getByRole('option', { name: 'Custom cron expression' }))
 
       const cronField = screen.getByLabelText('Custom cron expression')
       fireEvent.change(cronField, { target: { value: 'not a cron' } })
@@ -243,7 +244,8 @@ describe('conversation schedules', () => {
     const updateTask = vi.fn(async (_id: string, _updates: unknown) => {})
     useTaskStore.setState({ updateTask })
     render(<NewTaskModal open onClose={vi.fn()} editTask={{ ...task, execution: { kind: 'session', targetSessionId: 'source' } }} />)
-    fireEvent.change(screen.getByLabelText('Execution'), { target: { value: 'new-session' } })
+    fireEvent.click(screen.getByLabelText('Execution'))
+    fireEvent.click(screen.getByRole('option', { name: 'Start a new chat on each run' }))
     expect(screen.getByRole('button', { name: /visible-model/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(updateTask).toHaveBeenCalledOnce())
@@ -323,7 +325,7 @@ describe('conversation schedules', () => {
     const updateTask = vi.fn(async (_id: string, _updates: unknown) => { throw new Error('Task changed in another window') })
     useTaskStore.setState({ updateTask })
     render(<NewTaskModal open onClose={vi.fn()} editTask={{ id: 'legacy', name: 'Check', prompt: 'Check', cron: '0 9 * * *', enabled: true, createdAt: 1 }} />)
-    expect(screen.getByLabelText('Execution')).toHaveValue('legacy')
+    expect(screen.getByLabelText('Execution')).toHaveTextContent('Independent task (existing settings)')
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Task changed in another window'))
     expect(updateTask.mock.calls[0]![1]).not.toHaveProperty('execution')

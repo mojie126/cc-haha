@@ -38,6 +38,14 @@ export function translate(
 }
 
 /**
+ * The active dictionary. Used by surfaces that need to enumerate keys rather
+ * than translate one — the settings search index is built from this.
+ */
+export function getTranslationDictionary(locale: Locale): Record<string, string> {
+  return translations[locale] ?? translations.en
+}
+
+/**
  * React hook that returns a `t()` function bound to the current locale.
  * Re-renders when the locale changes.
  *

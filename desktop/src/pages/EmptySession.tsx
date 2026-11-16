@@ -92,9 +92,10 @@ import { ComputerUseEnableDialog } from '@/components/computer-use/ComputerUseEn
 import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDialog'
 import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
 import { recordRecentSkills } from '@/lib/recentSkills'
-import { readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
+import { promptHistoryScopeForProject, readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import {
   NEW_SESSION_DRAFT_SESSION_ID,
+  clearPersistedComposerDraft,
   readComposerDraft,
   writeComposerDraft,
 } from '@/lib/composerDraftPersistence'
@@ -283,7 +284,9 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     const draft = draftComposerRef.current
     writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, draft)
   }, [])
-  // Shell-style prompt recall, same as the session composer.
+  // Shell-style prompt recall, same as the session composer, scoped to the
+  // project this draft will run in.
+  const promptHistoryScope = promptHistoryScopeForProject(workDir)
   const historyIndexRef = useRef(0)
   const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
   const resetHistoryNavigation = () => {
@@ -296,7 +299,7 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     requestAnimationFrame(() => composerRef.current?.setSelectionOffsets(text.length))
   }
   const recallPreviousPrompt = (): boolean => {
-    const history = readPromptHistory()
+    const history = readPromptHistory(promptHistoryScope)
     if (history.length === 0) return false
     if (historyIndexRef.current === 0) {
       historyDraftRef.current = { input, mentions }
@@ -310,7 +313,7 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     if (historyIndexRef.current === 0) return false
     historyIndexRef.current -= 1
     if (historyIndexRef.current > 0) {
-      applyHistoryPrompt(readPromptHistory()[historyIndexRef.current - 1] ?? '')
+      applyHistoryPrompt(readPromptHistory(promptHistoryScope)[historyIndexRef.current - 1] ?? '')
       return true
     }
     const draft = historyDraftRef.current
@@ -829,7 +832,7 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       connectToSession(sessionId)
       if (serializedText || attachmentPayload.length > 0) {
         sendMessage(sessionId, contentForModel, attachmentPayload, { displayContent: text })
-        recordPromptHistory(text || contentForModel)
+        recordPromptHistory(text || contentForModel, promptHistoryScope)
       }
       recordRecentSkills(mentions.flatMap(mention => mention.kind === 'skill' && mention.id ? [mention.id] : []))
       if (sendAsTeam) capabilityMenu.disarmAgentTeam()
@@ -838,6 +841,9 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       setAttachments([])
       // 同步清空落盘快照，避免卸载补写把已发送内容复活成草稿。
       draftComposerRef.current = { input: '', attachments: [], mentions: [] }
+      // 立即删除落盘草稿：防抖窗口内若马上打开新的新建页，会把刚下派的提示词
+      // 当作未使用草稿恢复出来，而它此时只应出现在上下键回溯里。
+      clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
     } catch (error) {
       addToast({
         type: 'error',

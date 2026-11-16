@@ -3040,8 +3040,9 @@ export function MessageList({
   const handleWheelScrollIntent = useCallback((event: { deltaY: number }) => {
     markUserScrollIntent()
     if (event.deltaY < 0) {
+      // Stop following; visibility is decided by the measured scroll position,
+      // so a wheel tick while already at the bottom never shows the button.
       shouldAutoScrollRef.current = false
-      setIsAwayFromLatest(true)
     }
   }, [markUserScrollIntent])
 
@@ -3061,7 +3062,6 @@ export function MessageList({
     markUserScrollIntent()
     if (isUpwardScrollKey) {
       shouldAutoScrollRef.current = false
-      setIsAwayFromLatest(true)
     }
   }, [markUserScrollIntent])
 
@@ -3161,7 +3161,9 @@ export function MessageList({
       return
     }
     if (!shouldAutoScrollRef.current) {
-      setIsAwayFromLatest(true)
+      // The scroll handler already published the measured position; re-reading
+      // it here would only risk showing the button while the reader is still at
+      // the bottom.
       return
     }
 
@@ -4480,7 +4482,10 @@ export function MessageList({
           aria-label={t('chat.jumpToLatest')}
           // `glass-panel` is unlayered CSS, so it wins over the variant's
           // layered background/border utilities without a tailwind-merge.
-          className="glass-panel absolute bottom-4 right-5 z-20 rounded-full text-[13px] font-medium hover:-translate-y-px motion-reduce:hover:translate-y-0"
+          // Centred over the composer, which the transcript column shares its
+          // measure with: the button marks "there is more below", so it belongs
+          // on the same axis as the input rather than in a corner.
+          className="glass-panel absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full text-[13px] font-medium hover:-translate-y-px motion-reduce:hover:translate-y-0"
           icon={<ArrowDown size={15} aria-hidden="true" />}
         >
           {t('chat.jumpToLatest')}

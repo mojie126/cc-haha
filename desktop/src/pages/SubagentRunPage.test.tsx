@@ -155,7 +155,7 @@ describe('SubagentRunPage', () => {
     useChatStore.setState({ sessions: {} })
     useTabStore.setState({ tabs: [], activeTabId: null })
     useActivityPanelStore.setState({
-      openSessionId: null,
+      openSessionIds: [],
       selectedSectionBySession: {},
       dismissedBackgroundTaskKeysBySession: {},
     })
@@ -280,7 +280,7 @@ describe('SubagentRunPage', () => {
 
     expect(useTabStore.getState().activeTabId).toBe('session-1')
     expect(useTabStore.getState().tabs.map((tab) => tab.sessionId)).toEqual(['session-1'])
-    expect(useActivityPanelStore.getState().openSessionId).toBe('session-1')
+    expect(useActivityPanelStore.getState().isOpen('session-1')).toBe(true)
   })
 
   it('fetches a workflow agent by agent id, not by tool call', async () => {
@@ -911,7 +911,10 @@ describe('SubagentRunPage', () => {
     expect(panel).toHaveAttribute('data-placement', 'rail')
     expect(within(panel).getByText('Keep the child task on the child run')).toBeInTheDocument()
     expect(within(panel).getByText('bun test child')).toBeInTheDocument()
-    expect(screen.getByTestId('agent-run-conversation-column')).toHaveClass('pr-[352px]')
+    // Docked rail: the conversation column keeps its measure because the panel
+    // is a sibling, not a padded-overlay.
+    expect(screen.getByTestId('agent-run-content-row')).toHaveAttribute('data-activity-rail-open', 'true')
+    expect(screen.getByTestId('agent-run-conversation-column')).toHaveClass('min-w-[360px]')
 
     fireEvent.click(screen.getByRole('button', { name: 'Close activity' }))
     await waitFor(() => expect(screen.queryByTestId('session-activity-panel')).not.toBeInTheDocument())
@@ -1766,7 +1769,7 @@ describe('SubagentRunPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to team overview' }))
     expect(useTabStore.getState().activeTabId).toBe(workbenchTabId)
     expect(useTabStore.getState().tabs.some((tab) => tab.sessionId === tabId)).toBe(false)
-    expect(useActivityPanelStore.getState().openSessionId).toBe('lead-session')
+    expect(useActivityPanelStore.getState().isOpen('lead-session')).toBe(true)
   })
 
   it('opens a nested Agent from an independent teammate session and returns to the member', async () => {
@@ -1935,9 +1938,7 @@ describe('SubagentRunPage', () => {
     })
     useActivityPanelStore.getState().open('lead-session')
     useTeamStore.getState().openMemberSession(member, team)
-    expect(useActivityPanelStore.getState().openSessionId).toBe(
-      'team-member:reviewer@review-team',
-    )
+    expect(useActivityPanelStore.getState().isOpen('team-member:reviewer@review-team')).toBe(true)
 
     render(
       <TeamMemberRunPage

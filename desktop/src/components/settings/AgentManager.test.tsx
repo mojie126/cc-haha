@@ -110,9 +110,8 @@ async function renderManager(response: AgentListResponse = EMPTY_RESPONSE) {
 }
 
 function chooseAgentSelect(label: string, option: string) {
-  const select = screen.getByRole('combobox', { name: label })
-  const selectedOption = within(select).getByRole('option', { name: option }) as HTMLOptionElement
-  fireEvent.change(select, { target: { value: selectedOption.value } })
+  fireEvent.click(screen.getByRole('combobox', { name: label }))
+  fireEvent.click(screen.getByRole('option', { name: option }))
 }
 
 function chooseAgentModel(option: string | RegExp) {
@@ -658,7 +657,7 @@ describe('AgentManager', () => {
     render(<AgentManager />)
     await waitFor(() => expect(useAgentStore.getState().availableTools).toContain('Read'))
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByRole('combobox', { name: 'Tools' })).toHaveValue('none')
+    expect(screen.getByRole('combobox', { name: 'Tools' })).toHaveTextContent('No tools')
     fireEvent.change(screen.getByLabelText(/^Description/), { target: { value: 'Updated review' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 

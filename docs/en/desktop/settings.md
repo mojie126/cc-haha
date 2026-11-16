@@ -34,8 +34,11 @@ General covers four areas: appearance and replies, how the agent works, network 
 
 ### Appearance and input
 
-- **Color theme:** Pure White, Paper, Warm Classic, Celadon, Ink Night, or Ink Blue. **Follow the system** lets you choose separate light and dark themes.
+- **Color theme:** Pure White, Paper, Warm Classic, Celadon, Ink Night, Ink Blue, or Deep Gray. **Follow the system** lets you choose separate light and dark themes.
 - **Language:** changes only the interface, with English, Simplified and Traditional Chinese, Japanese, and Korean choices. It does not set the response language.
+- **Settings width:** Standard, Wide, Fill, or a custom px/% width. On a wide display, Wide or Fill lets long descriptions and theme cards use the whole frame.
+- **Settings search:** at the top of the settings rail. Type to fuzzy-find any setting; choosing a result opens its pane and highlights the whole row until you change it, switch panes, or search again.
+- **Session tabs:** in General, cap how many chat tabs stay open and choose whether the last set of tabs is restored on launch (on by default).
 - **UI Zoom:** scales the whole window. Use `⌘+` / `⌘-` on macOS or `Ctrl+` / `Ctrl-` on Windows; press `0` to reset to 100%.
 - **Message sending:** defaults to Enter to send and Shift+Enter for a newline. If you write long prompts, choose `Ctrl/Cmd+Enter` to send.
 - **Fold reasoning:** on by default. The reasoning stays visible while a turn runs, then folds into a “Thought for Ns” row when the turn ends. When off, reasoning and tool activity stay fully expanded, including past turns; you can still fold them by hand.

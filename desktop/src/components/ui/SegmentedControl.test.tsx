@@ -85,6 +85,24 @@ describe('SegmentedControl', () => {
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'C' }))
   })
 
+  it('insets the selected fill equally on every side of the track', () => {
+    // The track owns a 3px inset on all four sides; the segment is shorter by
+    // that inset and its shadow has no downward offset, so the bottom gap does
+    // not read narrower than the top.
+    for (const [size, outer, segment] of [['sm', 'text-xs', 'h-[22px]'], ['md', 'text-sm', 'h-[26px]']] as const) {
+      const { unmount } = render(
+        <SegmentedControl items={ITEMS} value="all" onChange={() => {}} label="Filter" size={size} />,
+      )
+      const group = screen.getByRole('radiogroup', { name: 'Filter' })
+      expect(group.className).toContain('p-[3px]')
+      expect(group.className).toContain(outer)
+      expect(group.className).not.toMatch(/\bh-7\b|\bh-8\b/)
+      expect(screen.getByRole('radio', { name: 'All' }).className).toContain(segment)
+      expect(screen.getByRole('radio', { name: 'All' }).className).not.toContain('h-full')
+      unmount()
+    }
+  })
+
   it('gives every segment a focus ring in all four appearances', () => {
     for (const appearance of ['solid', 'raised', 'underline', 'chip'] as const) {
       const { unmount } = render(

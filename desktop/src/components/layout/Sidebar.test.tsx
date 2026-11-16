@@ -109,6 +109,7 @@ vi.mock('../../i18n', () => ({
       'sidebar.restoreProjectToSidebar': 'Restore to Sidebar',
       'sidebar.restoreHiddenProjects': 'Restore hidden projects ({count})',
       'sidebar.projectHidden': '{project} was hidden from the sidebar. Existing sessions were not deleted.',
+      'sidebar.projectNoSessions': 'No sessions yet',
       'sidebar.newSessionInProject': 'New session in {project}',
       'sidebar.showMoreSessions': 'Expand display',
       'sidebar.showFewerSessions': 'Collapse display',
@@ -259,6 +260,7 @@ import type { PerSessionState } from '../../stores/chatStore'
 const PROJECT_ORDER_STORAGE_KEY = 'cc-haha-sidebar-project-order'
 const PROJECT_PINNED_STORAGE_KEY = 'cc-haha-sidebar-pinned-projects'
 const PROJECT_HIDDEN_STORAGE_KEY = 'cc-haha-sidebar-hidden-projects'
+const PROJECT_REMEMBERED_STORAGE_KEY = 'cc-haha-sidebar-remembered-projects'
 const PROJECT_COLLAPSED_STORAGE_KEY = 'cc-haha-sidebar-collapsed-projects'
 const PROJECT_ORGANIZATION_STORAGE_KEY = 'cc-haha-sidebar-project-organization'
 const PROJECT_SORT_STORAGE_KEY = 'cc-haha-sidebar-project-sort'
@@ -484,6 +486,7 @@ describe('Sidebar', () => {
     window.localStorage.removeItem(PROJECT_ORDER_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_PINNED_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_HIDDEN_STORAGE_KEY)
+    window.localStorage.removeItem(PROJECT_REMEMBERED_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_COLLAPSED_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_ORGANIZATION_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_SORT_STORAGE_KEY)
@@ -532,6 +535,7 @@ describe('Sidebar', () => {
     window.localStorage.removeItem(PROJECT_ORDER_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_PINNED_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_HIDDEN_STORAGE_KEY)
+    window.localStorage.removeItem(PROJECT_REMEMBERED_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_COLLAPSED_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_ORGANIZATION_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_SORT_STORAGE_KEY)
@@ -565,6 +569,25 @@ describe('Sidebar', () => {
     expect(screen.queryByTestId('sidebar-archive-view')).not.toBeInTheDocument()
     expect(screen.getByTestId('sidebar-projects-header')).toBeInTheDocument()
     expect(screen.getByTestId('sidebar-project-group-workspace-alpha')).toBeInTheDocument()
+  })
+
+  it('keeps a remembered project when it has no sessions left', () => {
+    window.localStorage.setItem(PROJECT_REMEMBERED_STORAGE_KEY, JSON.stringify(['/workspace/remembered']))
+    useSessionStore.setState({ sessions: [] })
+    render(<Sidebar />)
+
+    const group = screen.getByTestId('sidebar-project-group-workspace-remembered')
+    expect(within(group).getByText('remembered')).toBeInTheDocument()
+    expect(within(group).getByText('No sessions yet')).toBeInTheDocument()
+    expect(within(group).queryByText('sidebar.projectAllArchived')).not.toBeInTheDocument()
+
+    // Hiding removes the row from the rail, not the remembered project itself.
+    fireEvent.click(screen.getByRole('button', { name: 'Project actions for remembered' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from Sidebar' }))
+    expect(screen.queryByTestId('sidebar-project-group-workspace-remembered')).not.toBeInTheDocument()
+    expect(JSON.parse(window.localStorage.getItem(PROJECT_REMEMBERED_STORAGE_KEY) ?? '[]'))
+      .toContain('/workspace/remembered')
+    expect(useSessionStore.getState().sessions).toEqual([])
   })
 
   it('offers no group selection for an archive-only project in batch mode', () => {

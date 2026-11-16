@@ -825,32 +825,17 @@ export function SessionActivityPanel({
   }
 
   if (!open) return null
-  // Both placements are out-of-flow overlays pinned to the top right of the
-  // session area. `rail` used to be an in-flow flex sibling, which is why the
-  // handoff's "content makes way over .2s" could not be built: the content
-  // column's width was whatever flex computed, and a flex-derived width is not
-  // animatable. Out of flow, the column owns its own padding and can transition
-  // it. Whoever renders this decides where it lands — the offsets resolve
-  // against the nearest positioned ancestor, which in `ActiveSession` is the
-  // session-area wrapper the chat column and this panel both sit in.
-  //
-  // `glass-panel` carries the frosted fill, hairline and `--shadow-overlay` the
-  // design gives every floating surface; the hand-rolled shadow it replaces was
-  // three hardcoded slate rgba layers plus a white gloss, none of which follow
-  // `data-theme`.
-  //
-  // The level is pinned to the `z-40` this replaced: the panel has to clear
-  // `MessageList`'s z-20 scroll button and stay under its fixed z-50 pill.
-  // `--z-scrim` is that level on the scale; the name is about where 40 sits,
-  // not about this being a scrim.
-  const shellClassName = 'glass-panel absolute top-4 z-[var(--z-scrim)] flex flex-col overflow-hidden rounded-[var(--radius-xl)] animate-overlay-in'
+  // `rail` is docked in the session row, beside the conversation: it takes its
+  // own column, so the transcript can never sit underneath it, and its height
+  // is the row's height rather than a fixed overlay cap. `overlay` stays an
+  // out-of-flow floating card for the phone fallback, where the chat column
+  // cannot give up width.
+  const shellClassName = 'glass-panel flex flex-col overflow-hidden'
   const className = placement === 'rail'
-    // 20px from the right edge is the handoff's number, and it is what makes
-    // the content column's 352px of padding leave the 8px gap it draws.
-    ? `${shellClassName} right-5 max-h-[min(620px,calc(100%-80px))] w-[340px]`
+    ? `${shellClassName} h-full w-[340px] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)]`
     // Phone width: inset 16px on both sides, so the panel narrows instead of
     // running off the screen.
-    : `${shellClassName} right-4 max-h-[calc(100%-80px)] w-[min(340px,calc(100%-32px))]`
+    : `${shellClassName} absolute right-4 top-4 z-[var(--z-scrim)] max-h-[calc(100%-80px)] w-[min(340px,calc(100%-32px))] rounded-[var(--radius-xl)] animate-overlay-in`
 
   return (
     <div

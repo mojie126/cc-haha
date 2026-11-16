@@ -14,7 +14,12 @@ export type MobileActivitySummary = {
 }
 
 type ActivityPanelStore = {
-  openSessionId: string | null
+  /**
+   * Sessions whose activity panel is open. Per session, not one at a time:
+   * switching conversations must not close the panel behind you, and coming
+   * back to a conversation has to show the panel exactly as it was left.
+   */
+  openSessionIds: string[]
   mobileSummaryBySession: Record<string, MobileActivitySummary | undefined>
   setMobileSummary: (sessionId: string, summary: MobileActivitySummary | null) => void
   selectedSectionBySession: Record<string, ActivitySectionId | undefined>
@@ -31,7 +36,7 @@ type ActivityPanelStore = {
 }
 
 export const useActivityPanelStore = create<ActivityPanelStore>((set, get) => ({
-  openSessionId: null,
+  openSessionIds: [],
   mobileSummaryBySession: {},
   setMobileSummary: (sessionId, summary) =>
     set((state) => {
@@ -48,16 +53,20 @@ export const useActivityPanelStore = create<ActivityPanelStore>((set, get) => ({
   selectedSectionBySession: {},
   dismissedBackgroundTaskKeysBySession: {},
 
-  isOpen: (sessionId) => get().openSessionId === sessionId,
+  isOpen: (sessionId) => get().openSessionIds.includes(sessionId),
 
   toggle: (sessionId) =>
     set((state) => ({
-      openSessionId: state.openSessionId === sessionId ? null : sessionId,
+      openSessionIds: state.openSessionIds.includes(sessionId)
+        ? state.openSessionIds.filter((id) => id !== sessionId)
+        : [...state.openSessionIds, sessionId],
     })),
 
   open: (sessionId, section) =>
     set((state) => ({
-      openSessionId: sessionId,
+      openSessionIds: state.openSessionIds.includes(sessionId)
+        ? state.openSessionIds
+        : [...state.openSessionIds, sessionId],
       selectedSectionBySession: section
         ? {
             ...state.selectedSectionBySession,
@@ -68,8 +77,11 @@ export const useActivityPanelStore = create<ActivityPanelStore>((set, get) => ({
 
   close: (sessionId) =>
     set((state) => {
-      if (sessionId && state.openSessionId !== sessionId) return state
-      return { openSessionId: null }
+      if (sessionId) {
+        if (!state.openSessionIds.includes(sessionId)) return state
+        return { openSessionIds: state.openSessionIds.filter((id) => id !== sessionId) }
+      }
+      return state.openSessionIds.length === 0 ? state : { openSessionIds: [] }
     }),
 
   getSelectedSection: (sessionId) => get().selectedSectionBySession[sessionId],

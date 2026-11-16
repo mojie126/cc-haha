@@ -584,15 +584,16 @@ export const __markdownParseCacheInternals = {
  * underline instead of solid, which distinguishes "opens in the workbench" from
  * "leaves the app" without adding a third colour. It deliberately does NOT get
  * `font-mono` — a monospaced run of ASCII inside Chinese prose is both jarring
- * and wider, and the extra width was pushing long paths onto a second line. The
- * inline-code form still reads as monospace because `prose-code` styles the
- * `<code>` inside it.
+ * and wider, and the extra width was pushing long paths onto a second line.
+ * Inline code follows the same rule: `globals.css` gives it the reading font
+ * and a size relative to `--chat-font-size`, so a `code` chip never breaks the
+ * sentence's typeface or ignores the reader's font-size setting.
  */
 const BASE_PROSE_CLASSES = `markdown-prose prose prose-sm min-w-0 max-w-none break-words [overflow-wrap:anywhere] text-[var(--color-text-primary)]
   prose-headings:text-[var(--color-text-primary)] prose-headings:font-semibold prose-headings:font-[var(--font-headline)]
   prose-p:my-2 prose-p:leading-relaxed
   prose-p:break-words prose-p:[overflow-wrap:anywhere]
-  prose-code:text-[13px] prose-code:text-[var(--color-code-fg)] prose-code:font-mono prose-code:font-normal prose-code:bg-[var(--color-surface-container)] prose-code:px-[5px] prose-code:py-px prose-code:rounded-[var(--radius-xs)] prose-code:before:hidden prose-code:after:hidden
+  prose-code:text-[var(--color-code-fg)] prose-code:font-normal prose-code:bg-[var(--color-surface-container)] prose-code:px-[5px] prose-code:py-px prose-code:rounded-[var(--radius-xs)] prose-code:before:hidden prose-code:after:hidden
   prose-pre:!bg-transparent prose-pre:!p-0 prose-pre:!shadow-none
   prose-a:text-[var(--color-text-accent)] prose-a:[overflow-wrap:anywhere]
   prose-a:underline prose-a:decoration-[1px] prose-a:underline-offset-[3px] prose-a:decoration-[var(--color-text-accent)] prose-a:hover:decoration-[2px]
@@ -632,7 +633,6 @@ const COMPACT_PROSE_CLASSES = `
   prose-headings:mt-2 prose-headings:mb-1 prose-headings:leading-snug
   prose-h1:text-[15px] prose-h2:text-sm prose-h3:text-xs prose-h4:text-xs
   prose-blockquote:my-2 prose-blockquote:border-l-2 prose-blockquote:border-[var(--color-outline)] prose-blockquote:pl-3 prose-blockquote:font-normal prose-blockquote:not-italic prose-blockquote:text-[var(--color-text-secondary)]
-  prose-code:text-[12px]
   prose-ul:my-1 prose-ol:my-1 prose-ul:pl-4 prose-ol:pl-4
   prose-li:my-0.5 prose-li:text-xs prose-li:leading-5 prose-li:text-[var(--color-text-secondary)]
   prose-table:text-xs

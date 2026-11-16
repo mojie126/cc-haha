@@ -13,7 +13,7 @@ import { COMPUTER_USE_ENABLE_REQUEST } from '@/lib/computerUseEnable'
 import { AGENT_TEAMS_NOTICE_STORAGE_KEY, dismissAgentTeamsNotice } from '@/lib/agentTeamsNotice'
 import { readRecentSkills, RECENT_SKILLS_STORAGE_KEY } from '@/lib/recentSkills'
 import { COMPOSER_DRAFT_STORAGE_KEY, readComposerDraft, writeComposerDraft } from '@/lib/composerDraftPersistence'
-import { recordPromptHistory, PROMPT_HISTORY_STORAGE_KEY } from '@/lib/promptHistory'
+import { promptHistoryScopeForProject, recordPromptHistory, PROMPT_HISTORY_SCOPES_STORAGE_KEY, PROMPT_HISTORY_STORAGE_KEY } from '@/lib/promptHistory'
 import { act, StrictMode } from 'react'
 
 const viewportMocks = vi.hoisted(() => ({
@@ -264,6 +264,7 @@ describe('ChatInput file mentions', () => {
     // 草稿现在跨进程持久化，用例之间必须清空，否则上一个用例的草稿会被回填
     localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
     localStorage.removeItem(PROMPT_HISTORY_STORAGE_KEY)
+    localStorage.removeItem(PROMPT_HISTORY_SCOPES_STORAGE_KEY)
     useSideChatStore.setState({ entries: {} })
     useTeamPlanStore.setState({ bySession: {} })
     useTeamStore.setState({ workbenchesBySession: {} })
@@ -1250,8 +1251,9 @@ describe('ChatInput file mentions', () => {
   })
 
   it('recalls previous prompts with Up and restores the draft with Down', async () => {
-    recordPromptHistory('older prompt')
-    recordPromptHistory('newer prompt')
+    const scope = promptHistoryScopeForProject('/repo')
+    recordPromptHistory('older prompt', scope)
+    recordPromptHistory('newer prompt', scope)
     render(<ChatInput compact />)
     setComposerText('draft in progress', 17)
 
@@ -1274,7 +1276,7 @@ describe('ChatInput file mentions', () => {
   })
 
   it('leaves history recall on Escape', async () => {
-    recordPromptHistory('recalled prompt')
+    recordPromptHistory('recalled prompt', promptHistoryScopeForProject('/repo'))
     render(<ChatInput compact />)
     fireEvent.keyDown(getComposerElement(), { key: 'ArrowUp' })
     expect(getComposerText()).toBe('recalled prompt')

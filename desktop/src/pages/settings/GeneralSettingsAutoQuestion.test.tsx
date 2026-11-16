@@ -38,7 +38,8 @@ describe('General settings automatic answers', () => {
     }))
     expect(toggle).toBeChecked()
 
-    fireEvent.change(screen.getByLabelText('等待时长'), { target: { value: '10' } })
+    fireEvent.click(screen.getByLabelText('等待时长'))
+    fireEvent.click(screen.getByRole('option', { name: '10 分钟' }))
     await waitFor(() => expect(settingsApi.updateUser).toHaveBeenCalledWith({
       autoQuestion: { enabled: true, timeoutMinutes: 10 },
     }))

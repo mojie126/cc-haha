@@ -132,12 +132,11 @@ describe('ShareImageDialog', () => {
     renderDialog()
     await settle()
 
-    const select = screen.getByLabelText('Image theme') as HTMLSelectElement
-    expect(Array.from(select.options).map((option) => option.value)).toEqual([
-      'current', 'white', 'paper', 'warm-classic', 'celadon', 'dark', 'ink-blue', 'neutral-dark',
-    ])
-    expect(screen.getByRole('option', { name: 'Neutral Dark' })).toHaveValue('neutral-dark')
-    expect(select.value).toBe('current')
+    const select = screen.getByRole('combobox', { name: 'Image theme' })
+    expect(select).toHaveTextContent('Follow current theme')
+    fireEvent.click(select)
+    expect(screen.getAllByRole('option')).toHaveLength(8)
+    expect(screen.getByRole('option', { name: 'Neutral Dark' })).toBeInTheDocument()
   })
 
   it('saves the rendered PNG under a dated name', async () => {

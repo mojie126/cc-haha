@@ -2009,9 +2009,7 @@ describe('ActiveSession task polling', () => {
       subagentTaskId: 'agent-task-1',
     })
     expect(useTabStore.getState().activeTabId).toBe('__subagent__activity-subagent-open-session__agent-tool-1')
-    expect(useActivityPanelStore.getState().openSessionId).toBe(
-      '__subagent__activity-subagent-open-session__agent-tool-1',
-    )
+    expect(useActivityPanelStore.getState().isOpen('__subagent__activity-subagent-open-session__agent-tool-1')).toBe(true)
   })
 
   it('opens the full team workbench directly from the header strip', () => {

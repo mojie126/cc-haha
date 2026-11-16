@@ -33,7 +33,7 @@ export const DEFAULT_CHAT_APPEARANCE: ChatAppearance = {
 }
 
 const FONT_STACKS: Record<ChatAppearance['font'], string> = {
-  system: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
+  system: '\'Inter\', -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
   sans: 'Arial, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
   serif: 'Georgia, "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", SimSun, serif',
   mono: '"JetBrains Mono", ui-monospace, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace',

@@ -185,7 +185,10 @@ export function PromptDocSettings() {
                 const next = event.currentTarget.value
                 setDraft((current) => ({ ...current, content: next }))
               }}
-              className="min-h-[320px] w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 font-mono text-xs leading-5 text-[var(--color-text-primary)] outline-none transition-colors focus-visible:border-[var(--color-border-focus)]"
+              // The prompt document is reading text, not code: it uses the same
+              // face and reader-controlled size as the chat composer instead of
+              // the monospace used for paths, JSON and identifiers.
+              className="chat-reading-text min-h-[320px] w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 leading-[1.7] text-[var(--color-text-primary)] outline-none transition-colors focus-visible:border-[var(--color-border-focus)]"
             />
             <div className="mt-2 flex items-center justify-end gap-2">
               {error ? (

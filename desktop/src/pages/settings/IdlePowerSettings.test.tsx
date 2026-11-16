@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { browserHost } from '@/lib/desktopHost/browserHost'
@@ -49,19 +49,24 @@ describe('idle power settings', () => {
     render(<GeneralSettings />)
     const action = screen.getByRole('combobox', { name: 'When all tasks finish' })
     await waitFor(() => expect(action).toBeEnabled())
-    expect(action).toHaveValue('none')
+    expect(action).toHaveTextContent('Do nothing')
     const scope = screen.getByRole('combobox', { name: 'Trigger after' })
     const countdown = screen.getByRole('combobox', { name: 'Countdown' })
     expect(scope).toBeDisabled()
-    expect(countdown).toHaveValue('60')
-    expect(within(countdown).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['0', '30', '60', '300'])
-    expect(within(action).getByRole('option', { name: 'Hibernate (unavailable)' })).toBeDisabled()
-    fireEvent.change(action, { target: { value: 'sleep' } })
-    await waitFor(() => expect(action).toHaveValue('sleep'))
-    fireEvent.change(scope, { target: { value: 'scheduled' } })
-    await waitFor(() => expect(scope).toHaveValue('scheduled'))
-    fireEvent.change(countdown, { target: { value: '300' } })
-    await waitFor(() => expect(countdown).toHaveValue('300'))
+    expect(countdown).toHaveTextContent('1 minute')
+    fireEvent.click(action)
+    expect(screen.getByRole('option', { name: 'Hibernate (unavailable)' })).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(screen.getByRole('option', { name: 'Sleep' }))
+    await waitFor(() => expect(action).toHaveTextContent('Sleep'))
+    fireEvent.click(scope)
+    fireEvent.click(screen.getByRole('option', { name: 'Scheduled tasks only' }))
+    await waitFor(() => expect(scope).toHaveTextContent('Scheduled tasks only'))
+    fireEvent.click(countdown)
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Immediately', '30 seconds', '1 minute', '5 minutes',
+    ])
+    fireEvent.click(screen.getByRole('option', { name: '5 minutes' }))
+    await waitFor(() => expect(countdown).toHaveTextContent('5 minutes'))
     expect(configure).toHaveBeenLastCalledWith({ action: 'sleep', scope: 'scheduled', countdownSeconds: 300 })
   })
 
@@ -70,14 +75,16 @@ describe('idle power settings', () => {
     render(<IdlePowerSettings />)
     const action = screen.getByRole('combobox', { name: 'When all tasks finish' })
     await waitFor(() => expect(action).toBeEnabled())
-    fireEvent.change(action, { target: { value: 'shutdown' } })
+    fireEvent.click(action)
+    fireEvent.click(screen.getByRole('option', { name: 'Shut down' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Could not save the idle action. Please try again.')
-    expect(action).toHaveValue('none')
+    expect(action).toHaveTextContent('Do nothing')
     expect(action).toBeEnabled()
     expect(action).toHaveAccessibleDescription(alert.textContent!)
-    fireEvent.change(action, { target: { value: 'lock' } })
-    await waitFor(() => expect(action).toHaveValue('lock'))
+    fireEvent.click(action)
+    fireEvent.click(screen.getByRole('option', { name: 'Lock screen' }))
+    await waitFor(() => expect(action).toHaveTextContent('Lock screen'))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -88,7 +95,7 @@ describe('idle power settings', () => {
     nativeState = { ...nativeState, settings: { action: 'hibernate', scope: 'scheduled', countdownSeconds: 30 } }
     fireEvent.click(screen.getByRole('button', { name: 'Refresh idle action' }))
     const action = screen.getByRole('combobox', { name: 'When all tasks finish' })
-    await waitFor(() => expect(action).toHaveValue('hibernate'))
+    await waitFor(() => expect(action).toHaveTextContent('Hibernate (unavailable)'))
     expect(screen.getByText('This action is unavailable on this computer. Choose another action.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(configure).not.toHaveBeenCalled()

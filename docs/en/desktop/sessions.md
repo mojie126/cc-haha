@@ -21,6 +21,8 @@ Closing a tab never deletes the session; it stays in the sidebar. Right-click an
 
 The small line under the session title is metadata: project path, branch, model. A session is bound to one directory — to work on a different project, start a new session.
 
+Projects you have opened are remembered by directory. A project stays in the sidebar even when it has no sessions, showing **No sessions yet**. **Hide from sidebar** in the project menu only hides that group: it deletes no sessions and touches no files on disk, and **Restore to sidebar** brings it back.
+
 ## Reading the conversation
 
 ![A release-notes conversation in the real project, with tool calls and the session list (Chinese interface)](../../images/app/en/session-main.webp)
@@ -34,6 +36,8 @@ Claude doesn't just reply with a paragraph. Several kinds of card appear along t
 - **Images** — a local image a reply references with Markdown image syntax is shown right in the conversation, and it doesn't have to be inside the project: an absolute path, one starting with `~/`, a Windows `C:\...` path or a `file:///...` URL all work (for images under your home directory or the temporary directories). Pictures Claude looked at with a tool such as Read also appear as thumbnails under that tool call, without expanding it. Click any of them to zoom and drag; in the desktop app the viewer has **Open in system app** at the bottom right, which opens the original file. When you use the app from a browser (H5), pictures referenced by path don't load yet; the thumbnails of pictures Claude read with a tool are not affected.
 
 In a long conversation, `⌘F` opens find-in-page and jumps between matches in the current session. `⌘K` is global search across every session you've ever had.
+
+When you scroll up through history, a centered **Jump to latest** button appears just above the composer; click it to return to the newest message. It stays hidden while you are already at the bottom.
 
 ## The permission prompt: which button?
 
@@ -109,6 +113,8 @@ The first button on the right of the tab bar opens the Activity panel, which lis
 
 Tool activity from background subagents bubbles up here too, so you don't have to wait for one to finish to see what it's doing.
 
+On the desktop the panel docks to the right of the conversation and takes its own column, so it never covers the transcript; its height follows the session area. Each session remembers whether its panel is open, so switching away and back leaves it as you left it.
+
 Team members retry on their own when the model service drops a stream, rate-limits, or returns a 5xx; the member row shows "Auto-retry 2/5" and neither you nor the lead has to step in. When the retries run out, or the error needs you (an expired API key, an empty balance, a used-up subscription limit), the row shows "Error" and the lead is told. Once the problem is fixed, tell the lead to continue: it gets the list of members that stopped on an error and wakes each one, which picks up from its saved conversation without redoing finished work. The Stop button halts the whole team, and the lead stops acting on its members' reports, without losing progress: your next message to the lead tells it which members stopped on which tasks, and it decides from your words whether they carry on. You can also message a member directly; it picks up from its saved conversation, and the same goes for a member marked "Stopped". Switching the model or permission mode doesn't interrupt the team, and after an app restart the team is still there — message a member to continue. Deleting the session or running `/clear` ends the team.
 
 ## Trajectory: what actually happened, step by step
@@ -135,15 +141,15 @@ With Agent Trace enabled in **Settings → General**, assistant lines also get a
 - **`@` file and session references** — type `@` to search files and past sessions. Files are attached as paths; sessions appear as clickable references.
 - **Attachments** — click `+`, drag files in, or paste a screenshot. Images, PDFs, and directories all work.
 - **Context usage ring** — the small ring shows how much of the context window is used; hover it for used, free, and window size. When it fills up, run `/compact`.
-- **Model and effort** — switch models at any time. Effort has five levels — low, medium, high, xhigh, max — and models that don't support a level ignore it.
-- **Prompt history** — with an empty composer, press `↑` to recall the most recent prompt and keep pressing to walk back; `↓` walks forward and restores the draft you started from; `Esc` abandons the recall. Typing ends it.
+- **Model and effort** — switch models at any time. Effort has five levels — low, medium, high, xhigh, max — and models that don't support a level ignore it. You can change both while a turn runs; the change applies from the next message, not to the turn in progress.
+- **Prompt history** — with an empty composer, press `↑` to recall the most recent prompt and keep pressing to walk back; `↓` walks forward and restores the draft you started from; `Esc` abandons the recall. History is per project, so prompts sent in one project never appear while recalling in another.
 - **Location** — shows the current project and branch. In a Git project you can switch branches here, or turn on **Isolated worktree** to keep an experiment off your main branch. See [Workspace](./workspace.md).
 
 Enter sends and Shift+Enter inserts a newline by default; **Settings → General** can swap that to `Ctrl/Cmd+Enter`. `⌘.` stops the current generation.
 
 While a turn is running, a new message queues until the turn ends. Press `Ctrl+Enter`, or click **Guide** above the composer, to hand it to the model at the next tool boundary so you can redirect the work in progress. If you swap the send shortcut to `Ctrl/Cmd+Enter`, the **Queue / Guide** buttons above the composer still choose the mode.
 
-Unsent drafts are saved automatically and come back after switching sessions or restarting the app. Inline image data from pasted screenshots is not written to local storage, so paste them again after a restart.
+Unsent drafts are saved automatically and come back after switching sessions or restarting the app. Inline image data from pasted screenshots is not written to local storage, so paste them again after a restart. A draft is cleared as soon as it is sent: opening a new session no longer restores what was just dispatched; press `↑` to recall it from history instead.
 
 The composer renders common Markdown as you type: headings, bold, italic, bold italic, strikethrough (`~~` or `~`), inline code, code blocks, quotes, ordered / unordered / task lists, links and images, and horizontal rules. The caret's line keeps its syntax visible; every other line folds it away. Unordered items keep a bullet and ordered items keep their number while folded, and the text that is sent is always the original source.
 
