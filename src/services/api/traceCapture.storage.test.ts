@@ -165,6 +165,15 @@ test('isolates indexes, reads, lists and deletion across storage roots with the 
   expect((await traceCaptureService.getSessionTraceOverview('shared-session')).calls[0]?.id).toBe('default')
 })
 
+test('clears every trace file in the current storage root', async () => {
+  await record('first-call', 'session-a')
+  await record('second-call', 'session-b')
+  expect((await traceCaptureService.listSessionTraceFiles()).total).toBe(2)
+
+  expect(await traceCaptureService.deleteAllSessionTraces()).toEqual({ deleted: 2 })
+  expect((await traceCaptureService.listSessionTraceFiles()).total).toBe(0)
+})
+
 test('keeps an in-flight append and index projection in the captured custom directory', async () => {
   const first = join(root, 'first')
   const second = join(root, 'second')

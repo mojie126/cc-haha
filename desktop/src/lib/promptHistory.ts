@@ -14,6 +14,12 @@ const MAX_PROMPT_HISTORY = 100
 const MAX_PROMPT_LENGTH = 8_000
 /** Keep the newest N scopes; each is cheap, but the quota is not. */
 const MAX_PROMPT_HISTORY_SCOPES = 30
+/**
+ * Total prompt characters kept across every scope. Per-scope caps alone would
+ * allow `scopes × entries × 8KB` (tens of megabytes), which overruns the
+ * localStorage quota and silently stops saving. Oldest prompts go first.
+ */
+export const MAX_PROMPT_HISTORY_TOTAL_CHARS = 400_000
 
 export const GLOBAL_PROMPT_HISTORY_SCOPE = 'global'
 
@@ -88,6 +94,26 @@ function pruneScopes(envelope: ScopeEnvelope): ScopeEnvelope {
   return { ...envelope, scopes }
 }
 
+/** Enforces the total character budget by dropping the oldest prompts first. */
+function pruneTotalChars(envelope: ScopeEnvelope): ScopeEnvelope {
+  let total = 0
+  for (const entry of Object.values(envelope.scopes)) {
+    for (const prompt of entry.prompts) total += prompt.length
+  }
+  if (total <= MAX_PROMPT_HISTORY_TOTAL_CHARS) return envelope
+
+  const byAge = Object.entries(envelope.scopes)
+    .sort(([, left], [, right]) => left.updatedAt - right.updatedAt)
+  for (const [scope, entry] of byAge) {
+    while (entry.prompts.length > 0 && total > MAX_PROMPT_HISTORY_TOTAL_CHARS) {
+      total -= entry.prompts.pop()!.length
+    }
+    if (entry.prompts.length === 0) delete envelope.scopes[scope]
+    if (total <= MAX_PROMPT_HISTORY_TOTAL_CHARS) break
+  }
+  return envelope
+}
+
 /** Stable scope key for a project directory; blank falls back to the global list. */
 export function promptHistoryScopeForProject(pathLike: string | null | undefined): string {
   const normalized = pathLike?.trim().replace(/\\/g, '/').replace(/\/+$/, '')
@@ -118,7 +144,7 @@ export function recordPromptHistory(prompt: string, scope: string = GLOBAL_PROMP
   const next = [bounded, ...history.filter((entry) => entry !== bounded)]
     .slice(0, MAX_PROMPT_HISTORY)
   envelope.scopes[scope] = { prompts: next, updatedAt: Date.now() }
-  writeEnvelope(pruneScopes(envelope))
+  writeEnvelope(pruneTotalChars(pruneScopes(envelope)))
 }
 
 export function clearPromptHistory(scope?: string): void {

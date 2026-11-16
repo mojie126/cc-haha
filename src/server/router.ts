@@ -62,6 +62,11 @@ async function handleApiRequestWithoutPerformance(req: Request, url: URL, contex
   const isSettings = parts[1] === 'settings'
   // 提示词文档按客户端给出的工作目录读写主机文件，只允许桌面端调用。
   if (parts[1] === 'prompts') return Response.json({ error: 'Desktop-only capability' }, { status: 403 })
+  // Trace files contain raw requests/responses; a paired phone must not be able
+  // to delete the host's records. Reading stays available for diagnostics.
+  if (parts[1] === 'traces' && req.method === 'DELETE') {
+    return Response.json({ error: 'Desktop-only capability' }, { status: 403 })
+  }
   if (!isProvider && !isSettings) return routeApiRequest(req, url)
   if ((isProvider && !remoteProviderRouteAllowed(parts, req.method)) || (isSettings && !remoteSettingsRouteAllowed(parts, req.method))) {
     return Response.json({ error: 'Desktop-only capability' }, { status: 403 })

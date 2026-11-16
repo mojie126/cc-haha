@@ -11,6 +11,7 @@ import type { ProviderPreset } from '../types/providerPreset'
 import type { AppMode, ChatSendBehavior, PermissionMode, ThemeMode, UpdateProxySettings } from '../types/settings'
 import { browserHost } from '../lib/desktopHost/browserHost'
 import { settingsApi } from '../api/settings'
+import { tracesApi } from '../api/traces'
 
 // Hoisted like the other mocks: a store that imports the providers API at load
 // time runs the module factory below before plain top-level consts exist.
@@ -1708,6 +1709,18 @@ describe('Settings > General tab', () => {
     expect(screen.getByLabelText('Collect agent traces')).not.toBeChecked()
     expect(screen.getByText('Agent trace')).toBeInTheDocument()
     expect(screen.getByText('Message Sending')).toBeInTheDocument()
+  })
+
+  it('clears recorded trace files after confirmation', async () => {
+    const clearAll = vi.spyOn(tracesApi, 'clearAll').mockResolvedValue({ deleted: 3 })
+    render(<Settings />)
+    fireEvent.click(screen.getByText('General'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear trace records' }))
+    expect(clearAll).not.toHaveBeenCalled()
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear traces' }))
+
+    await waitFor(() => expect(clearAll).toHaveBeenCalledTimes(1))
   })
 
   it('points the capture hint at the session Trajectory view instead of the removed trace list', async () => {

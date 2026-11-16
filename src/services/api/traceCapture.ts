@@ -1066,6 +1066,17 @@ class TraceCaptureService {
     }
   }
 
+  async deleteAllSessionTraces(): Promise<{ deleted: number }> {
+    syncTraceIndexMode()
+    const { files } = await this.listSessionTraceFiles()
+    let deleted = 0
+    for (const file of files) {
+      const result = await this.deleteSessionTrace(file.sessionId)
+      if (result.deleted) deleted += 1
+    }
+    return { deleted }
+  }
+
   async listSessionTraces(options?: {
     limit?: number
     offset?: number

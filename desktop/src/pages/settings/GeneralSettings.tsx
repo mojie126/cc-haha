@@ -11,6 +11,7 @@ import {
   NETWORK_TIMEOUT_MAX_SECONDS,
 } from '../../stores/settingsStore'
 import { settingsApi } from '../../api/settings'
+import { tracesApi } from '../../api/traces'
 import { useTranslation, type TranslationKey } from '../../i18n'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDialog'
@@ -200,6 +201,8 @@ export function GeneralSettings() {
   const retentionPreviewRequestId = useRef(0)
   const effortButtonRef = useRef<HTMLButtonElement>(null)
   const addToast = useUIStore((s) => s.addToast)
+  const [traceClearConfirmOpen, setTraceClearConfirmOpen] = useState(false)
+  const [traceClearing, setTraceClearing] = useState(false)
   const openTargets = useOpenTargetStore((s) => s.targets)
   const ensureOpenTargets = useOpenTargetStore((s) => s.ensureTargets)
   const editorTargetId = useOpenTargetStore((s) => s.editorTargetId)
@@ -477,6 +480,19 @@ export function GeneralSettings() {
       addToast({ type: 'error', message: t('settings.general.promptSuggestionsSaveFailed') })
     } finally {
       setPromptSuggestionsSaving(false)
+    }
+  }
+
+  const confirmClearTraceLogs = async () => {
+    setTraceClearing(true)
+    try {
+      const { deleted } = await tracesApi.clearAll()
+      addToast({ type: 'success', message: t('settings.general.traceClearSuccess', { count: deleted }) })
+      setTraceClearConfirmOpen(false)
+    } catch {
+      addToast({ type: 'error', message: t('settings.general.traceClearFailed') })
+    } finally {
+      setTraceClearing(false)
     }
   }
 
@@ -1592,8 +1608,19 @@ export function GeneralSettings() {
             checked={traceCapture.enabled}
             onChange={(enabled) => void setTraceCaptureEnabled(enabled)}
             footer={traceCapture.storageDir ? (
-              <div className="truncate rounded-[var(--radius-sm)] bg-[var(--color-surface-container)] px-2 py-1 font-mono text-[11px] text-[var(--color-text-secondary)]">
-                {traceCapture.storageDir}
+              <div className="space-y-1.5">
+                <div className="break-all rounded-[var(--radius-sm)] bg-[var(--color-surface-container)] px-2 py-1 font-mono text-[11px] text-[var(--color-text-secondary)]">
+                  {traceCapture.storageDir}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={traceClearing}
+                  onClick={() => setTraceClearConfirmOpen(true)}
+                >
+                  {t('settings.general.traceClear')}
+                </Button>
               </div>
             ) : undefined}
           />
@@ -1710,7 +1737,7 @@ export function GeneralSettings() {
                     setPortableDirDraft(event.target.value)
                     setModeError(null)
                   }}
-                  className="font-mono text-xs"
+                  className="font-mono text-xs placeholder:text-sm"
                   disabled={migrationRunning}
                 />
                 <Button
@@ -1839,6 +1866,27 @@ export function GeneralSettings() {
         cancelLabel={t('common.cancel')}
         confirmVariant="primary"
         loading={autoDreamActionRunning}
+      />
+      <ConfirmDialog
+        open={traceClearConfirmOpen}
+        onClose={() => {
+          if (!traceClearing) setTraceClearConfirmOpen(false)
+        }}
+        onConfirm={() => void confirmClearTraceLogs()}
+        title={t('settings.general.traceClearConfirmTitle')}
+        body={(
+          <div className="space-y-2">
+            <p>{t('settings.general.traceClearConfirmBody')}</p>
+            {traceCapture.storageDir && (
+              <div className="break-all rounded-[var(--radius-md)] bg-[var(--color-surface-container)] px-3 py-2 font-mono text-xs text-[var(--color-text-secondary)]">
+                {traceCapture.storageDir}
+              </div>
+            )}
+          </div>
+        )}
+        confirmLabel={t('settings.general.traceClearConfirm')}
+        cancelLabel={t('common.cancel')}
+        loading={traceClearing}
       />
       <ConfirmDialog
         open={retentionConfirmOpen}

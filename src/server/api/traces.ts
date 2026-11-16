@@ -44,6 +44,9 @@ export async function handleTracesApi(
 
     switch (sub) {
       case undefined:
+        if (req.method === 'DELETE') {
+          return Response.json(await traceCaptureService.deleteAllSessionTraces())
+        }
         if (req.method !== 'GET') throw methodNotAllowed(req.method, '/api/traces')
         return await listTraces(url)
 

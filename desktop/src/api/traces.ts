@@ -9,4 +9,8 @@ export const tracesApi = {
   updateSettings(settings: Partial<Pick<TraceCaptureSettings, 'enabled'>>) {
     return api.put<TraceCaptureSettings>('/api/traces/settings', settings)
   },
+
+  clearAll() {
+    return api.delete<{ deleted: number }>('/api/traces')
+  },
 }

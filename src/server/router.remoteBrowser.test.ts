@@ -190,4 +190,11 @@ describe('remote browser API routing', () => {
     expect((await request('/api/prompts/doc', 'PUT', { id: 'global', content: 'x' })).status).toBe(403)
     expect((await request('/api/providers/discovered-models')).status).toBe(403)
   })
+
+  test('trace deletion stays desktop-only', async () => {
+    // Trace files hold raw model requests and responses; a paired phone may read
+    // diagnostics but must not wipe the host's records.
+    expect((await request('/api/traces', 'DELETE')).status).toBe(403)
+    expect((await request('/api/traces/session-id', 'DELETE')).status).toBe(403)
+  })
 })

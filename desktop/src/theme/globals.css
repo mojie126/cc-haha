@@ -1758,6 +1758,15 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* A placeholder is a sentence, not data. Fields that set their typed value in
+   mono (paths, keys) must not set the hint in mono too: fall through to the
+   normal UI face so every hint reads the same. */
+input::placeholder,
+textarea::placeholder {
+  font-family: var(--font-body);
+  font-style: normal;
+}
+
 /* Code reads as code: JetBrains Mono's ligatures turned `===` into a single
    glyph inside diffs and inline code. */
 code, kbd, pre, samp, .font-mono {
