@@ -1,7 +1,8 @@
 import { SessionScheduleMark } from '@/components/tasks/SessionScheduleMark'
 import { forwardRef, useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
-import { Archive, Bell, CalendarClock, Check, ChevronRight, Clock, Ellipsis, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings, Smartphone, SquarePen, Store, Trash2, X } from 'lucide-react'
+import { Archive, Bell, CalendarClock, Check, ChevronRight, Clock, Copy, Download, Ellipsis, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings, Smartphone, SquarePen, Store, Trash2, X } from 'lucide-react'
 import { releaseWorkspaceSession } from '../../lib/workspace/releaseSession'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useTranslation, type TranslationKey } from '../../i18n'
@@ -72,6 +73,7 @@ import {
 } from './sidebarProjectPreferenceStorage'
 import { useSessionListAutoRefresh } from '../../hooks/useSessionListAutoRefresh'
 import { formatRelativeTime } from '../../lib/formatRelativeTime'
+import { buildSessionMarkdown, downloadTextFile, isCompleteSessionHistory, sanitizeSessionFilename } from '../../lib/sessionMarkdown'
 
 const desktopHost = getDesktopHost()
 const isDesktopRuntime = desktopHost.isDesktop
@@ -523,6 +525,38 @@ export function Sidebar({
     if (isBatchMode) return
     setContextMenu({ id, x: e.clientX, y: e.clientY })
   }, [isBatchMode])
+
+  const copySessionId = useCallback(async (sessionId: string) => {
+    setContextMenu(null)
+    const ok = await copyTextToClipboard(sessionId)
+    addToast({
+      type: ok ? 'success' : 'error',
+      message: t(ok ? 'sidebar.sessionIdCopied' : 'sidebar.sessionIdCopyFailed'),
+    })
+  }, [addToast, t])
+
+  const handleMarkdown = useCallback(async (id: string, mode: 'copy' | 'export') => {
+    setContextMenu(null)
+    const session = sessions.find((item) => item.id === id)
+    if (!session) return
+    try {
+      const history = await sessionsApi.getFullHistory(id)
+      if (!isCompleteSessionHistory(history)) {
+        addToast({ type: 'error', message: t('sidebar.markdownHistoryIncomplete') })
+        return
+      }
+      const markdown = buildSessionMarkdown(session.title || t('tabs.untitled'), history)
+      if (mode === 'copy') {
+        if (!await copyTextToClipboard(markdown)) throw new Error('clipboard')
+        addToast({ type: 'success', message: t('sidebar.markdownCopied') })
+      } else {
+        downloadTextFile(markdown, sanitizeSessionFilename(session.title || t('tabs.untitled')))
+        addToast({ type: 'success', message: t('sidebar.markdownExported') })
+      }
+    } catch {
+      addToast({ type: 'error', message: t(mode === 'copy' ? 'sidebar.markdownCopyFailed' : 'sidebar.markdownExportFailed') })
+    }
+  }, [addToast, sessions, t])
 
   const handleProjectDragStart = useCallback((event: React.DragEvent, projectKey: string) => {
     if (isBatchMode) {
@@ -1706,6 +1740,24 @@ export function Sidebar({
             }}
           >
             {t('common.rename')}
+          </SidebarMenuItem>
+          <SidebarMenuItem
+            icon={<Copy size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            onClick={() => void copySessionId(contextMenu.id)}
+          >
+            {t('sidebar.copySessionId')}
+          </SidebarMenuItem>
+          <SidebarMenuItem
+            icon={<Copy size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            onClick={() => void handleMarkdown(contextMenu.id, 'copy')}
+          >
+            {t('sidebar.copyMarkdown')}
+          </SidebarMenuItem>
+          <SidebarMenuItem
+            icon={<Download size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            onClick={() => void handleMarkdown(contextMenu.id, 'export')}
+          >
+            {t('sidebar.exportMarkdown')}
           </SidebarMenuItem>
           <SidebarMenuItem
             icon={<Archive size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}

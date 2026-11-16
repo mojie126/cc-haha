@@ -40,6 +40,11 @@ const sessionsApiMock = vi.hoisted(() => ({
 
 const repositoryContextMock = sessionsApiMock.getRepositoryContext
 
+const copyTextToClipboardMock = vi.hoisted(() => vi.fn(async () => true))
+vi.mock('@/lib/clipboard', () => ({
+  copyTextToClipboard: copyTextToClipboardMock,
+}))
+
 vi.mock('../../api/sessions', () => ({
   sessionsApi: sessionsApiMock,
 }))
@@ -110,6 +115,16 @@ vi.mock('../../i18n', () => ({
       'sidebar.restoreHiddenProjects': 'Restore hidden projects ({count})',
       'sidebar.projectHidden': '{project} was hidden from the sidebar. Existing sessions were not deleted.',
       'sidebar.projectNoSessions': 'No sessions yet',
+      'sidebar.copySessionId': 'Copy session ID',
+      'sidebar.sessionIdCopied': 'Session ID copied',
+      'sidebar.sessionIdCopyFailed': 'Could not copy the session ID',
+      'sidebar.copyMarkdown': 'Copy Markdown',
+      'sidebar.exportMarkdown': 'Export Markdown',
+      'sidebar.markdownCopied': 'Markdown copied',
+      'sidebar.markdownExported': 'Markdown exported',
+      'sidebar.markdownHistoryIncomplete': 'Session history is incomplete',
+      'sidebar.markdownCopyFailed': 'Could not copy the Markdown',
+      'sidebar.markdownExportFailed': 'Could not export the Markdown',
       'sidebar.newSessionInProject': 'New session in {project}',
       'sidebar.showMoreSessions': 'Expand display',
       'sidebar.showFewerSessions': 'Collapse display',
@@ -645,7 +660,7 @@ describe('Sidebar', () => {
     fireEvent.contextMenu(screen.getByText('Archive target'))
     const menu = screen.getByRole('menu')
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      'Rename', 'sidebar.archiveSession', 'Delete',
+      'Rename', 'Copy session ID', 'Copy Markdown', 'Export Markdown', 'sidebar.archiveSession', 'Delete',
     ])
     expect(within(menu).getByRole('separator')).toBeInTheDocument()
 
@@ -661,6 +676,20 @@ describe('Sidebar', () => {
 
     await act(async () => addToast.mock.calls[0]![0].action.onClick())
     expect(setSessionsArchived).toHaveBeenCalledWith(['archive-target'], false)
+  })
+
+  it('copies the session id from the session menu', async () => {
+    copyTextToClipboardMock.mockClear()
+    useSessionStore.setState({ sessions: [makeSession('read-target', 'Read target', '/workspace/alpha', '2026-01-01')] })
+    render(<Sidebar />)
+    fireEvent.contextMenu(screen.getByText('Read target'))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Copy session ID' }))
+
+    await waitFor(() => expect(copyTextToClipboardMock).toHaveBeenCalledWith('read-target'))
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'success',
+      message: 'Session ID copied',
+    })))
   })
 
   it('leaves a rejected session usable and without an undo', async () => {

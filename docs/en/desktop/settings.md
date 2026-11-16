@@ -95,6 +95,8 @@ External tools and data sources. STDIO, Streamable HTTP, and SSE transports are 
 
 The three numbers at the top are total servers, currently connected, and needs attention. STDIO commands run directly on your machine, so runtimes like Node, Python, and Bun must be installed and on your `PATH`.
 
+When several projects share the same server, the list merges the project copies into one row; expanding it shows each project's configuration, while connect, enable, and other actions stay per project.
+
 ## Agents
 
 Browse installed agents and create your own. See [Subagents](./agents.md).

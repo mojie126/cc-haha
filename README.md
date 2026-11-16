@@ -21,22 +21,8 @@
 
 cc-haha 是一个**桌面端 Claude Code 工作台**：多会话与全局搜索、分支 / Worktree 启动、Diff 审阅、内置浏览器预览、图形化权限审批、模型自选（Claude / ChatGPT / Grok / 预设 / 本地端点）、图片生成、MCP 与 SubAgent 可视化管理、Agent Teams 协作工作台、动态 Workflow 编排、模型请求追踪、Computer Use、技能市场、多主题、桌面宠物、手机 App 与 H5 远程访问、IM 接入和定时任务，集中在一个 macOS / Windows / Linux APP 里。**Computer Use 在 macOS 上使用原有原生引擎，在 Windows / Linux 上复用 agent-desktop；支持的后台语义操作不移动真实鼠标，物理输入仍会占用前台。** 配套的 Android / iPhone App 扫码连上电脑，离开工位也能审批、派任务。
 
-<p align="center"><b>白金赞助商 · Modelflare</b></p>
-
 <p align="center">
-  <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=cchaha">
-    <img src="docs/images/sponsors/modelflare-banner-zh.png" width="720" alt="Modelflare：满血稳定不掺水，低成本享受全球 SOTA 模型">
-  </a>
-</p>
-
-<p><sub>感谢 <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=cchaha">Modelflare</a> 赞助本项目！Modelflare：满血稳定不掺水，低成本享受全球 SOTA 模型。站点由美国 LLC 主体 Havenbyte LLC 运营，支持 GPT、Claude、Gemini、Grok 等主流模型和常用兼容协议，还支持 40 多种图片和视频模型。</sub></p>
-
-<p><sub><b>缓存补偿是一大亮点：</b>部分 OpenAI 价格优先、稳定和高级分组提供每日 65%、75%、85% 的缓存命中率保障，符合条件的请求没达到目标的，平台补偿差额，结算后可在用量看板查看。</sub></p>
-
-<p><sub><b>特惠活动：</b>单笔充值 US$20 即可解锁 0.015 倍价格倍率的 GPT 特惠分组，单笔充值 US$50 即可解锁 0.03 倍价格倍率的 Claude 特惠分组。通过 <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=cchaha">专属链接注册</a>即可参与。</sub></p>
-
-<p align="center">
-  <a href="#功能预览">功能预览</a> · <a href="#安装">安装</a> · <a href="#桌面端亮点">桌面端亮点</a> · <a href="#更多文档">更多文档</a> · <a href="#赞助与合作">赞助与合作</a>
+  <a href="#功能预览">功能预览</a> · <a href="#安装">安装</a> · <a href="#桌面端亮点">桌面端亮点</a> · <a href="#更多文档">更多文档</a>
 </p>
 
 ---
@@ -82,63 +68,6 @@ cc-haha 是一个**桌面端 Claude Code 工作台**：多会话与全局搜索�
 
 ---
 
-## 赞助与合作
-
-本项目由个人利用业余时间维护，欢迎企业或个人赞助支持持续开发，也可洽谈定制、集成或商务合作。
-
-<table>
-  <thead>
-    <tr>
-      <th width="220">赞助商</th>
-      <th align="left">介绍</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://aruhub.com/sign-up?aff=Z54g">
-          <img src="docs/images/sponsors/aruhub-logo.png" width="180" alt="AruHub">
-        </a>
-      </td>
-      <td valign="middle">
-        感谢 <a href="https://aruhub.com/sign-up?aff=Z54g">AruHub</a> 对本项目的赞助！AruHub 专注为开发者提供长期稳定的主力 API 上游服务。面向 Codex / Claude Code 等高频 AI Coding 场景，提供 GPT 企业分组官方接口、Claude 稳定企业分组，适合长时间持续调用；同时覆盖 GPT、Claude 等主流模型。Image 2 / 2.5 全天稳定供应，低至 0.04 元/张。按量付费，支持企业大用量、开发票及退款。通过 <a href="https://aruhub.com/sign-up?aff=Z54g">专属链接</a>注册即送 1 美元全模型通用额度，不限制模型使用。
-      </td>
-    </tr>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://moeapi.cloud/register?utm_source=github&amp;utm_campaign=cchaha">
-          <img src="docs/images/sponsors/moeapi-logo.png" width="180" alt="Moe API">
-        </a>
-      </td>
-      <td valign="middle">
-        感谢 <a href="https://moeapi.cloud/register?utm_source=github&amp;utm_campaign=cchaha">Moe API</a> 对本项目的赞助！Moe API 是面向开发者与团队的统一大模型 API 平台，一个 Key 即可接入 GPT、Claude、Gemini、Grok、DeepSeek、Kimi、GLM、Qwen 等 120+ 模型，原生兼容 OpenAI（Chat / Responses）、Anthropic Messages 与 Gemini 协议，可直接用于 cc-haha、Claude Code、Codex 等工具。价格按 1 元 = 1 美元额度计费，Codex 自营号池倍率低至 0.1x，Gemini 自营 0.25x、Grok 0.2x、Claude Code 第三方号池 0.35x、DeepSeek / GLM / Kimi 0.5x 起，并支持 GPT Image、Gemini 生图。支持支付宝、微信扫码充值，余额实时到账；可按需开具发票，余额支持退款，团队采购与报销都方便。全球 CDN 线路，API 请求与响应正文不在平台持久化保存。
-      </td>
-    </tr>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://www.kk-vibe.top/r/j8d6we">
-          <img src="docs/images/sponsors/kkvibe-logo.png" width="180" alt="kk-vibe">
-        </a>
-      </td>
-      <td valign="middle">
-        感谢 <a href="https://www.kk-vibe.top/r/j8d6we">kk-vibe</a> 对本项目的赞助！kk-vibe 覆盖 GPT、Claude、Gemini、DeepSeek 等主流模型，24 小时「鹈鹕骑车」实测，渠道状态随时可查。内置无限画布，支持 GPT、Nano Banana 生图，兼顾编程开发与视觉创作。模型表现看得见 · 无限画布自由创作。
-      </td>
-    </tr>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://www.zuiquanapi.com/"><b>最全 API<br>中转站导航</b></a>
-      </td>
-      <td valign="middle">
-        朋友做的一个 AI API 中转站导航——<a href="https://www.zuiquanapi.com/">最全 API 中转站导航</a>，汇总各家站点，方便按模型和价格查找、对比。如果你还不知道怎么选中转站，可以先来这里看看。
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-📧 **联系邮箱**：relakkes@gmail.com
-
----
-
 ## 安装
 
 1. 前往 [Releases](https://github.com/NanmiCoder/cc-haha/releases) 下载 macOS / Windows / Linux 桌面端安装包。
@@ -147,31 +76,6 @@ cc-haha 是一个**桌面端 Claude Code 工作台**：多会话与全局搜索�
 4. 手机端（可选）：Android 在 Releases 下载 `cc-haha-mobile-*.apk` 安装；iPhone 先装 TestFlight，再打开[公开链接](https://testflight.apple.com/join/Nd49JrWZ)加入测试。手机 App 需要桌面端 v0.7.6 或更新版本。在桌面端「手机连接」里扫码配对，同一 Wi-Fi 直连，外出用 Cloudflare 连接，详见 [手机 App 与远程连接](docs/desktop/remote.md)。
 
 发布可信度与隐私：[Code signing policy](docs/start/code-signing.md) · [隐私与联网说明](docs/start/privacy.md)
-
----
-
-## ☕ 请作者喝杯咖啡
-
-如果这个项目对您有帮助，欢迎打赏支持，您的每一份支持都是我持续更新的动力 ❤️
-
-<table>
-<tr>
-<td align="center" width="33%">
-<img src="docs/images/donate/wechat_pay.jpeg" width="250" alt="微信赞赏"><br>
-<b>微信赞赏</b>
-</td>
-<td align="center" width="33%">
-<img src="docs/images/donate/zfb_pay.png" width="250" alt="支付宝"><br>
-<b>支付宝</b>
-</td>
-<td align="center" width="33%">
-<a href="https://buymeacoffee.com/relakkes" target="_blank">
-<img src="docs/images/donate/bmc_button.png" width="250" alt="Buy Me a Coffee">
-</a><br>
-<b>Buy Me a Coffee</b>
-</td>
-</tr>
-</table>
 
 ---
 

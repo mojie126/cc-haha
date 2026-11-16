@@ -21,22 +21,8 @@
 
 cc-haha is a **desktop Claude Code workspace** for macOS, Windows, and Linux: multi-session workspaces, global search, branch / Worktree launch, diff review, built-in browser preview, GUI permission approval, any model — Claude, ChatGPT, Grok, presets, or local endpoints — image generation, visual MCP & SubAgent managers, an Agent Teams workbench, dynamic Workflow orchestration, model trace, Computer Use, skill marketplace, colour themes, desktop pets, mobile app and H5 remote access, IM integration, and scheduled tasks, all in one app. **Computer Use keeps the existing native macOS engine and reuses agent-desktop on Windows / Linux. Supported background semantic actions leave the physical pointer alone; physical input still uses the foreground.** The companion Android / iPhone app pairs with your computer by QR code, so you can approve actions and start tasks away from your desk.
 
-<p align="center"><b>Platinum Sponsor · Modelflare</b></p>
-
 <p align="center">
-  <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=cchaha">
-    <img src="docs/images/sponsors/modelflare-banner-en.png" width="720" alt="Modelflare: Full strength, stable, nothing watered down. Global SOTA models at a lower cost.">
-  </a>
-</p>
-
-<p><sub>Thanks to <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=cchaha">Modelflare</a> for sponsoring this project! Modelflare: Full strength, stable, nothing watered down. Global SOTA models at a lower cost. Operated by US-based Havenbyte LLC, Modelflare supports GPT, Claude, Gemini, Grok, and other leading models through common compatible protocols, plus 40+ image and video models.</sub></p>
-
-<p><sub><b>Cache compensation is a highlight:</b> selected OpenAI groups (price-first, stable, and premium) guarantee daily cache hit rates of 65%, 75%, or 85%, and if eligible requests fall short, Modelflare refunds the difference, visible on the usage dashboard after settlement.</sub></p>
-
-<p><sub><b>Special offers:</b> a single top-up of US$20 unlocks the GPT discount group at a 0.015x price multiplier, and a single top-up of US$50 unlocks the Claude discount group at a 0.03x multiplier. Register via <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=cchaha">this exclusive link</a> to get started.</sub></p>
-
-<p align="center">
-  <a href="#feature-preview">Feature Preview</a> · <a href="#install">Install</a> · <a href="#desktop-highlights">Highlights</a> · <a href="#more-documentation">More Docs</a> · <a href="#sponsorship--partnership">Sponsorship</a>
+  <a href="#feature-preview">Feature Preview</a> · <a href="#install">Install</a> · <a href="#desktop-highlights">Highlights</a> · <a href="#more-documentation">More Docs</a>
 </p>
 
 ---
@@ -82,63 +68,6 @@ cc-haha is a **desktop Claude Code workspace** for macOS, Windows, and Linux: mu
 
 ---
 
-## Sponsorship & Partnership
-
-This project is maintained in the author's spare time. Corporate or individual sponsorships are welcome to support ongoing development. Custom features, integrations, and business partnerships are also open for discussion.
-
-<table>
-  <thead>
-    <tr>
-      <th width="220">Sponsor</th>
-      <th align="left">Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://aruhub.com/sign-up?aff=Z54g">
-          <img src="docs/images/sponsors/aruhub-logo.png" width="180" alt="AruHub">
-        </a>
-      </td>
-      <td valign="middle">
-        Thanks to <a href="https://aruhub.com/sign-up?aff=Z54g">AruHub</a> for sponsoring this project! AruHub focuses on providing developers with a stable, long-term primary API upstream service. Built for high-frequency AI coding workflows such as Codex and Claude Code, it offers official GPT API access through enterprise groups and stable Claude enterprise groups for sustained use, with support for leading models including GPT and Claude. Image 2 / 2.5 is available around the clock, starting at CNY 0.04 per image. Pay-as-you-go billing supports high-volume enterprise usage, invoicing, and refunds. Register through the <a href="https://aruhub.com/sign-up?aff=Z54g">exclusive link</a> to receive US$1 in credit usable across all models, with no model restrictions.
-      </td>
-    </tr>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://moeapi.cloud/register?utm_source=github&amp;utm_campaign=cchaha">
-          <img src="docs/images/sponsors/moeapi-logo.png" width="180" alt="Moe API">
-        </a>
-      </td>
-      <td valign="middle">
-        Thanks to <a href="https://moeapi.cloud/register?utm_source=github&amp;utm_campaign=cchaha">Moe API</a> for sponsoring this project! Moe API is a unified large language model API platform for developers and teams. A single API key provides access to 120+ models, including GPT, Claude, Gemini, Grok, DeepSeek, Kimi, GLM, and Qwen, with native compatibility with OpenAI (Chat / Responses), Anthropic Messages, and Gemini protocols for direct use with cc-haha, Claude Code, Codex, and other tools. Pricing is CNY 1 per US$1 of credit: multipliers start as low as 0.1x for self-operated Codex account pools, with self-operated Gemini at 0.25x, Grok at 0.2x, third-party Claude Code account pools at 0.35x, and DeepSeek / GLM / Kimi starting at 0.5x. It also supports GPT Image and Gemini image generation. Top up via Alipay or WeChat QR code payments, with credit added in real time. Invoices are available on request and balances are refundable, making team purchasing and reimbursement convenient. Global CDN routing is available; API request and response bodies are not persistently stored on the platform.
-      </td>
-    </tr>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://www.kk-vibe.top/r/j8d6we">
-          <img src="docs/images/sponsors/kkvibe-logo.png" width="180" alt="kk-vibe">
-        </a>
-      </td>
-      <td valign="middle">
-        Thanks to <a href="https://www.kk-vibe.top/r/j8d6we">kk-vibe</a> for sponsoring this project! kk-vibe covers leading models including GPT, Claude, Gemini, and DeepSeek, runs round-the-clock "pelican riding a bicycle" tests, and lets you check channel status at any time. Its built-in infinite canvas supports GPT and Nano Banana image generation, serving both coding and visual creation. See how models perform · Create freely on an infinite canvas.
-      </td>
-    </tr>
-    <tr>
-      <td align="center" valign="middle">
-        <a href="https://www.zuiquanapi.com/"><b>最全 API<br>Zuiquan API Directory</b></a>
-      </td>
-      <td valign="middle">
-        Built by a friend, <a href="https://www.zuiquanapi.com/">Zuiquan API Directory</a> brings together AI API relay providers so you can find and compare options by model and price. If you're unsure which provider to choose, it's a useful place to start.
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-📧 **Contact**: relakkes@gmail.com
-
----
-
 ## Install
 
 1. Download the macOS / Windows / Linux desktop installer from [Releases](https://github.com/NanmiCoder/cc-haha/releases).
@@ -147,31 +76,6 @@ This project is maintained in the author's spare time. Corporate or individual s
 4. Mobile (optional; the app interface is currently Chinese only): on Android, download `cc-haha-mobile-*.apk` from Releases; on iPhone, install TestFlight and open the [public link](https://testflight.apple.com/join/Nd49JrWZ). The mobile app needs desktop v0.7.6 or later. Pair it by scanning the QR code under **Phone connection** in the desktop app: connect directly on the same Wi-Fi, or through Cloudflare when you are away. See [Mobile app and remote connection](docs/en/desktop/remote.md).
 
 Release trust and privacy: [Code signing policy](docs/en/start/code-signing.md) · [Privacy and network access](docs/en/start/privacy.md)
-
----
-
-## ☕ Buy Me a Coffee
-
-If this project helps you, consider buying me a coffee — every bit of support keeps this project going ❤️
-
-<table>
-<tr>
-<td align="center" width="33%">
-<img src="docs/images/donate/wechat_pay.jpeg" width="250" alt="WeChat Pay"><br>
-<b>WeChat Pay</b>
-</td>
-<td align="center" width="33%">
-<img src="docs/images/donate/zfb_pay.png" width="250" alt="Alipay"><br>
-<b>Alipay</b>
-</td>
-<td align="center" width="33%">
-<a href="https://buymeacoffee.com/relakkes" target="_blank">
-<img src="docs/images/donate/bmc_button.png" width="250" alt="Buy Me a Coffee">
-</a><br>
-<b>Buy Me a Coffee</b>
-</td>
-</tr>
-</table>
 
 ---
 

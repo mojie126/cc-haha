@@ -333,8 +333,8 @@ export function PublicAccessSettings() {
           </SettingsRow>
         ))}
         {!!server?.devices.length && (
-          <SettingsBlock className="pb-0">
-            <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)]">{t('publicAccess.devices')}</h4>
+          <SettingsBlock className="pb-1.5">
+            <h4 className="text-[13px] font-semibold leading-5 text-[var(--color-text-secondary)]">{t('publicAccess.devices')}</h4>
           </SettingsBlock>
         )}
         {server?.devices.map((device) => (

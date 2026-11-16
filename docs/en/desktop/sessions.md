@@ -157,6 +157,8 @@ The composer renders common Markdown as you type: headings, bold, italic, bold i
 
 Type `@`, select a past session, and explain what to reuse: for example, “Use the conclusions from @Login design to add a sign-out flow.” A reference does not copy the full history or generate a summary. Claude reads a page of the referenced conversation when needed and can request more pages. Click a reference in a message to open its source. Referencing a session does not message it or restart its work.
 
+To have Claude read a session directly, right-click it in the sidebar or tab bar and choose **Copy session ID**, then give the ID to `ReadSession`; `ListSessions` lists what can be read. The same menu offers **Copy Markdown** and **Export Markdown**, which turn the complete session into Markdown text or a downloaded `.md` file; incomplete history is reported and refused.
+
 To work in parallel, ask: “Create two independent sessions: one to review the API and one to review the tests. Share findings and report back here.” Claude can use these tools:
 
 | Tool | Purpose |

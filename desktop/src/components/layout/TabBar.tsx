@@ -25,6 +25,7 @@ import { tabChipClass, tabChipLabelClass } from '@/components/ui/tabChip'
 import { useDismissable } from '@/hooks/useDismissable'
 import { useTranslation } from '../../i18n'
 import { getDesktopHost } from '../../lib/desktopHost'
+import { copyTextToClipboard } from '@/lib/clipboard'
 import { hasRunningBackgroundTasks } from '../../lib/backgroundTasks'
 import { useTeamRunningSessionIds } from '../../hooks/useTeamRunningSessionIds'
 import { collectAttentionIds, nextAttentionSessionId } from '../../lib/sessionAttention'
@@ -32,7 +33,7 @@ import { SessionAttentionMark } from './SessionAttentionMark'
 import { TabAttentionJump } from './TabAttentionJump'
 import { WindowControls, showWindowControls } from './WindowControls'
 import { OpenProjectMenu } from './OpenProjectMenu'
-import { AppWindow, Bot, CalendarClock, ChevronLeft, ChevronRight, Link, Network, PanelRight, Settings, SquareTerminal, Store, X, type LucideIcon } from 'lucide-react'
+import { AppWindow, Bot, CalendarClock, ChevronLeft, ChevronRight, Copy, Link, Network, PanelRight, Settings, SquareTerminal, Store, X, type LucideIcon } from 'lucide-react'
 import { WorkspaceLayoutControls } from './WorkspaceLayoutControls'
 import { useWorkspaceHeaderHost } from './WorkspaceHeaderContext'
 import { ActionDialog } from '@/components/ui/ActionDialog'
@@ -795,13 +796,30 @@ export function TabBar() {
           className="fixed z-[var(--z-dropdown)] min-w-[180px] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] p-1 shadow-[var(--shadow-dropdown)]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          {isSessionTab(tabs.find((tab) => tab.sessionId === contextMenu.sessionId)) && (
+            <button
+              onClick={() => {
+                const sessionId = contextMenu.sessionId
+                setContextMenu(null)
+                void copyTextToClipboard(sessionId).then((ok) => {
+                  useUIStore.getState().addToast({
+                    type: ok ? 'success' : 'error',
+                    message: t(ok ? 'sidebar.sessionIdCopied' : 'sidebar.sessionIdCopyFailed'),
+                  })
+                })
+              }}
+              className="flex h-8 w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 text-left text-[13px] text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
+            >
+              <Copy size={14} strokeWidth={1.75} aria-hidden="true" className="text-[var(--color-text-tertiary)]" />
+              {t('sidebar.copySessionId')}
+            </button>
+          )}
           <button
             onClick={() => { handleClose(contextMenu.sessionId); setContextMenu(null) }}
             className="flex h-8 w-full items-center rounded-[var(--radius-sm)] px-2.5 text-left text-[13px] text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
           >
             {t('tabs.close')}
-          </button>
-          <button
+          </button>          <button
             onClick={() => handleCloseOthers(contextMenu.sessionId)}
             className="flex h-8 w-full items-center rounded-[var(--radius-sm)] px-2.5 text-left text-[13px] text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)]"
           >
