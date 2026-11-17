@@ -472,6 +472,29 @@ describe('EmptySession', () => {
     expect(screen.getAllByRole('button', { name: /^Location:/ })).toHaveLength(1)
   })
 
+  it('clears the persisted draft after sending with attachments', async () => {
+    mocks.isTauriRuntime = true
+    mocks.createSession.mockResolvedValue({ sessionId: 'attachment-session' })
+    useUIStore.getState().startNewSessionDraft('/workspace/project')
+    const draft = useUIStore.getState().newSessionDraft!
+    render(<EmptySession draftRevision={draft.revision} initialWorkDir="/workspace/project" />)
+    setComposerText('question with images', 19)
+    const file = new File(['data'], 'ignored-name.txt', { type: 'text/plain' })
+    Object.defineProperty(file, 'path', { configurable: true, value: '/workspace/project/shot.txt' })
+    fireEvent.drop(screen.getByTestId('empty-session-composer-panel'), {
+      dataTransfer: { types: ['Files'], files: [file], dropEffect: '' },
+    })
+    expect(await screen.findByText('shot.txt')).toBeInTheDocument()
+
+    const runButton = screen.getByRole('button', { name: /Run/i })
+    await waitFor(() => expect(runButton).not.toBeDisabled())
+    fireEvent.click(runButton)
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledWith('attachment-session', expect.objectContaining({ content: 'question with images' }))
+    })
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
+  })
+
   it('starts in the folder it is given, holding Run until that repository is read', async () => {
     mocks.isMobile = true
     // Its own id: the session store keeps per-id bookkeeping across tests.
