@@ -2962,4 +2962,29 @@ describe('EmptySession', () => {
     })
   })
 
+  it('does not restore a sent prompt in the next new session', async () => {
+    mocks.isMobile = true
+    mocks.createSession.mockResolvedValue({ sessionId: 'probe-sent-session' })
+    const first = render(<EmptySession initialWorkDir="/workspace/project" />)
+    setComposerText('probe sent prompt', 17)
+    await waitFor(() => {
+      expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)?.input).toBe('probe sent prompt')
+    }, { timeout: 2_000 })
+
+    const runButton = screen.getByRole('button', { name: /Run/i })
+    await waitFor(() => expect(runButton).not.toBeDisabled())
+    fireEvent.click(runButton)
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledWith('probe-sent-session', expect.objectContaining({ content: 'probe sent prompt' }))
+    })
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
+
+    // 发送后离开再新建会话：卸载补写与防抖定时器都不得把已发送内容写回草稿
+    first.unmount()
+    useUIStore.getState().startNewSessionDraft('/workspace/project')
+    const nextDraft = useUIStore.getState().newSessionDraft!
+    render(<EmptySession draftRevision={nextDraft.revision} initialWorkDir="/workspace/project" />)
+    await waitFor(() => expect(getComposerText()).toBe(''))
+  })
+
 })
