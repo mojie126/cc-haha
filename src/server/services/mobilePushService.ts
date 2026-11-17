@@ -104,6 +104,8 @@ export class MobilePushService {
   private lastError?: string
   /** The latest Expo send failed; the phones relying on it are told, cleared by the next success. */
   private expoError?: string
+  /** The relay-side fault the phone cannot fix, e.g. missing APNs credentials on the Expo project. */
+  private expoIssue?: 'credentials'
   private readonly file: string
   constructor(private deps: { transport: PushTransport; pull?: (token: string, ack: string | undefined, signal: AbortSignal) => Promise<PulledNotification[]>; activities(): MobileActivity[] | Promise<MobileActivity[]>; summary(id: string): Promise<{ title?: string } | null>; directory?: string; now?: () => number }) {
     this.file = path.join(deps.directory ?? path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'cc-haha'), 'mobile-push.json')
@@ -113,17 +115,20 @@ export class MobilePushService {
   /**
    * `platforms`: this computer signs APNs / FCM itself. `providers`: relays that need
    * no local credentials. `relayErrors.expo`: why the last Expo send failed, if it did.
+   * `relayIssues.expo`: the subset of failures only the publisher can repair.
    */
   status() {
     const platforms = { ios: this.deps.transport.configured('ios'), android: this.deps.transport.configured('android') }
     const providers = { expo: this.deps.transport.configured('ios', 'expo'), desktop: !!this.deps.pull && this.deps.transport.configured('android', 'desktop') }
-    return { platforms, providers, status: platforms.ios || platforms.android || providers.expo || providers.desktop ? 'configured' : 'notConfigured', ...(this.lastError ? { error: this.lastError } : {}), ...(this.expoError ? { relayErrors: { expo: this.expoError } } : {}) }
+    return { platforms, providers, status: platforms.ios || platforms.android || providers.expo || providers.desktop ? 'configured' : 'notConfigured', ...(this.lastError ? { error: this.lastError } : {}), ...(this.expoError ? { relayErrors: { expo: this.expoError }, ...(this.expoIssue ? { relayIssues: { expo: this.expoIssue } } : {}) } : {}) }
   }
   private recordExpo(row: Pick<Registration, 'provider'>, error?: unknown) {
     if (row.provider !== 'expo') return
-    if (error === undefined) { this.expoError = undefined; return }
+    if (error === undefined) { this.expoError = undefined; this.expoIssue = undefined; return }
     const detail = error instanceof Error ? /^Expo push rejected delivery \((.+)\)$/.exec(error.message)?.[1] : undefined
     this.expoError = detail ? `Expo 推送服务拒绝了发送（${detail}）` : '电脑连不上 Expo 推送服务（exp.host）'
+    // The publisher's EAS project owns the APNs credentials; a phone cannot repair this.
+    this.expoIssue = detail === 'InvalidCredentials' ? 'credentials' : undefined
   }
   private configured(row: Pick<PushInput, 'platform' | 'provider'>) { return row.provider === 'desktop' ? !!this.deps.pull && this.deps.transport.configured(row.platform, 'desktop') : this.deps.transport.configured(row.platform, row.provider) }
   private load() {

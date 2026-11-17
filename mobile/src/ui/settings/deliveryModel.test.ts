@@ -455,3 +455,19 @@ describe('iPhone alerts the computer could not send through Expo', () => {
     expect(note).toContain('「设置 → 通用」里配置网络代理')
   })
 })
+
+describe('iPhone alerts stopped by missing publisher credentials', () => {
+  const credentials = { status: 'registered', issue: 'relayCredentials', error: 'Expo 推送服务拒绝了发送（InvalidCredentials）' } as const
+  test('the card names the credential problem instead of a send failure', () => {
+    const card = deliveryStatus(input({ push: credentials }))
+    expect(card).toMatchObject({ state: 'blocked', title: '推送凭证失效' })
+    expect(card.subtitle).toContain('与手机网络和通知权限无关')
+    expect(card.rows.find((row) => row.key === 'push')).toMatchObject({ value: '推送凭证失效', tone: 'bad' })
+    expect(card.actions.map((action) => action.kind)).toEqual(['test', 'retry'])
+  })
+  test('the note points at the publisher and never suggests a local proxy', () => {
+    const note = deliveryNote(credentials)
+    expect(note).toContain('Expo 项目中补齐 APNs 推送凭证')
+    expect(note).not.toContain('配置网络代理')
+  })
+})

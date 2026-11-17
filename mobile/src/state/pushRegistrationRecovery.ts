@@ -3,7 +3,8 @@ import type { PushProvider } from './pushProvider'
 
 export type PushStatus = 'loading' | 'registered' | 'notConfigured' | 'permissionRequired' | 'unsupported' | 'error'
 /** `relayFailing`: registered, but the computer's last Expo send failed, so alerts are not arriving. */
-export type PushIssue = 'network' | 'authorization' | 'hostUnsupported' | 'deviceNotConfigured' | 'deviceUnavailable' | 'storage' | 'relayFailing' | 'unknown'
+/** `relayCredentials`: the failure is the publisher's Expo APNs credentials, not this phone. */
+export type PushIssue = 'network' | 'authorization' | 'hostUnsupported' | 'deviceNotConfigured' | 'deviceUnavailable' | 'storage' | 'relayFailing' | 'relayCredentials' | 'unknown'
 /** `provider`: how a registered computer reaches this phone; tests and the settings card use it. */
 export type PushInfo = { status: PushStatus; issue?: PushIssue; error?: string; provider?: PushProvider }
 export type PushStage = 'permission' | 'device' | 'host' | 'registration'

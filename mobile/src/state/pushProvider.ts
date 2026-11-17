@@ -15,12 +15,19 @@ export type HostPushStatus = {
   providers?: { expo?: unknown; desktop?: unknown }
   /** Why the computer's latest send through a relay failed; absent once one succeeds. */
   relayErrors?: { expo?: unknown }
+  /** Relay faults only the publisher can repair; phones must not chase their own network. */
+  relayIssues?: { expo?: unknown }
 }
 
 /** The relay failure that concerns a phone using `provider`, as text safe to show. */
 export function relayFailure(provider: PushProvider, status: HostPushStatus) {
   const error = provider === 'expo' ? status.relayErrors?.expo : undefined
   return typeof error === 'string' && error ? error.slice(0, 200) : undefined
+}
+
+/** The publisher's Expo project owns the APNs credentials; a phone cannot fix this failure. */
+export function relayCredentialFailure(provider: PushProvider, status: HostPushStatus) {
+  return provider === 'expo' && status.relayIssues?.expo === 'credentials'
 }
 
 export function choosePushProvider(

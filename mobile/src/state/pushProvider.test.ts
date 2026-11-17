@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { PushTokens, base64url, choosePushProvider, pullTokenKey, relayFailure } from './pushProvider'
+import { PushTokens, base64url, choosePushProvider, pullTokenKey, relayCredentialFailure, relayFailure } from './pushProvider'
 
 test('the computer decides the channel; Android pulls, iOS prefers the computer keys over Expo', () => {
   const both = { platforms: { ios: false, android: false }, providers: { expo: true, desktop: true } }
@@ -14,6 +14,19 @@ test('the computer decides the channel; Android pulls, iOS prefers the computer 
   expect(choosePushProvider('ios', { platforms: { ios: false, android: false } })).toBeUndefined()
   expect(choosePushProvider('android', { platforms: { ios: true, android: false }, providers: { expo: true } })).toBeUndefined()
   expect(choosePushProvider('ios', { platforms: { ios: false, android: false }, providers: { expo: 'yes' } })).toBeUndefined()
+})
+
+test('publisher credential failures are separated from failures this phone could fix', () => {
+  const credentials = {
+    relayErrors: { expo: 'Expo 推送服务拒绝了发送（InvalidCredentials）' },
+    relayIssues: { expo: 'credentials' },
+  }
+  expect(relayCredentialFailure('expo', credentials)).toBe(true)
+  // Transport failures and older computers carry no publisher-side marker.
+  expect(relayCredentialFailure('expo', { relayErrors: { expo: '电脑连不上 Expo 推送服务（exp.host）' } })).toBe(false)
+  expect(relayCredentialFailure('expo', { relayIssues: { expo: 'future' } })).toBe(false)
+  expect(relayCredentialFailure('desktop', credentials)).toBe(false)
+  expect(relayFailure('expo', credentials)).toContain('InvalidCredentials')
 })
 
 test('base64url matches the standard encoding without padding', () => {

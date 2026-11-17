@@ -492,3 +492,14 @@ test('an iPhone registered through Expo is told when the computer cannot send th
     assert.deepEqual(status(), { status: 'registered', provider: 'expo' })
   `)
 })
+
+test('missing publisher credentials keep their own issue so the phone stops blaming its network', () => {
+  runCase(`
+    platformOS = 'ios'
+    hostImpl = async () => ({ platforms: { android: false, ios: false }, providers: { expo: true, desktop: true }, relayErrors: { expo: 'Expo 推送服务拒绝了发送（InvalidCredentials）' }, relayIssues: { expo: 'credentials' }, status: 'configured' })
+    tokenImpl = async () => 'ExponentPushToken[fixture]'
+    await render()
+    assert.deepEqual(status(), { status: 'registered', provider: 'expo', issue: 'relayCredentials', error: 'Expo 推送服务拒绝了发送（InvalidCredentials）' })
+    assert.equal(registerCalls, 1, 'the registration itself still stands')
+  `)
+})

@@ -168,16 +168,21 @@ test('the latest Expo failure is reported to phones until a send succeeds again'
   cleanups.push(() => { void service.stop(); rmSync(directory, { recursive: true, force: true }) })
   service.register(input({ provider: 'expo', token: expoToken }), {})
   expect(service.status().relayErrors).toBeUndefined()
+  expect(service.status().relayIssues).toBeUndefined()
   expect(await service.sendTest(expoToken, undefined, {})).toMatchObject({ status: 'failed' })
   expect(service.status().relayErrors).toEqual({ expo: '电脑连不上 Expo 推送服务（exp.host）' })
+  expect(service.status().relayIssues).toBeUndefined()
   // An answer from Expo itself names its reason, e.g. missing APNs credentials on EAS.
   fail = new Error('Expo push rejected delivery (InvalidCredentials)')
   await service.sendTest(expoToken, undefined, {})
   expect(service.status().relayErrors).toEqual({ expo: 'Expo 推送服务拒绝了发送（InvalidCredentials）' })
+  // Only the publisher can repair credentials, so the phone is told not to chase its network.
+  expect(service.status().relayIssues).toEqual({ expo: 'credentials' })
   expect(JSON.stringify(service.status())).not.toContain(expoToken)
   fail = undefined
   expect(await service.sendTest(expoToken, undefined, {})).toEqual({ status: 'sent' })
   expect(service.status().relayErrors).toBeUndefined()
+  expect(service.status().relayIssues).toBeUndefined()
 })
 
 test('a phone from before relays hears "not configured" from a computer without its own keys', async () => {

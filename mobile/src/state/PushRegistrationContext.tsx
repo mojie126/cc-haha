@@ -15,7 +15,7 @@ import { usePreferences } from './PreferencesContext'
 import { subscribePermissionDecided } from './notifyPromptGate'
 import { ensureNotificationChannel } from './notificationChannel'
 import { buildDelivery } from './pushRegistrations'
-import { choosePushProvider, relayFailure, type HostPushStatus } from './pushProvider'
+import { choosePushProvider, relayCredentialFailure, relayFailure, type HostPushStatus } from './pushProvider'
 import { ApiError } from '../core/client'
 import { connectionHeaders } from '../core/connection'
 import {
@@ -132,9 +132,15 @@ function RegisterHost({
               }
             : undefined)
           // Registered is not reachable: say so when the computer's sends through Expo fail.
+          // Missing publisher credentials are not something the phone's network can fix.
           const failure = relayFailure(provider, configured)
           return { info: failure
-            ? { status: 'registered', provider, issue: 'relayFailing', error: failure }
+            ? {
+                status: 'registered',
+                provider,
+                issue: relayCredentialFailure(provider, configured) ? 'relayCredentials' : 'relayFailing',
+                error: failure,
+              }
             : { status: 'registered', provider } }
         }
         if (!result.registered && result.status === 'notConfigured') {

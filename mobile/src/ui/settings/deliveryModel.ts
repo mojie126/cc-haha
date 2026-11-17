@@ -94,6 +94,8 @@ function pushRow(input: DeliveryInput): DeliveryRow {
     return { ...base, value: '需重新连接电脑', tone: 'warn' }
   if (input.push?.issue === 'storage')
     return { ...base, value: '登记信息无法保存', tone: 'bad' }
+  if (input.push?.issue === 'relayCredentials')
+    return { ...base, value: '推送凭证失效', tone: 'bad' }
   if (input.push?.issue === 'relayFailing')
     return { ...base, value: '最近一次发送失败', tone: 'bad' }
   switch (input.push?.status) {
@@ -170,8 +172,9 @@ export function deliveryStatus(input: DeliveryInput): Delivery {
       look: 'secondary',
     })
   const relayFailing = input.push?.status === 'registered' && input.push.issue === 'relayFailing'
+  const relayCredentials = input.push?.status === 'registered' && input.push.issue === 'relayCredentials'
   if (permission?.status === 'granted' && input.hasHost &&
-    (input.push?.status === 'notConfigured' || relayFailing || (input.push?.status === 'error' &&
+    (input.push?.status === 'notConfigured' || relayFailing || relayCredentials || (input.push?.status === 'error' &&
       input.push.issue !== 'authorization' && input.push.issue !== 'storage')))
     actions.push({ kind: 'retry', label: '重新检查', look: 'plain' })
   if (duty) {
@@ -198,6 +201,15 @@ export function deliveryStatus(input: DeliveryInput): Delivery {
       guide,
     }
   // 登记成功不等于收得到：电脑经 Expo 发送失败时，离开 App 后的提醒到不了手机。
+  if (permission?.status === 'granted' && relayCredentials)
+    return {
+      state: 'blocked',
+      title: '推送凭证失效',
+      subtitle: '电脑的 Expo 推送凭证缺失或失效，需要由发布者重新配置；与手机网络和通知权限无关。',
+      rows,
+      actions,
+      guide,
+    }
   if (permission?.status === 'granted' && relayFailing)
     return {
       state: 'blocked',
@@ -255,6 +267,8 @@ export function deliveryNote(
   push: DeliveryInput['push'],
   duty?: DeliveryInput['duty']
 ) {
+  if (push?.status === 'registered' && push.issue === 'relayCredentials')
+    return `${push.error ?? '电脑推送凭证失效'}。需要由发布者在 Expo 项目中补齐 APNs 推送凭证，与手机网络、电脑代理和通知权限无关；配置好后点「测试通知」确认。`
   if (push?.status === 'registered' && push.issue === 'relayFailing')
     return `${push.error ?? '电脑发送推送失败'}。如果电脑要通过代理上网，请在电脑端「设置 → 通用」里配置网络代理，再点「测试通知」确认。`
   if (duty && push?.status === 'registered')
