@@ -51,6 +51,7 @@ import { getDesktopHost } from '../../lib/desktopHost'
 import { hasRunningBackgroundTasks } from '../../lib/backgroundTasks'
 import { collectAttentionIds } from '../../lib/sessionAttention'
 import { getSessionWorkspaceState, getSessionSeedWorkDir } from '../../lib/sessionWorkspace'
+import { projectPathMatches } from '../../lib/projectPath'
 import { detectPlatform } from '../../lib/workspace/shortcuts'
 import { SessionAttentionMark } from './SessionAttentionMark'
 import {
@@ -2298,24 +2299,6 @@ function moveProjectKey(
 function getProjectDropPosition(event: React.DragEvent<HTMLElement>): 'before' | 'after' {
   const rect = event.currentTarget.getBoundingClientRect()
   return event.clientY <= rect.top + rect.height / 2 ? 'before' : 'after'
-}
-
-function normalizeProjectPathForComparison(value: string): string {
-  const normalized = value.replace(/\\/g, '/').replace(/\/+$/g, '') || value
-  return isWindows ? normalized.toLowerCase() : normalized
-}
-
-function isDriveRootComparisonPath(value: string): boolean {
-  return /^[a-z]:$/i.test(value)
-}
-
-function projectPathMatches(projectKey: string, workDir: string): boolean {
-  const normalizedProjectKey = normalizeProjectPathForComparison(projectKey)
-  const normalizedWorkDir = normalizeProjectPathForComparison(workDir)
-
-  if (normalizedProjectKey === normalizedWorkDir) return true
-  if (isDriveRootComparisonPath(normalizedProjectKey)) return false
-  return normalizedWorkDir.startsWith(`${normalizedProjectKey}/`)
 }
 
 function getVisibleProjectSessions(

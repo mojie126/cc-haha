@@ -138,6 +138,42 @@ describe('DirectoryPicker project list', () => {
     })
   })
 
+  it('appends remembered session-less projects after the server list', async () => {
+    // 侧边栏 remembered 里用户仍会工作的目录没有会话也要能选中；
+    // 与服务端列表重叠的键不重复出现，新增键追加在列表末尾。
+    localStorage.setItem('cc-haha-sidebar-remembered-projects', JSON.stringify([
+      '/Users/nanmi/workspace/myself_code/MediaCrawler',
+      '/Users/nanmi/workspace/solo-proj',
+    ]))
+    try {
+      const { onChange } = openPicker()
+      await screen.findByText('NanmiCoder/MediaCrawler')
+
+      const options = screen.getAllByRole('option')
+      expect(options).toHaveLength(4)
+      const rememberedOption = screen.getByRole('option', { name: /solo-proj/ })
+      expect(options[options.length - 1]).toBe(rememberedOption)
+
+      fireEvent.click(rememberedOption)
+      expect(onChange).toHaveBeenCalledWith('/Users/nanmi/workspace/solo-proj')
+    } finally {
+      localStorage.removeItem('cc-haha-sidebar-remembered-projects')
+    }
+  })
+
+  it('derives the row label from the tail of a backslash remembered key', async () => {
+    localStorage.setItem('cc-haha-sidebar-remembered-projects', JSON.stringify(['E:\\develop\\solo-win-proj']))
+    try {
+      openPicker()
+      await screen.findByText('NanmiCoder/MediaCrawler')
+
+      const rememberedOption = screen.getByRole('option', { name: /solo-win-proj/ })
+      expect(rememberedOption).toHaveTextContent('E:\\develop\\solo-win-proj')
+    } finally {
+      localStorage.removeItem('cc-haha-sidebar-remembered-projects')
+    }
+  })
+
   it('creates a named project and selects its folder without creating a session', async () => {
     // The create entry ships in the composer's launch controls; plain
     // DirectoryPicker hosts (settings dialogs, the editor's own folder field)

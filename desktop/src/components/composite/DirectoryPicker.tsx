@@ -30,6 +30,8 @@ import {
   invalidateRecentProjectsCache,
   setCachedRecentProjects,
 } from '../../lib/recentProjectsCache'
+import { projectPathMatches } from '../../lib/projectPath'
+import { readStoredProjectRemembered } from '../layout/sidebarProjectPreferenceStorage'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -58,10 +60,43 @@ function isDesktopRuntime() {
 }
 
 function projectNameFromPath(filePath: string) {
-  const displayRoot = filePath.includes(DESKTOP_WORKTREE_MARKER)
-    ? filePath.slice(0, filePath.indexOf(DESKTOP_WORKTREE_MARKER))
-    : filePath
+  // 服务端 realPath 与 remembered 键在 Windows 上是反斜杠形式，先归一再取末段
+  const normalized = filePath.replace(/\\/g, '/')
+  const displayRoot = normalized.includes(DESKTOP_WORKTREE_MARKER)
+    ? normalized.slice(0, normalized.indexOf(DESKTOP_WORKTREE_MARKER))
+    : normalized
   return displayRoot.split('/').filter(Boolean).pop() || filePath
+}
+
+/**
+ * 服务端列表只覆盖有会话的项目，侧边栏 remembered 里用户仍会工作的目录
+ * 没有会话也要能被选中，来源与侧边栏的 remembered 分组相同，追加在列表
+ * 末尾，路径与已有项目重叠时按侧边栏同一规则折叠
+ *
+ * @param projects 服务端最近项目列表，已按最近使用排序
+ * @returns 合并后的完整项目列表，无会话项目排在最后
+ */
+function withRememberedProjects(projects: RecentProject[]): RecentProject[] {
+  const remembered = readStoredProjectRemembered()
+  if (remembered.size === 0) return projects
+  const extras: RecentProject[] = []
+  for (const key of remembered) {
+    if (!key || key === 'unknown') continue
+    if (projects.some((project) => (
+      projectPathMatches(project.realPath, key) || projectPathMatches(key, project.realPath)
+    ))) continue
+    extras.push({
+      projectPath: key,
+      realPath: key,
+      projectName: projectNameFromPath(key),
+      isGit: false,
+      repoName: null,
+      branch: null,
+      modifiedAt: '',
+      sessionCount: 0,
+    })
+  }
+  return extras.length > 0 ? [...projects, ...extras] : projects
 }
 
 function RecentProjectItem({
@@ -213,18 +248,21 @@ export function RecentProjectsPanel({
     if (mode !== 'recent') return
     const cachedProjects = getCachedRecentProjects()
     if (cachedProjects) {
-      setProjects(cachedProjects)
-      onProjectsChangeRef.current?.(cachedProjects)
+      const merged = withRememberedProjects(cachedProjects)
+      setProjects(merged)
+      onProjectsChangeRef.current?.(merged)
       return
     }
     setLoading(true)
     sessionsApi.getRecentProjects(500, 5000)
       .then(({ projects: p }) => {
         setCachedRecentProjects(p)
-        setProjects(p)
-        onProjectsChangeRef.current?.(p)
+        const merged = withRememberedProjects(p)
+        setProjects(merged)
+        onProjectsChangeRef.current?.(merged)
       })
-      .catch(() => setProjects([]))
+      // 服务端不可用时 remembered 项目仍可选，它们来自本地存储
+      .catch(() => setProjects(withRememberedProjects([])))
       .finally(() => setLoading(false))
   }, [mode])
 
