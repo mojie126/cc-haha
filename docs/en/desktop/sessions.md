@@ -151,7 +151,7 @@ Enter sends and Shift+Enter inserts a newline by default; **Settings → General
 
 While a turn is running, a new message queues until the turn ends. Press `Ctrl+Enter`, or click **Guide** above the composer, to hand it to the model at the next tool boundary so you can redirect the work in progress. If you swap the send shortcut to `Ctrl/Cmd+Enter`, the **Queue / Guide** buttons above the composer still choose the mode.
 
-Unsent drafts are saved automatically and come back after switching sessions or restarting the app. Inline image data from pasted screenshots is not written to local storage, so paste them again after a restart. A draft is cleared as soon as it is sent: opening a new session no longer restores what was just dispatched; press `↑` to recall it from history instead.
+Unsent drafts are saved automatically and come back after switching sessions or restarting the app. Inline image data from pasted screenshots is not written to local storage, so paste them again after a restart. A draft is cleared as soon as it is sent: opening a new session no longer restores what was just dispatched; press `↑` to recall it from history instead. A failed send keeps the draft, and an attachment-only draft is kept too because it cannot be proven sent.
 
 The composer renders common Markdown as you type: headings, bold, italic, bold italic, strikethrough (`~~` or `~`), inline code, code blocks, quotes, ordered / unordered / task lists, links and images, and horizontal rules. The caret's line keeps its syntax visible; every other line folds it away. Unordered items keep a bullet and ordered items keep their number while folded, and the text that is sent is always the original source.
 
