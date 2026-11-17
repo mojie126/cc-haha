@@ -96,6 +96,9 @@ import { promptExistsInAnyHistory, promptHistoryScopeForProject, readPromptHisto
 import {
   NEW_SESSION_DRAFT_SESSION_ID,
   clearPersistedComposerDraft,
+  forgetNewSessionDraftConsumed,
+  isNewSessionDraftConsumed,
+  markNewSessionDraftConsumed,
   readComposerDraft,
   writeComposerDraft,
 } from '@/lib/composerDraftPersistence'
@@ -222,13 +225,14 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
   }, [])
   // A retained draft that never became a session still has to survive a
   // restart; it uses the reserved composer-draft record.
-  // 草稿文本若已在发送历史里出现过，说明它发送过：这是旧构建在发送路径上
-  // 没来得及清理的落盘副本，不再恢复，直接删除，否则已发送的提示词会被
-  // 当成未发送草稿带回新建会话页，并挡住"新建会话"的项目切换
+  // 已发送的草稿只能从上下键回溯取得，不再回填新建会话页：文本出现在发送
+  // 历史里，或本次运行内刚被发送、转交过，就删除落盘副本；只有附件没有文本
+  // 的草稿无法判定是否发送，仍保留以保护真正的未发送附件
   const [initialComposerDraft] = useState(() => {
     const draft = readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
-    if (!draft || draft.attachments.length > 0 || draft.mentions.length > 0) return draft
-    if (!draft.input.trim() || !promptExistsInAnyHistory(draft.input)) return draft
+    if (!draft) return undefined
+    const sentBefore = draft.input.trim().length > 0 && promptExistsInAnyHistory(draft.input)
+    if (!sentBefore && !isNewSessionDraftConsumed(draft)) return draft
     clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
     return undefined
   })
@@ -834,12 +838,20 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       })
       return
     }
+    // 发送开始即登记并删除落盘草稿，避免其他实例在清理前读回，或随后把旧
+    // 快照写回；发送失败时撤销登记并恢复草稿，让内容继续作为未发送草稿保留
+    const sentDraft = { input, mentions, attachments }
+    markNewSessionDraftConsumed(sentDraft)
     setIsSubmitting(true)
     runSubmittingRef.current = true
     setMaterializationAttempt((attempt) => attempt + 1)
     try {
       const materialized = await materializeDraftSession()
-      if (!materialized) return
+      if (!materialized) {
+        forgetNewSessionDraftConsumed()
+        writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, sentDraft)
+        return
+      }
       const { sessionId, ownedDraft } = materialized
       if (ownedDraft) {
         if (useTabStore.getState().activeTabId === submittedTabId) {
@@ -866,6 +878,9 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       // 当作未使用草稿恢复出来，而它此时只应出现在上下键回溯里。
       clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
     } catch (error) {
+      // 发送未完成，撤销登记并恢复草稿，避免已经登记的内容被当成已发送而丢失
+      forgetNewSessionDraftConsumed()
+      writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, sentDraft)
       addToast({
         type: 'error',
         message: resolveCreateSessionErrorMessage(error, t),
@@ -922,12 +937,17 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
             mode: 'replace',
           })
           // 内容已随 prefill 进入新会话，落盘的新会话草稿完成使命，与发送路径
-          // 同法清理：卸载补写与防抖定时器都会把同一份内容再恢复给下一次新建会话
+          // 同法清理并登记，卸载补写与防抖定时器都不得把同一份内容再恢复给
+          // 下一次新建会话
+          markNewSessionDraftConsumed({
+            input: draftText,
+            mentions: draftMentions,
+            attachments: draftAttachments,
+          })
           setInput('')
           setMentions([])
           setAttachments([])
           draftComposerRef.current = { input: '', attachments: [], mentions: [] }
-          clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
         }
 
         const createdSession = useSessionStore.getState().sessions.find((session) => session.id === sessionId)

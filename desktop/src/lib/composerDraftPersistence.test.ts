@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
+  NEW_SESSION_DRAFT_SESSION_ID,
   clearPersistedComposerDraft,
+  forgetNewSessionDraftConsumed,
+  isNewSessionDraftConsumed,
+  markNewSessionDraftConsumed,
   readComposerDrafts,
   writeComposerDraft,
 } from './composerDraftPersistence'
@@ -21,6 +25,8 @@ let storage: MemoryStorage
 beforeEach(() => {
   storage = new MemoryStorage()
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+  // 消费登记是模块级状态，用例之间必须重新开始
+  forgetNewSessionDraftConsumed()
 })
 
 describe('composer draft persistence', () => {
@@ -88,6 +94,37 @@ describe('composer draft persistence', () => {
 
     storage.setItem(COMPOSER_DRAFT_STORAGE_KEY, JSON.stringify({ version: 99, drafts: { a: { input: 'x' } } }))
     expect(readComposerDrafts()).toEqual({})
+  })
+
+  it('refuses a consumed new-session draft written back by an older snapshot', () => {
+    const consumed = {
+      input: 'sent with a screenshot',
+      mentions: [],
+      attachments: [{ id: 'att-1', name: 'shot.png', type: 'image' as const, path: '/tmp/shot.png' }],
+    }
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, consumed)
+    markNewSessionDraftConsumed(consumed)
+    expect(readComposerDrafts()[NEW_SESSION_DRAFT_SESSION_ID]).toBeUndefined()
+
+    // 防抖或卸载补写把同一份旧快照写回时不得复活已发送草稿
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, consumed)
+    expect(readComposerDrafts()[NEW_SESSION_DRAFT_SESSION_ID]).toBeUndefined()
+
+    // 内容变化后即为新的未发送草稿，正常落盘并解除登记
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, { ...consumed, input: 'edited after sending' })
+    expect(readComposerDrafts()[NEW_SESSION_DRAFT_SESSION_ID]?.input).toBe('edited after sending')
+    expect(isNewSessionDraftConsumed(consumed)).toBe(false)
+  })
+
+  it('restores the draft on disk when a send fails', () => {
+    const draft = { input: 'the send will fail', mentions: [], attachments: [] }
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, draft)
+    markNewSessionDraftConsumed(draft)
+    expect(readComposerDrafts()[NEW_SESSION_DRAFT_SESSION_ID]).toBeUndefined()
+
+    forgetNewSessionDraftConsumed()
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, draft)
+    expect(readComposerDrafts()[NEW_SESSION_DRAFT_SESSION_ID]?.input).toBe('the send will fail')
   })
 
   it('keeps a draft when the storage quota rejects the write', () => {

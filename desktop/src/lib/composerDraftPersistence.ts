@@ -18,6 +18,14 @@ export const NEW_SESSION_DRAFT_SESSION_ID = '__new_session_draft__'
 const STORAGE_VERSION = 1
 /** Keep the newest N sessions; drafts are cheap but the quota is not. */
 const MAX_PERSISTED_SESSIONS = 20
+/**
+ * 本次运行内最近被发送或转交的新会话草稿指纹
+ *
+ * 发送时立即删除落盘草稿，但其他仍持有旧快照的编辑器实例会在随后的防抖写入
+ * 或卸载补写里把同一份内容写回，导致已发送的草稿在新建会话时复活，指纹用于
+ * 拒绝这类回写，内容不同即视为新的未发送草稿并清除登记
+ */
+let consumedNewSessionDraftFingerprint: string | null = null
 
 export type PersistedComposerDraft = {
   input: string
@@ -137,6 +145,46 @@ function toPersistable(draft: PersistedComposerDraft): PersistedComposerDraft {
   }
 }
 
+/**
+ * 草稿内容指纹，只覆盖决定恢复结果的部分，图片 payload 不参与
+ *
+ * @param draft 待比较的草稿
+ * @returns 稳定可比较的指纹字符串
+ */
+function draftFingerprint(draft: PersistedComposerDraft): string {
+  return JSON.stringify({
+    input: draft.input,
+    mentions: draft.mentions.map(mention => [mention.kind ?? '', mention.path, mention.label]),
+    attachments: draft.attachments.map(attachment => [attachment.type, attachment.path ?? '', attachment.name]),
+  })
+}
+
+/**
+ * 登记新会话草稿已被消费（发送或转交），并删除落盘副本
+ *
+ * @param draft 被消费的草稿内容
+ */
+export function markNewSessionDraftConsumed(draft: PersistedComposerDraft): void {
+  consumedNewSessionDraftFingerprint = draftFingerprint(draft)
+  clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
+}
+
+/** 撤销消费登记，消费失败时调用，让草稿继续按未发送内容保存 */
+export function forgetNewSessionDraftConsumed(): void {
+  consumedNewSessionDraftFingerprint = null
+}
+
+/**
+ * 判断草稿是否为本次运行内刚被消费的内容
+ *
+ * @param draft 待判断的草稿
+ * @returns 内容与登记指纹一致时为真
+ */
+export function isNewSessionDraftConsumed(draft: PersistedComposerDraft): boolean {
+  return consumedNewSessionDraftFingerprint !== null
+    && draftFingerprint(draft) === consumedNewSessionDraftFingerprint
+}
+
 /** All persisted drafts, keyed by session id. */
 export function readComposerDrafts(): Record<string, PersistedComposerDraft> {
   const storage = getStorage()
@@ -164,8 +212,14 @@ export function writeComposerDraft(sessionId: string, draft: PersistedComposerDr
   const storage = getStorage()
   if (!storage) return
   try {
-    const envelope = readEnvelope(storage)
     const normalized = normalizeDraft(toPersistable(draft))
+    // 已消费的新会话草稿不能被旧快照写回，清空草稿不清除登记，否则紧随其后的
+    // 防抖或卸载写入会把同一份已发送内容复活；内容不同即视为新的未发送草稿
+    if (sessionId === NEW_SESSION_DRAFT_SESSION_ID && normalized) {
+      if (isNewSessionDraftConsumed(normalized)) return
+      consumedNewSessionDraftFingerprint = null
+    }
+    const envelope = readEnvelope(storage)
     if (!normalized) {
       delete envelope.drafts[sessionId]
     } else {

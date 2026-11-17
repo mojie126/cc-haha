@@ -214,6 +214,7 @@ import { getComposerElement, getComposerText, getComposerView, setComposerSelect
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
   NEW_SESSION_DRAFT_SESSION_ID,
+  forgetNewSessionDraftConsumed,
   readComposerDraft,
   writeComposerDraft,
 } from '../lib/composerDraftPersistence'
@@ -310,6 +311,9 @@ describe('EmptySession', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
+    // 已发送判定读取发送历史，消费登记是模块级状态，用例之间必须重新开始
+    clearPromptHistory()
+    forgetNewSessionDraftConsumed()
     // ProseMirror selection scrolling needs geometry APIs absent in jsdom.
     Object.defineProperties(Range.prototype, {
       getClientRects: { configurable: true, value: () => [] },
@@ -424,6 +428,51 @@ describe('EmptySession', () => {
     } finally {
       clearPromptHistory()
     }
+  })
+
+  it('drops a retained draft with attachments whose text was already sent', () => {
+    recordPromptHistory('sent with screenshots', GLOBAL_PROMPT_HISTORY_SCOPE)
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, {
+      input: 'sent with screenshots',
+      mentions: [],
+      attachments: [{ id: 'att-1', name: 'shot.png', type: 'image', path: '/tmp/shot.png' }],
+    })
+
+    render(<EmptySession />)
+
+    expect(getComposerText()).toBe('')
+    expect(screen.queryByText('shot.png')).not.toBeInTheDocument()
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
+  })
+
+  it('keeps an attachment-only draft because it cannot be proven sent', () => {
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, {
+      input: '',
+      mentions: [],
+      attachments: [{ id: 'att-1', name: 'shot.png', type: 'image', path: '/tmp/shot.png' }],
+    })
+
+    render(<EmptySession />)
+
+    expect(screen.getByRole('button', { name: 'Remove shot.png' })).toBeInTheDocument()
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)?.attachments).toHaveLength(1)
+  })
+
+  it('keeps the retained draft when creating the session fails', async () => {
+    mocks.createSession.mockRejectedValue(new Error('create failed'))
+    useUIStore.getState().startNewSessionDraft('/workspace/project')
+    const draft = useUIStore.getState().newSessionDraft!
+    render(<EmptySession draftRevision={draft.revision} initialWorkDir="/workspace/project" />)
+    setComposerText('kept when sending fails', 23)
+
+    const runButton = screen.getByRole('button', { name: /Run/i })
+    await waitFor(() => expect(runButton).not.toBeDisabled())
+    fireEvent.click(runButton)
+
+    await waitFor(() => {
+      expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)?.input).toBe('kept when sending fails')
+    })
+    expect(getComposerText()).toBe('kept when sending fails')
   })
 
   it('flushes the draft when the composer unmounts inside the debounce window', () => {
@@ -3030,6 +3079,10 @@ describe('EmptySession', () => {
     await waitFor(() => {
       expect(mocks.wsSend).toHaveBeenCalledWith('probe-sent-session', expect.objectContaining({ content: 'probe sent prompt' }))
     })
+    expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
+
+    // 其他实例把同一份旧快照写回时不得复活已发送草稿
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, { input: 'probe sent prompt', mentions: [], attachments: [] })
     expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
 
     // 发送后离开再新建会话：卸载补写与防抖定时器都不得把已发送内容写回草稿
