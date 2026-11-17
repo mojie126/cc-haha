@@ -92,7 +92,7 @@ import { ComputerUseEnableDialog } from '@/components/computer-use/ComputerUseEn
 import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDialog'
 import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
 import { recordRecentSkills } from '@/lib/recentSkills'
-import { promptHistoryScopeForProject, readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
+import { promptExistsInAnyHistory, promptHistoryScopeForProject, readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import {
   NEW_SESSION_DRAFT_SESSION_ID,
   clearPersistedComposerDraft,
@@ -222,7 +222,16 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
   }, [])
   // A retained draft that never became a session still has to survive a
   // restart; it uses the reserved composer-draft record.
-  const [initialComposerDraft] = useState(() => readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID))
+  // 草稿文本若已在发送历史里出现过，说明它发送过：这是旧构建在发送路径上
+  // 没来得及清理的落盘副本，不再恢复，直接删除，否则已发送的提示词会被
+  // 当成未发送草稿带回新建会话页，并挡住"新建会话"的项目切换
+  const [initialComposerDraft] = useState(() => {
+    const draft = readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
+    if (!draft || draft.attachments.length > 0 || draft.mentions.length > 0) return draft
+    if (!draft.input.trim() || !promptExistsInAnyHistory(draft.input)) return draft
+    clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
+    return undefined
+  })
   const [input, setInput] = useState(initialComposerDraft?.input ?? '')
   const [mentions, setMentions] = useState<ComposerMention[]>(initialComposerDraft?.mentions ?? [])
   const [referenceDetail, setReferenceDetail] = useState<ComposerMention | null>(null)

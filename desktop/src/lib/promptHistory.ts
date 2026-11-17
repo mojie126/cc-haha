@@ -147,6 +147,21 @@ export function recordPromptHistory(prompt: string, scope: string = GLOBAL_PROMP
   writeEnvelope(pruneTotalChars(pruneScopes(envelope)))
 }
 
+/**
+ * Whether `prompt` was ever sent, in any scope. A retained new-session draft
+ * with exactly this text is a leftover of an older build's send path, not
+ * unsent input.
+ */
+export function promptExistsInAnyHistory(prompt: string): boolean {
+  const text = prompt.trim()
+  if (!text) return false
+  const envelope = readEnvelope()
+  for (const entry of Object.values(envelope.scopes)) {
+    if (entry.prompts.includes(text)) return true
+  }
+  return readLegacyGlobal().includes(text)
+}
+
 export function clearPromptHistory(scope?: string): void {
   try {
     if (scope === undefined) {

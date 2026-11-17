@@ -215,8 +215,15 @@ import {
   COMPOSER_DRAFT_STORAGE_KEY,
   NEW_SESSION_DRAFT_SESSION_ID,
   readComposerDraft,
+  writeComposerDraft,
 } from '../lib/composerDraftPersistence'
-import { promptHistoryScopeForProject, readPromptHistory } from '../lib/promptHistory'
+import {
+  GLOBAL_PROMPT_HISTORY_SCOPE,
+  clearPromptHistory,
+  promptHistoryScopeForProject,
+  readPromptHistory,
+  recordPromptHistory,
+} from '../lib/promptHistory'
 import { useVoiceInputStore } from '../stores/voiceInputStore'
 
 function okRepositoryContext(overrides: Partial<RepositoryContextResult> = {}): RepositoryContextResult {
@@ -394,6 +401,29 @@ describe('EmptySession', () => {
 
     render(<EmptySession />)
     await waitFor(() => expect(getComposerText()).toBe('unsent idea for a new session'))
+  })
+
+  it('drops a retained draft whose text was already sent', () => {
+    recordPromptHistory('already sent prompt', GLOBAL_PROMPT_HISTORY_SCOPE)
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, { input: 'already sent prompt', mentions: [], attachments: [] })
+    try {
+      render(<EmptySession />)
+      expect(getComposerText()).toBe('')
+      expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
+    } finally {
+      clearPromptHistory()
+    }
+  })
+
+  it('keeps a retained draft whose text was never sent', () => {
+    recordPromptHistory('sent somewhere else', GLOBAL_PROMPT_HISTORY_SCOPE)
+    writeComposerDraft(NEW_SESSION_DRAFT_SESSION_ID, { input: 'still unsent', mentions: [], attachments: [] })
+    try {
+      render(<EmptySession />)
+      expect(getComposerText()).toBe('still unsent')
+    } finally {
+      clearPromptHistory()
+    }
   })
 
   it('flushes the draft when the composer unmounts inside the debounce window', () => {
