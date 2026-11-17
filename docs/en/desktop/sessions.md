@@ -23,6 +23,8 @@ The small line under the session title is metadata: project path, branch, model.
 
 Projects you have opened are remembered by directory. A project stays in the sidebar even when it has no sessions, showing **No sessions yet**. **Hide from sidebar** in the project menu only hides that group: it deletes no sessions and touches no files on disk, and **Restore to sidebar** brings it back.
 
+**New project** can start from any subfolder of a repository: the selected directory becomes its own project with its own group, sessions, and additional folders instead of joining the parent repository's group.
+
 ## Reading the conversation
 
 ![A release-notes conversation in the real project, with tool calls and the session list (Chinese interface)](../../images/app/en/session-main.webp)
