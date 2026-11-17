@@ -269,11 +269,16 @@ export type NewSessionDraft = {
   /** Identifies one composer mount; a new draft gets a new one. */
   revision: number
   /**
-   * Unsent text or attachments, as reported by the composer. Only an empty
-   * draft may be moved to the project a "New session" entry asks for; picking
-   * a project, model or mode alone is not content.
+   * Unsent text or attachments, as reported by the composer. Picking a
+   * project, model or mode alone is not content.
    */
   hasContent: boolean
+  /**
+   * A send is in flight. Moving the draft to another project mid-send would
+   * point the launch at a repository the message was not written for, so the
+   * project stays put until the send settles.
+   */
+  submitting?: boolean
 }
 
 /** A workspace action the draft composer should perform after it assigns a session. */
@@ -331,12 +336,16 @@ type UIStore = {
   setPendingMarketTarget: (target: MarketTarget | null) => void
   requestNewSession: () => void
   /**
-   * Opens the retained draft for `workDir`. An empty draft moves there; one
-   * with unsent content keeps its project. No `workDir` keeps the draft as is.
+   * Opens the retained draft for `workDir`. A draft with unsent content moves
+   * there too — pressing a project's "New session" is a request to work in it,
+   * and the content travels with the composer. Only a draft mid-send keeps its
+   * project. No `workDir` keeps the draft as is.
    */
   startNewSessionDraft: (workDir?: string) => void
   /** The composer of draft `revision` reports whether it holds unsent content. */
   setNewSessionDraftContent: (revision: number, hasContent: boolean) => void
+  /** The composer of draft `revision` reports whether a send is in flight. */
+  setNewSessionDraftSubmitting: (revision: number, submitting: boolean) => void
   requestDraftWorkspace: (action: DraftWorkspaceAction, originatingTabId?: string | null, originatingView?: ActiveView) => void
   clearDraftWorkspaceRequest: (nonce: number) => void
   openModal: (id: string) => void
@@ -449,14 +458,21 @@ export const useUIStore = create<UIStore>((set) => ({
     }
     // New-chat navigation returns to the retained composer and never replaces
     // its revision: that would unmount it and silently discard unsent input,
-    // attachments and the mode picked in it. An empty one is moved in place;
-    // unsent content keeps the project it was written for.
-    if (workDir === undefined || draft.hasContent || draft.workDir === workDir) return { activeView: 'code' }
+    // attachments and the mode picked in it.
+    // 显式指定项目时（项目行的新建会话）草稿跟随该项目，未发送内容与修订号
+    // 原地保留，由调用方提示内容仍在；发送中的草稿留在原项目，避免把这次发送
+    // 指到另一个仓库；未指定项目时保持原项目。
+    if (workDir === undefined || draft.submitting || draft.workDir === workDir) return { activeView: 'code' }
     return { activeView: 'code', newSessionDraft: { ...draft, workDir } }
   }),
   setNewSessionDraftContent: (revision, hasContent) => set(state => (
     state.newSessionDraft?.revision === revision && state.newSessionDraft.hasContent !== hasContent
       ? { newSessionDraft: { ...state.newSessionDraft, hasContent } }
+      : state
+  )),
+  setNewSessionDraftSubmitting: (revision, submitting) => set(state => (
+    state.newSessionDraft?.revision === revision && (state.newSessionDraft.submitting ?? false) !== submitting
+      ? { newSessionDraft: { ...state.newSessionDraft, submitting } }
       : state
   )),
   requestDraftWorkspace: (action, originatingTabId = null, originatingView = 'code') => set(state => state.newSessionDraft

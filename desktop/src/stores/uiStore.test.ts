@@ -539,22 +539,41 @@ describe('uiStore new-session draft navigation', () => {
     useUIStore.setState({ newSessionDraft: null })
   })
 
-  it('keeps the project of a draft holding unsent content', async () => {
+  it('moves a draft holding unsent content to the requested project, keeping the content', async () => {
     vi.resetModules()
     const { useUIStore } = await import('./uiStore')
     useUIStore.getState().startNewSessionDraft('/workspace/first')
     const { revision } = useUIStore.getState().newSessionDraft!
     useUIStore.getState().setNewSessionDraftContent(revision, true)
-    const draft = useUIStore.getState().newSessionDraft
-    expect(draft).toMatchObject({ workDir: '/workspace/first', hasContent: true })
+
+    // 项目行的新建会话是明确的"去这个项目工作"，草稿内容与修订号跟着走，
+    // 组件不重挂载，输入、附件与已选模式都不丢。
+    useUIStore.getState().startNewSessionDraft('/workspace/other')
+    expect(useUIStore.getState().newSessionDraft).toEqual({
+      workDir: '/workspace/other', revision, hasContent: true,
+    })
+
+    // 未指定目标（Cmd+N 于无自身会话的页面）保持原项目。
+    useUIStore.getState().startNewSessionDraft()
+    expect(useUIStore.getState().newSessionDraft?.workDir).toBe('/workspace/other')
+    useUIStore.setState({ newSessionDraft: null })
+  })
+
+  it('keeps a sending draft in its project while another project asks for a new chat', async () => {
+    vi.resetModules()
+    const { useUIStore } = await import('./uiStore')
+    useUIStore.getState().startNewSessionDraft('/workspace/first')
+    const { revision } = useUIStore.getState().newSessionDraft!
+    useUIStore.getState().setNewSessionDraftSubmitting(revision, true)
 
     useUIStore.getState().startNewSessionDraft('/workspace/other')
-    expect(useUIStore.getState().newSessionDraft).toBe(draft)
+    expect(useUIStore.getState().newSessionDraft).toMatchObject({
+      workDir: '/workspace/first', revision, submitting: true,
+    })
 
-    // Emptied again, it follows the next request.
-    useUIStore.getState().setNewSessionDraftContent(revision, false)
+    useUIStore.getState().setNewSessionDraftSubmitting(revision, false)
     useUIStore.getState().startNewSessionDraft('/workspace/other')
-    expect(useUIStore.getState().newSessionDraft).toMatchObject({ workDir: '/workspace/other', revision })
+    expect(useUIStore.getState().newSessionDraft?.workDir).toBe('/workspace/other')
     useUIStore.setState({ newSessionDraft: null })
   })
 

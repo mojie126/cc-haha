@@ -289,6 +289,12 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
   const promptHistoryScope = promptHistoryScopeForProject(workDir)
   const historyIndexRef = useRef(0)
   const historyDraftRef = useRef<{ input: string; mentions: ComposerMention[] } | null>(null)
+  // 草稿换项目后历史列表换了一份，回溯位置与暂存的草稿必须重新开始，
+  // 否则上下键会从新列表的错位索引取到别的项目的提示词
+  useEffect(() => {
+    historyIndexRef.current = 0
+    historyDraftRef.current = null
+  }, [promptHistoryScope])
   const resetHistoryNavigation = () => {
     historyIndexRef.current = 0
     historyDraftRef.current = null
@@ -554,6 +560,12 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
     if (draftRevision === undefined) return
     useUIStore.getState().setNewSessionDraftContent(draftRevision, hasUnsentContent)
   }, [draftRevision, hasUnsentContent])
+
+  // 发送中的草稿不能被"新建会话"移到另一个项目，否则这次发送会被指到别的仓库
+  useEffect(() => {
+    if (draftRevision === undefined) return
+    useUIStore.getState().setNewSessionDraftSubmitting(draftRevision, isSubmitting)
+  }, [draftRevision, isSubmitting])
 
   const filteredCommandGroups = useMemo(() => {
     return groupSlashCommands(filterSlashCommands(allSlashCommands, slashFilter))

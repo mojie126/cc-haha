@@ -616,13 +616,14 @@ export function Sidebar({
   const openDraftForWorkDir = useCallback((workDir?: string) => {
     // Do not allocate a standard server session before the user can choose
     // the immutable agent profile in the new-chat composer.
+    const retained = useUIStore.getState().newSessionDraft
     useUIStore.getState().startNewSessionDraft(workDir)
     const draft = useUIStore.getState().newSessionDraft
     restoreHiddenProjectForWorkDir(draft?.workDir ?? workDir)
     rememberProjectKey(draft?.workDir ?? workDir)
-    // An empty draft has just moved to the requested project. Only one holding
-    // unsent content stays where it was, and that is worth saying.
-    if (draft && workDir !== undefined && draft.workDir !== workDir) {
+    // The draft follows the requested project; anything unsent comes along and
+    // is worth announcing, so nobody thinks the switch discarded it.
+    if (retained?.hasContent && workDir !== undefined && retained.workDir !== workDir) {
       addToast({ type: 'info', message: t('sidebar.draftResumed') })
     }
     useSessionStore.getState().setActiveSession(null)

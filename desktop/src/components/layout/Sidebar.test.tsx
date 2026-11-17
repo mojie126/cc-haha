@@ -886,15 +886,14 @@ describe('Sidebar', () => {
     expect(screen.getByTestId('new-session-draft-panel')).not.toHaveAttribute('inert')
   })
 
-  it('preserves an unsent draft when another project requests a new chat and explains the return', () => {
+  it('moves an unsent draft to the project that requested a new chat and explains the return', () => {
     useSessionStore.setState({ sessions: [makeSession('alpha', 'Alpha', '/workspace/alpha', new Date().toISOString())] })
     useUIStore.getState().startNewSessionDraft('/workspace/unsent')
     // What the composer reports once something is typed or attached.
     useUIStore.getState().setNewSessionDraftContent(useUIStore.getState().newSessionDraft!.revision, true)
-    const draft = useUIStore.getState().newSessionDraft
     render(<Sidebar />)
     fireEvent.click(screen.getByRole('button', { name: 'New session in alpha' }))
-    expect(useUIStore.getState().newSessionDraft).toBe(draft)
+    expect(useUIStore.getState().newSessionDraft).toMatchObject({ workDir: '/workspace/alpha', hasContent: true })
     expect(useTabStore.getState().activeTabId).toBeNull()
     expect(addToast).toHaveBeenCalledWith({ type: 'info', message: 'sidebar.draftResumed' })
   })
