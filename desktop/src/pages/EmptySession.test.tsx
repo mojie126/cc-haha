@@ -2426,6 +2426,8 @@ describe('EmptySession', () => {
       expect(prefill?.attachments).toEqual([
         expect.objectContaining({ name: 'notes.md', path: '/workspace/project/notes.md' }),
       ])
+      // 内容已随 prefill 进入新会话，落盘的新会话草稿不得再被下一次新建会话恢复。
+      expect(readComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)).toBeUndefined()
     })
 
     it('opens the bottom panel in the new session folder', async () => {

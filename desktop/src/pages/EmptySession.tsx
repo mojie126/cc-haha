@@ -900,6 +900,13 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
             mentions: draftMentions,
             mode: 'replace',
           })
+          // 内容已随 prefill 进入新会话，落盘的新会话草稿完成使命，与发送路径
+          // 同法清理：卸载补写与防抖定时器都会把同一份内容再恢复给下一次新建会话
+          setInput('')
+          setMentions([])
+          setAttachments([])
+          draftComposerRef.current = { input: '', attachments: [], mentions: [] }
+          clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
         }
 
         const createdSession = useSessionStore.getState().sessions.find((session) => session.id === sessionId)
