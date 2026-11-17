@@ -6,6 +6,7 @@ Source: [vercel-labs/agent-desktop](https://github.com/vercel-labs/agent-desktop
 
 ## Local changes
 
+- `Cargo.toml` drops `workspace.package.rust-version`: no member inherits it, Cargo reports it as unused, and `rust-toolchain.toml` already pins 1.89.0.
 - `crates/core/src/cursor_overlay/product_cursor.rs` defines the seven-point arrow shared by Windows and X11. Its hotspot, 22-point reference height, notched tail, and 1.5-point outline follow the product's Swift helper. Its tests preserve the hotspot and shape across scaling.
 - `crates/windows/src/system/cursor_overlay/geometry.rs` uses that arrow and a 64-point click ripple. The corresponding geometry tests follow the product reference.
 - `crates/linux/src/system/overlay/cursor_overlay_draw.rs` uses the same arrow dimensions and outline width. Its window remains click-through and keeps the hotspot at the requested screen coordinate.

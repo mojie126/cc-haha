@@ -8,8 +8,8 @@ cc-haha 桌面端本地构建脚本。
   2. sidecar        desktop/sidecars/claude-sidecar.ts → desktop/src-tauri/binaries
   3. 渲染进程       desktop/src + index.html → desktop/dist（含手机 H5 导出）
   4. Electron 主进程 desktop/electron → desktop/electron-dist
-  5. 安装包         electron-builder → desktop/build-artifacts/electron
-                    并复制到 desktop/build-artifacts/windows-x64
+  5. 安装包         electron-builder → desktop/build-artifacts/windows-x64
+                    安装包、blockmap、latest.yml 与 win-unpacked 只保留这一份
 
 增量口径：
   · sidecar 比对 desktop/src、desktop/sidecars、desktop/scripts 与仓库 src/ 的最新
@@ -71,8 +71,9 @@ $mobile = Join-Path $repo 'mobile'
 $binaries = Join-Path $desktop 'src-tauri\binaries'
 $dist = Join-Path $desktop 'dist'
 $electronDist = Join-Path $desktop 'electron-dist'
-$electronOutput = Join-Path $desktop 'build-artifacts\electron'
-$canonicalOutput = Join-Path $desktop 'build-artifacts\windows-x64'
+$outputDir = Join-Path $desktop 'build-artifacts\windows-x64'
+# 旧版脚本会先输出到 electron 再复制到 windows-x64，清理遗留副本避免双份
+$legacyOutput = Join-Path $desktop 'build-artifacts\electron'
 $sidecar = Join-Path $binaries 'claude-sidecar-x86_64-pc-windows-msvc.exe'
 $desktopPackage = Get-Content (Join-Path $desktop 'package.json') -Raw | ConvertFrom-Json
 $version = $desktopPackage.version
@@ -205,7 +206,7 @@ Ensure-Dependencies -Directory $desktop
 
 if ($Force) {
   Write-Step 'Cleaning previous outputs...'
-  foreach ($path in @($dist, $electronDist, $electronOutput, $canonicalOutput)) {
+  foreach ($path in @($dist, $electronDist, $outputDir, $legacyOutput)) {
     Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
@@ -289,7 +290,7 @@ $packageInputs = @(
   (Join-Path $desktop 'package.json')
 )
 $installerName = "Claude-Code-Haha-$version-Windows-x64-Setup.exe"
-$installerPath = Join-Path $electronOutput $installerName
+$installerPath = Join-Path $outputDir $installerName
 
 $shouldPackage = -not $FrontendOnly -and -not $SkipPackage
 if ($shouldPackage -and -not $DirPackage) {
@@ -304,12 +305,17 @@ if ($shouldPackage -and -not $DirPackage) {
 }
 
 if ($shouldPackage) {
+  # 旧版脚本在 build-artifacts\electron 留下的副本不再使用，打包前清掉
+  if (Test-Path -LiteralPath $legacyOutput) {
+    Remove-Item -LiteralPath $legacyOutput -Recurse -Force -ErrorAction SilentlyContinue
+  }
   Ensure-WinCodeSignCache
+  $outputOverride = '--config.directories.output=build-artifacts/windows-x64'
   $builderArgs = if ($DirPackage) {
-    @('electron-builder', '--win', '--x64', '--publish', 'never', '--dir')
+    @('electron-builder', '--win', '--x64', '--publish', 'never', '--dir', $outputOverride)
   } else {
     # target 必须紧跟 --win，放在选项之后会被当成未知参数
-    @('electron-builder', '--win', 'nsis', '--x64', '--publish', 'never')
+    @('electron-builder', '--win', 'nsis', '--x64', '--publish', 'never', $outputOverride)
   }
   Write-Step "Packaging with electron-builder (dir=$DirPackage)..."
   Push-Location $desktop
@@ -323,20 +329,10 @@ if ($shouldPackage) {
   }
 
   if (-not $DirPackage) {
-    New-Item -ItemType Directory -Force -Path $canonicalOutput | Out-Null
-    Get-ChildItem -LiteralPath $electronOutput -File -ErrorAction SilentlyContinue |
-      Where-Object { $_.Name -match '\.(exe|blockmap|yml)$' } |
-      ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $canonicalOutput $_.Name) -Force }
-    $unpacked = Join-Path $electronOutput 'win-unpacked'
-    if (Test-Path -LiteralPath $unpacked) {
-      Remove-Item -LiteralPath (Join-Path $canonicalOutput 'win-unpacked') -Recurse -Force -ErrorAction SilentlyContinue
-      Copy-Item -LiteralPath $unpacked -Destination (Join-Path $canonicalOutput 'win-unpacked') -Recurse -Force
-    }
-    Set-Content -Path (Join-Path $canonicalOutput 'BUILD_INFO.txt') -Encoding UTF8 -Value @"
+    Set-Content -Path (Join-Path $outputDir 'BUILD_INFO.txt') -Encoding UTF8 -Value @"
 Version: $version
 Built at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')
-Builder output: $electronOutput
-Canonical output: $canonicalOutput
+Output: $outputDir
 "@
   }
 }
@@ -357,9 +353,9 @@ if ($Test) {
 Write-Step 'Build finished.'
 if (-not $DirPackage -and (Test-Path -LiteralPath $installerPath)) {
   Write-Step "Installer: $installerPath"
-  Write-Step "Canonical output: $canonicalOutput"
+  Write-Step "Output: $outputDir"
 } elseif ($DirPackage) {
-  Write-Step "Unpacked app: $(Join-Path $electronOutput 'win-unpacked')"
+  Write-Step "Unpacked app: $(Join-Path $outputDir 'win-unpacked')"
 } else {
   Write-Step "Renderer: $dist"
   Write-Step "Electron bundle: $electronDist"

@@ -12,6 +12,7 @@ const upstream = JSON.parse(readFileSync(path.join(sourceRoot, 'UPSTREAM.json'),
   files: Record<string, string>
 }
 const localPatches = [
+  'Cargo.toml',
   'crates/core/src/commands/status.rs',
   'crates/core/src/cursor_overlay/mod.rs',
   'crates/core/src/cursor_overlay/submit.rs',
