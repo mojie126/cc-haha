@@ -158,7 +158,11 @@ async function runCheck(check: Check): Promise<number> {
   const cwd = check.cwd ? `${rootDir}/${check.cwd}` : rootDir
   console.log(`\n[persistence-upgrade] ${check.title}`)
   console.log(`$ ${check.command.join(' ')}`)
-  const proc = Bun.spawn(check.command, {
+  // npm 安装的 bun 在 Windows 上是 .cmd 转发脚本，参数里的管道符会被 cmd.exe 拒绝，
+  // 直接使用当前 bun 可执行文件启动子进程，参数原样传递
+  const [program, ...args] = check.command
+  const command = program === 'bun' ? [process.execPath, ...args] : check.command
+  const proc = Bun.spawn(command, {
     cwd,
     stdout: 'inherit',
     stderr: 'inherit',
