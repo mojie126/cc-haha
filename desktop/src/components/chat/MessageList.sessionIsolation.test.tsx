@@ -121,15 +121,16 @@ describe('MessageList session isolation', () => {
     } })
 
     const view = render(<MessageList />)
-    expect(screen.getByText('A read page 0')).toBeTruthy()
+    // Commentary that precedes a tool call folds into the activity run, so the
+    // transcript has no standalone "A read page" row; the activity group is
+    // what proves session A's replay actually rendered.
     const initialAssistantTexts = assistantTexts(view.container)
     const initialRowCount = view.container.querySelectorAll('[data-chat-render-item-key]').length
-    expect(view.container.querySelectorAll('[data-tool-use-id]')).toHaveLength(5)
+    expect(view.container.querySelectorAll('[data-testid="activity-group"]')).toHaveLength(1)
 
     switchSession('session-b')
 
     expect(useChatStore.getState().sessions['session-b']?.messages).toHaveLength(1)
-    expect(screen.queryAllByText(/A read page/)).toHaveLength(0)
     expect(view.container.querySelectorAll('[data-chat-render-item-key]')).toHaveLength(1)
     expect(screen.getByText('Can my local network be reached?')).toBeTruthy()
     expect(view.container.querySelector('[data-tool-use-id]')).toBeNull()
@@ -142,7 +143,6 @@ describe('MessageList session isolation', () => {
     expect(screen.queryByText('Can my local network be reached?')).toBeNull()
 
     switchSession('session-b')
-    expect(screen.queryAllByText(/A read page/)).toHaveLength(0)
     expect(view.container.querySelectorAll('[data-chat-render-item-key]')).toHaveLength(1)
     expect(useChatStore.getState().sessions['session-a']?.messages).toEqual(oldMessages)
   })

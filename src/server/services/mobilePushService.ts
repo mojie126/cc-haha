@@ -128,7 +128,7 @@ export class MobilePushService {
     const detail = error instanceof Error ? /^Expo push rejected delivery \((.+)\)$/.exec(error.message)?.[1] : undefined
     this.expoError = detail ? `Expo 推送服务拒绝了发送（${detail}）` : '电脑连不上 Expo 推送服务（exp.host）'
     // The publisher's EAS project owns the APNs credentials; a phone cannot repair this.
-    this.expoIssue = detail === 'InvalidCredentials' ? 'credentials' : undefined
+    this.expoIssue = detail === 'InvalidCredentials' || detail === 'MismatchSenderId' ? 'credentials' : undefined
   }
   private configured(row: Pick<PushInput, 'platform' | 'provider'>) { return row.provider === 'desktop' ? !!this.deps.pull && this.deps.transport.configured(row.platform, 'desktop') : this.deps.transport.configured(row.platform, row.provider) }
   private load() {

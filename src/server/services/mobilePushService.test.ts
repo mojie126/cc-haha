@@ -178,6 +178,10 @@ test('the latest Expo failure is reported to phones until a send succeeds again'
   expect(service.status().relayErrors).toEqual({ expo: 'Expo 推送服务拒绝了发送（InvalidCredentials）' })
   // Only the publisher can repair credentials, so the phone is told not to chase its network.
   expect(service.status().relayIssues).toEqual({ expo: 'credentials' })
+  // A sender-id mismatch also points at the publisher's FCM/APNs setup, not this phone.
+  fail = new Error('Expo push rejected delivery (MismatchSenderId)')
+  await service.sendTest(expoToken, undefined, {})
+  expect(service.status().relayIssues).toEqual({ expo: 'credentials' })
   expect(JSON.stringify(service.status())).not.toContain(expoToken)
   fail = undefined
   expect(await service.sendTest(expoToken, undefined, {})).toEqual({ status: 'sent' })
