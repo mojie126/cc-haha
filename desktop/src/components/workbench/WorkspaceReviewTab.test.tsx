@@ -27,6 +27,7 @@ vi.mock('../workspace/WorkspaceDiffSurface', () => ({
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
 import { sessionsApi } from '../../api/sessions'
 import { WorkspaceReviewTab } from './WorkspaceReviewTab'
+import { WORKSPACE_REVIEW_PREFERENCES_STORAGE_KEY } from '../../lib/workspaceReviewPreferences'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useWorkspaceReviewStore } from '../../stores/workspaceReviewStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
@@ -174,6 +175,8 @@ it.each(['git', 'turn'] as const)('locates the requested second file once after 
 beforeEach(() => {
   Element.prototype.scrollIntoView = scrollIntoView
   scrollIntoView.mockClear()
+  // 视图偏好是持久化的，用例之间必须从默认视图开始
+  localStorage.removeItem(WORKSPACE_REVIEW_PREFERENCES_STORAGE_KEY)
   useSettingsStore.setState({ locale: 'en' })
   useWorkspaceStore.setState({ bySession: {}, sideWidth: 860, bottomHeight: 420 })
   useWorkspaceReviewStore.setState({ byKey: {} })
@@ -1027,5 +1030,27 @@ describe('review content parity', () => {
     expect(toolbar.parentElement).toContainElement(screen.getByTestId('workspace-tree-sidebar'))
     expect(toolbar.nextElementSibling).toContainElement(screen.getByTestId('workspace-tree-sidebar'))
     expect(screen.getByTestId('workspace-review-bulk-bar')).toHaveClass('absolute', 'rounded-full')
+  })
+
+  it('restores the diff layout, wrapping and file tree after the review tab remounts', async () => {
+    reviewApi.getStatus.mockResolvedValue(status({ files: [file(MODIFIED)] }))
+    const first = await renderReview()
+    fireEvent.click(screen.getByRole('radio', { name: 'Split diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Enable word wrap' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle file tree' }))
+    expect(screen.getByTestId(`diff-surface-${MODIFIED}`)).toHaveAttribute('data-mode', 'split')
+    expect(screen.getByRole('button', { name: 'Toggle file tree' })).toHaveAttribute('aria-pressed', 'false')
+    expect(JSON.parse(localStorage.getItem(WORKSPACE_REVIEW_PREFERENCES_STORAGE_KEY) ?? '{}')).toEqual({
+      diffMode: 'split',
+      wrapLines: true,
+      treeOpen: false,
+    })
+
+    first.unmount()
+    await renderReview()
+
+    expect(screen.getByTestId(`diff-surface-${MODIFIED}`)).toHaveAttribute('data-mode', 'split')
+    expect(screen.getByTestId(`diff-surface-${MODIFIED}`)).toHaveAttribute('data-wrap', 'true')
+    expect(screen.getByRole('button', { name: 'Toggle file tree' })).toHaveAttribute('aria-pressed', 'false')
   })
 })

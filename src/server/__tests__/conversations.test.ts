@@ -38,20 +38,28 @@ import { resetTerminalShellEnvironmentCacheForTests } from '../../utils/terminal
 import * as openAIModelCatalog from '../../services/openaiAuth/modelCatalog.js'
 import * as titleService from '../services/titleService.js'
 
-async function rmWithRetry(targetPath: string): Promise<void> {
-  const attempts = process.platform === 'win32' ? 5 : 1
+async function rmWithRetry(
+  targetPath: string,
+  options: { ignoreLockedFailure?: boolean } = {},
+): Promise<void> {
+  // Windows 上 CLI 子进程退出后仍可能短暂持有临时目录，退避总时长覆盖到约 5 秒
+  const attempts = process.platform === 'win32' ? 10 : 1
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       await fs.rm(targetPath, { recursive: true, force: true })
       return
     } catch (error) {
-      if (
-        attempt === attempts - 1 ||
-        !['EBUSY', 'EPERM', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code || '')
-      ) {
+      const code = (error as NodeJS.ErrnoException).code || ''
+      const locked = ['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(code)
+      if (attempt === attempts - 1 && locked && options.ignoreLockedFailure) {
+        // Bun 在 Windows 上可能把句柄保留到进程退出，清理失败不应把已通过的用例判红
+        console.warn(`[test cleanup] locked path left behind: ${targetPath} (${code})`)
+        return
+      }
+      if (attempt === attempts - 1 || !locked) {
         throw error
       }
-      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)))
+      await new Promise((resolve) => setTimeout(resolve, Math.min(100 * 2 ** attempt, 1_000)))
     }
   }
 }
@@ -2398,15 +2406,17 @@ describe('WebSocket Chat Integration', () => {
   })
 
   afterEach(async () => {
-    await conversationService.stopAllSessionsAndWait(1_000)
-  })
+    await conversationService.stopAllSessionsAndWait(3_000)
+  }, 15_000)
 
   afterAll(async () => {
+    // 后台 CLI 子进程在 Windows 上退出晚于断言，先等会话完全停止再删临时目录
+    await conversationService.stopAllSessionsAndWait(10_000)
     server?.stop(true)
     const { stopServerRuntimeForShutdown } = await import('../index.js')
     await stopServerRuntimeForShutdown()
     if (tmpDir) {
-      await rmWithRetry(tmpDir)
+      await rmWithRetry(tmpDir, { ignoreLockedFailure: true })
     }
     if (originalCliPath) {
       process.env.CLAUDE_CLI_PATH = originalCliPath
@@ -2418,7 +2428,7 @@ describe('WebSocket Chat Integration', () => {
     } else {
       process.env.CLAUDE_CONFIG_DIR = originalConfigDir
     }
-  })
+  }, 15_000)
 
   it('should connect and receive connected event', async () => {
     const messages: any[] = []
@@ -7621,7 +7631,7 @@ describe('WebSocket Chat Integration', () => {
       await providerService.activateOfficial()
       await providerService.deleteProvider(provider.id)
       upstream.stop(true)
-      await fs.rm(workDir, { recursive: true, force: true })
+      await rmWithRetry(workDir)
     }
   }, 70_000)
 })

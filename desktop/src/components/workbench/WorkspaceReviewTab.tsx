@@ -45,6 +45,11 @@ import { workspaceOpen } from '@/lib/workspace/openTarget'
 import { useMenuKeyboard } from './menuKeyboard'
 import { useRovingTree } from './treeKeyboard'
 import { useWorkspaceReviewRefresh } from '@/lib/workspace/useWorkspaceReviewRefresh'
+import {
+  readWorkspaceReviewPreferences,
+  writeWorkspaceReviewPreferences,
+  type WorkspaceReviewPreferences,
+} from '@/lib/workspaceReviewPreferences'
 import { useWorkspaceReviewStore } from '../../stores/workspaceReviewStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import {
@@ -209,12 +214,19 @@ export function WorkspaceReviewTab({
 }: WorkspaceReviewTabProps) {
   const t = useTranslation()
   const sourceLabel = useSourceLabel()
-  const [diffMode, setDiffMode] = useState<WorkspaceDiffMode>('unified')
-  const [wrapLines, setWrapLines] = useState(false)
+  // 布局、换行与文件树是跨标签共享的阅读偏好，写入本地存储后重启仍保持
+  const [reviewPreferences, setReviewPreferences] = useState(readWorkspaceReviewPreferences)
+  const updateReviewPreferences = useCallback((patch: Partial<WorkspaceReviewPreferences>) => {
+    setReviewPreferences((current) => {
+      const next = { ...current, ...patch }
+      writeWorkspaceReviewPreferences(next)
+      return next
+    })
+  }, [])
+  const { diffMode, wrapLines, treeOpen } = reviewPreferences
   // Expansion is an in-memory reading preference, scoped to the comparison.
   // Viewed files default to closed but can still be reopened without unmarking.
   const [openByScope, setOpenByScope] = useState<Record<string, Record<string, boolean>>>({})
-  const [treeOpen, setTreeOpen] = useState(true)
   const [filter, setFilter] = useState('')
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false)
   const [refEditor, setRefEditor] = useState<'branch' | 'commit' | null>(null)
@@ -556,14 +568,14 @@ export function WorkspaceReviewTab({
             size="sm"
             label={t('workspace.review.diffLayout')}
             value={diffMode}
-            onChange={setDiffMode}
+            onChange={(mode) => updateReviewPreferences({ diffMode: mode })}
             items={[
               { value: 'unified', title: t('workspace.review.unified'), icon: <List size={14} strokeWidth={1.75} aria-hidden="true" />, label: <span className="sr-only">{t('workspace.review.unified')}</span> },
               { value: 'split', title: t('workspace.review.split'), icon: <Columns2 size={14} strokeWidth={1.75} aria-hidden="true" />, label: <span className="sr-only">{t('workspace.review.split')}</span> },
             ]}
           />
-          <IconButton icon={<WrapText size={14} strokeWidth={1.75} />} label={t(wrapLines ? 'workspace.review.disableWrap' : 'workspace.review.enableWrap')} pressed={wrapLines} size="sm" tone="muted" onClick={() => setWrapLines(wrap => !wrap)} />
-          <IconButton icon={treeOpen ? <FolderOpen size={14} strokeWidth={1.75} /> : <FolderClosed size={14} strokeWidth={1.75} />} label={t('workspace.files.toggleTree')} size="sm" tone="muted" pressed={treeOpen} onClick={() => setTreeOpen(open => !open)} />
+          <IconButton icon={<WrapText size={14} strokeWidth={1.75} />} label={t(wrapLines ? 'workspace.review.disableWrap' : 'workspace.review.enableWrap')} pressed={wrapLines} size="sm" tone="muted" onClick={() => updateReviewPreferences({ wrapLines: !wrapLines })} />
+          <IconButton icon={treeOpen ? <FolderOpen size={14} strokeWidth={1.75} /> : <FolderClosed size={14} strokeWidth={1.75} />} label={t('workspace.files.toggleTree')} size="sm" tone="muted" pressed={treeOpen} onClick={() => updateReviewPreferences({ treeOpen: !treeOpen })} />
           <IconButton
             icon={<RefreshCw size={14} strokeWidth={1.75} />}
             label={t('workspace.review.refresh')}
@@ -716,7 +728,7 @@ export function WorkspaceReviewTab({
           ) : null}
         </div>
 
-        <WorkspaceTreeSidebar open={treeOpen} onOpenChange={setTreeOpen}>
+        <WorkspaceTreeSidebar open={treeOpen} onOpenChange={(open) => updateReviewPreferences({ treeOpen: open })}>
           <div className="flex min-h-0 flex-1 flex-col border-l border-[var(--color-border)]">
           <div className="shrink-0 px-2 pb-2 pt-2.5">
             <SearchField
