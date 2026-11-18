@@ -9,6 +9,8 @@ const { settingsApiMock } = vi.hoisted(() => ({
     updateUser: vi.fn(),
     getOutputStyles: vi.fn(),
     setOutputStyle: vi.fn(),
+    getProject: vi.fn(),
+    updateProject: vi.fn(),
   },
 }))
 
@@ -73,6 +75,7 @@ describe('GeneralSettings output style', () => {
         },
       ],
     })
+    settingsApiMock.getProject.mockResolvedValue({})
     settingsApiMock.getOutputStyles.mockResolvedValue({
       outputStyle: 'Project Style',
       scope: 'localSettings',

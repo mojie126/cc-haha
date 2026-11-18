@@ -29,6 +29,16 @@ export const settingsApi = {
     return api.put<{ ok: true }>('/api/settings/user', settings)
   },
 
+  getProject(projectRoot?: string | null) {
+    const query = projectRoot ? `?projectRoot=${encodeURIComponent(projectRoot)}` : ''
+    return api.get<Record<string, unknown>>(`/api/settings/project${query}`)
+  },
+
+  updateProject(settings: Record<string, unknown>, projectRoot?: string | null) {
+    const query = projectRoot ? `?projectRoot=${encodeURIComponent(projectRoot)}` : ''
+    return api.put<{ ok: true }>(`/api/settings/project${query}`, settings)
+  },
+
   getOutputStyles(workDir?: string | null) {
     const query = workDir ? `?workDir=${encodeURIComponent(workDir)}` : ''
     return api.get<OutputStylesResponse>(`/api/settings/output-styles${query}`)

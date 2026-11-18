@@ -12,7 +12,7 @@ import { execFileNoThrowWithCwd } from '../../utils/execFileNoThrow.js'
 import { findGitRoot, gitExe } from '../../utils/git.js'
 import { ripGrep } from '../../utils/ripgrep.js'
 import { expandTilde } from '../../utils/permissions/pathValidation.js'
-import { getInitialSettings } from '../../utils/settings/settings.js'
+import { getSettingsForSource } from '../../utils/settings/settings.js'
 import { activeStorageRoot, resolveRelocatedAttachmentPath } from '../../utils/storageRelocations.js'
 import {
   canonicalizeFilesystemAccessPath,
@@ -354,7 +354,7 @@ export async function getProjectSearchFiles(
   dependencies: ProjectSearchDependencies = {},
 ): Promise<string[]> {
   dependencies.signal?.throwIfAborted()
-  const respectGitignore = shouldRespectGitignore()
+  const respectGitignore = shouldRespectGitignore(rootPath)
   const gitFiles = await getFilesUsingGit(rootPath, respectGitignore, dependencies.signal)
   if (gitFiles !== null && gitFiles.length > 0) {
     return gitFiles
@@ -391,10 +391,24 @@ export async function getProjectSearchFiles(
   }
 }
 
-function shouldRespectGitignore(): boolean {
-  const projectSettings = getInitialSettings()
+/**
+ * 文件补全是否遵循 .gitignore，按被搜索的目录解析项目与项目本地设置，与界面写入
+ * 项目根的位置保持一致，而不是服务进程的工作目录，优先级对齐设置文件合并顺序：
+ * policySettings > localSettings > projectSettings > userSettings，最后回退到全局
+ * 配置，默认遵循
+ */
+function shouldRespectGitignore(rootPath: string): boolean {
+  const policySettings = getSettingsForSource('policySettings')
+  const localSettings = getSettingsForSource('localSettings', rootPath)
+  const projectSettings = getSettingsForSource('projectSettings', rootPath)
+  const userSettings = getSettingsForSource('userSettings')
   const globalConfig = getGlobalConfig()
-  return projectSettings.respectGitignore ?? globalConfig.respectGitignore ?? true
+  return policySettings?.respectGitignore ??
+    localSettings?.respectGitignore ??
+    projectSettings?.respectGitignore ??
+    userSettings?.respectGitignore ??
+    globalConfig.respectGitignore ??
+    true
 }
 
 async function getFilesUsingGit(rootPath: string, respectGitignore: boolean, signal?: AbortSignal): Promise<string[] | null> {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as fsp from 'fs/promises'
@@ -13,8 +13,27 @@ import {
   registerFilesystemAccessRoot,
 } from '../services/filesystemAccessRoots.js'
 import { getRepositoryContext } from '../services/repositoryLaunchService.js'
+import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 
 const cleanupDirs = new Set<string>()
+
+// 搜索测试必须不读真实用户设置，否则随用户全局开关变化而偶发失败
+let previousConfigDir: string | undefined
+
+beforeEach(async () => {
+  const configDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'claude-filesystem-config-'))
+  cleanupDirs.add(configDir)
+  previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+  process.env.CLAUDE_CONFIG_DIR = configDir
+  resetSettingsCache()
+})
+
+afterEach(() => {
+  if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+  else process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+  previousConfigDir = undefined
+  resetSettingsCache()
+})
 
 function makeUrl(route: string, params: Record<string, string>): URL {
   const url = new URL(`http://localhost${route}`)
@@ -299,6 +318,30 @@ describe('filesystem API', () => {
       }),
     ]))
     expect(body.entries.some((entry) => entry.relativePath === 'node_modules/pkg/cache-result.js')).toBe(false)
+  })
+
+  it('lets project settings override the global gitignore preference for that project', async () => {
+    const fixtureDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'claude-filesystem-project-ignore-'))
+    cleanupDirs.add(fixtureDir)
+    await fsp.writeFile(
+      path.join(process.env.CLAUDE_CONFIG_DIR!, 'settings.json'),
+      JSON.stringify({ respectGitignore: true }),
+    )
+    git(fixtureDir, 'init')
+    await fsp.writeFile(path.join(fixtureDir, '.gitignore'), 'node_modules/\n')
+    await fsp.mkdir(path.join(fixtureDir, 'node_modules', 'pkg'), { recursive: true })
+    await fsp.writeFile(path.join(fixtureDir, 'node_modules', 'pkg', 'needle.js'), '')
+    await fsp.writeFile(path.join(fixtureDir, 'visible.js'), '')
+    await fsp.mkdir(path.join(fixtureDir, '.claude'), { recursive: true })
+    await fsp.writeFile(
+      path.join(fixtureDir, '.claude', 'settings.json'),
+      JSON.stringify({ respectGitignore: false }),
+    )
+
+    const files = await getProjectSearchFiles(fixtureDir)
+
+    expect(files).toContain('visible.js')
+    expect(files).toContain('node_modules/pkg/needle.js')
   })
 
   it('keeps non-git file suggestions working when ripgrep cannot start', async () => {

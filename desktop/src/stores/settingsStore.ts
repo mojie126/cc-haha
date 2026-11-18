@@ -71,6 +71,8 @@ type SettingsStore = {
   reasoningFoldEnabled: boolean
   workflowKeywordTriggerEnabled: boolean
   nextPromptSuggestionsEnabled: boolean
+  /** 文件补全是否遵循 .gitignore，项目设置保存在项目配置中并优先于这里的全局值 */
+  respectGitignore: boolean
   maxOutputTokensEscalationMode: 'auto' | 'enabled' | 'disabled'
   leanModeEnabled: boolean
   agentTeamsEnabled: boolean
@@ -123,6 +125,7 @@ type SettingsStore = {
   setWorkflowKeywordTriggerEnabled: (enabled: boolean) => Promise<void>
   setReasoningFoldEnabled: (enabled: boolean) => Promise<void>
   setNextPromptSuggestionsEnabled: (enabled: boolean) => Promise<void>
+  setRespectGitignore: (enabled: boolean) => Promise<void>
   setMaxOutputTokensEscalationMode: (mode: 'auto' | 'enabled' | 'disabled') => Promise<void>
   setLeanModeEnabled: (enabled: boolean) => Promise<void>
   setAgentTeamsEnabled: (enabled: boolean) => Promise<void>
@@ -237,6 +240,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   reasoningFoldEnabled: true,
   workflowKeywordTriggerEnabled: true,
   nextPromptSuggestionsEnabled: false,
+  respectGitignore: true,
   maxOutputTokensEscalationMode: 'auto',
   leanModeEnabled: false,
   agentTeamsEnabled: true,
@@ -342,6 +346,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         workflowKeywordTriggerEnabled: userSettings.workflowKeywordTriggerEnabled !== false,
         // Opt-in: every suggestion is an extra model request.
         nextPromptSuggestionsEnabled: userSettings.nextPromptSuggestionsEnabled === true,
+        respectGitignore: userSettings.respectGitignore !== false,
         maxOutputTokensEscalationMode: hydrateOutputEscalation
           ? lastPersistedOutputEscalationMode
           : get().maxOutputTokensEscalationMode,
@@ -457,6 +462,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await settingsApi.updateUser({ nextPromptSuggestionsEnabled: enabled })
     } catch (error) {
       set({ nextPromptSuggestionsEnabled: prev })
+      throw error
+    }
+  },
+
+  setRespectGitignore: async (enabled) => {
+    const prev = get().respectGitignore
+    set({ respectGitignore: enabled })
+    try {
+      await settingsApi.updateUser({ respectGitignore: enabled })
+    } catch (error) {
+      set({ respectGitignore: prev })
       throw error
     }
   },

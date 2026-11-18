@@ -17,6 +17,7 @@ import { normalizeJsonObject, readRecoverableJsonFile } from './recoverableJsonF
 import { ensurePersistentStorageUpgraded } from './persistentStorageMigrations.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
 import { addFileGlobRuleToGitignore } from '../../utils/git/gitignore.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
 import type { ModelMapping } from '../types/provider.js'
@@ -128,6 +129,13 @@ export class SettingsService {
   /** Desktop composer next-prompt suggestions; opt-in because each turn costs an extra request. */
   async getNextPromptSuggestionsEnabled(): Promise<boolean> {
     return (await this.getUserSettings()).nextPromptSuggestionsEnabled === true
+  }
+
+  /** 文件补全遵循 .gitignore 的全局值，用户设置缺失时沿用旧版 CLI 全局配置 */
+  async getRespectGitignore(settings?: Record<string, unknown>): Promise<boolean> {
+    const user = settings ?? await this.getUserSettings()
+    if (typeof user.respectGitignore === 'boolean') return user.respectGitignore
+    return getGlobalConfig().respectGitignore !== false
   }
 
   /** Max output tokens escalation mode; missing means 'auto' (follow GrowthBook). */
@@ -246,6 +254,9 @@ export class SettingsService {
         throw ApiError.badRequest('maxOutputTokensEscalationMode must be auto, enabled, or disabled')
       }
     }
+    if (Object.hasOwn(settings, 'respectGitignore') && typeof settings.respectGitignore !== 'boolean') {
+      throw ApiError.badRequest('respectGitignore must be a boolean')
+    }
     const filePath = this.getUserSettingsPath()
     await this.withWriteLock(filePath, async () => {
       const current = await this.readJsonFile(filePath)
@@ -295,15 +306,25 @@ export class SettingsService {
     })
   }
 
-  /** 更新项目级设置（浅合并） */
+  /** 更新项目级设置（浅合并；值为 null 的键删除，用于恢复跟随全局） */
   async updateProjectSettings(
     settings: Record<string, unknown>,
     projectRoot?: string,
   ): Promise<void> {
+    if (
+      Object.hasOwn(settings, 'respectGitignore') &&
+      settings.respectGitignore !== null &&
+      typeof settings.respectGitignore !== 'boolean'
+    ) {
+      throw ApiError.badRequest('respectGitignore must be a boolean or null')
+    }
     const filePath = this.getProjectSettingsPath(projectRoot)
     await this.withWriteLock(filePath, async () => {
       const current = await this.readJsonFile(filePath)
       const merged = Object.assign({}, current, settings)
+      for (const [key, value] of Object.entries(settings)) {
+        if (value === null) delete merged[key]
+      }
       await this.writeJsonFile(filePath, merged)
     })
   }

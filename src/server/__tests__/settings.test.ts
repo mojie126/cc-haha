@@ -381,6 +381,18 @@ describe('SettingsService', () => {
     expect(settings.outputStyle).toBe('verbose')
   })
 
+  it('should remove a project setting when the value is null', async () => {
+    const projectRoot = path.join(tmpDir, 'myproject')
+    const svc = new SettingsService(projectRoot)
+    await svc.updateProjectSettings({ outputStyle: 'verbose', respectGitignore: false })
+
+    await svc.updateProjectSettings({ respectGitignore: null })
+
+    const settings = await svc.getProjectSettings()
+    expect(settings.outputStyle).toBe('verbose')
+    expect(settings).not.toHaveProperty('respectGitignore')
+  })
+
   it('should read and write project-local settings', async () => {
     const projectRoot = path.join(tmpDir, 'myproject')
     const svc = new SettingsService(projectRoot)
@@ -511,7 +523,7 @@ describe('Settings API', () => {
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ agentTeamsEnabled: true, leanModeEnabled: false, autoUpdateEnabled: true, maxConcurrentSubagents: null })
+    expect(body).toEqual({ agentTeamsEnabled: true, leanModeEnabled: false, autoUpdateEnabled: true, maxConcurrentSubagents: null, respectGitignore: true })
   })
 
   it('读取旧设置为不限，并通过 API 保存数量和恢复不限', async () => {

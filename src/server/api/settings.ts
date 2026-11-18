@@ -108,6 +108,7 @@ async function handleUserSettings(req: Request): Promise<Response> {
       autoUpdateEnabled: await settingsService.getAutoUpdateEnabled(userSettings),
       agentTeamsEnabled: await settingsService.getAgentTeamsEnabled(),
       maxConcurrentSubagents: await settingsService.getMaxConcurrentSubagents(userSettings),
+      respectGitignore: await settingsService.getRespectGitignore(userSettings),
     })
   }
 

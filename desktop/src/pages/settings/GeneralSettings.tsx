@@ -52,6 +52,7 @@ import { DataMigrationSettings } from './DataMigrationSettings'
 import { TabBehaviorSettings } from './TabBehaviorSettings'
 import { LeanModeSettings } from './LeanModeSettings'
 import { ReasoningFoldSettings } from './ReasoningFoldSettings'
+import { RespectGitignoreSettings } from './RespectGitignoreSettings'
 import { PreventSleepSettings } from './PreventSleepSettings'
 import { IdlePowerSettings } from './IdlePowerSettings'
 import { SettingsHelpTopic } from './SettingsHelpTopic'
@@ -1020,6 +1021,8 @@ export function GeneralSettings() {
           </SettingsRow>
         </SettingsGroup>
       </SettingsSection>
+
+      <RespectGitignoreSettings />
 
       <ChatAppearanceSettings />
 
