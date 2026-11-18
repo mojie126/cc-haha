@@ -21,6 +21,7 @@ import * as swarms from '../../utils/agentSwarmsEnabled.js'
 import { getTeamFilePath } from '../../utils/swarm/teamHelpers.js'
 import { AgentTool } from './AgentTool.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
+import { getPrompt } from './prompt.js'
 import * as agentRunner from './runAgent.js'
 
 function deferred<T>() {
@@ -593,5 +594,35 @@ describe('maxConcurrentSubagents settings contract', () => {
   })
   test.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity, '2'])('rejects %s', value => {
     expect(SettingsSchema().safeParse({ maxConcurrentSubagents: value }).success).toBe(false)
+  })
+})
+
+describe('concurrency limit disclosure in the tool prompt', () => {
+  test.each([1, 2])('announces the configured limit of %s before any launch', async limit => {
+    setLimit(limit)
+    resetSettingsCache()
+    const prompt = await getPrompt([GENERAL_PURPOSE_AGENT])
+    expect(prompt).toContain(`at most ${limit} subagent${limit === 1 ? '' : 's'}`)
+    expect(prompt).toContain(`never launch more than ${limit} agents`)
+    expect(prompt).toContain('never launch extra agents expecting them to fail')
+  })
+
+  test.each(['standard', 'lean'] as const)('%s profile discloses the configured limit', async profile => {
+    const profileSpy = spyOn(await import('../../utils/agentProfile.js'), 'getAgentProfile').mockReturnValue(profile)
+    try {
+      setLimit(2)
+      resetSettingsCache()
+      expect(await getPrompt([GENERAL_PURPOSE_AGENT])).toContain('at most 2 subagents')
+    } finally {
+      profileSpy.mockRestore()
+    }
+  })
+
+  test('omits the limit section when no cap is configured', async () => {
+    setLimit(null)
+    resetSettingsCache()
+    const prompt = await getPrompt([GENERAL_PURPOSE_AGENT])
+    expect(prompt).not.toContain('HARD LIMIT')
+    expect(prompt).not.toContain('never launch more than')
   })
 })

@@ -3,6 +3,7 @@ import { getAgentProfile } from '../../utils/agentProfile.js'
 import { getSubscriptionType } from '../../utils/auth.js'
 import { hasEmbeddedSearchTools } from '../../utils/embeddedTools.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
+import { getMaxConcurrentSubagentsUncached } from '../../utils/settings/settings.js'
 import { isTeammate } from '../../utils/teammate.js'
 import { isInProcessTeammate } from '../../utils/teammateContext.js'
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js'
@@ -69,6 +70,13 @@ export async function getPrompt(
   isCoordinator?: boolean,
   allowedAgentTypes?: string[],
 ): Promise<string> {
+  // 已配置并发上限时写入工具描述，让模型在调起前就知道硬性边界，
+  // 而不是超额调起后由 reserveSubagentSlot 运行时拒绝，让多余的一个失败
+  const maxConcurrentSubagents = getMaxConcurrentSubagentsUncached()
+  const concurrencyLimitSection = maxConcurrentSubagents != null
+    ? `\n\nHARD LIMIT: the user allows at most ${maxConcurrentSubagents} subagent${maxConcurrentSubagents === 1 ? '' : 's'} running at the same time. A launch beyond this limit fails immediately, so never launch more than ${maxConcurrentSubagents} agents concurrently and never launch extra agents expecting them to fail — if every slot is busy, wait for a running agent to finish first.`
+    : ''
+
   // Filter agents by allowed types when Agent(x,y) restricts which agents can be spawned
   const effectiveAgents = allowedAgentTypes
     ? agentDefinitions.filter(a => allowedAgentTypes.includes(a.agentType))
@@ -76,7 +84,7 @@ export async function getPrompt(
 
   if (getAgentProfile() === 'lean') {
     return `Delegate an independent task to a subagent with a separate context. Provide the task, relevant context, and a short description. Available types:\n${effectiveAgents.map(agent => `- ${agent.agentType}: ${agent.whenToUse}`).join('\n')}
-Use foreground execution when you need the result before proceeding. Set run_in_background to true when you can continue independent work; completion is reported automatically. TaskOutput retrieves or waits for results, TaskStop stops a running task, and SendMessage continues an agent by ID or name with its context preserved. Summarize the result for the user. Subagents use the lean tool set and existing permissions.`
+Use foreground execution when you need the result before proceeding. Set run_in_background to true when you can continue independent work; completion is reported automatically. TaskOutput retrieves or waits for results, TaskStop stops a running task, and SendMessage continues an agent by ID or name with its context preserved. Summarize the result for the user. Subagents use the lean tool set and existing permissions.${concurrencyLimitSection}`
   }
 
   // Fork subagent feature: when enabled, insert the "When to fork" section
@@ -215,7 +223,7 @@ ${
   forkEnabled
     ? `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type to use a specialized agent, or omit it to fork yourself — a fork inherits your full conversation context.`
     : `When using the ${AGENT_TOOL_NAME} tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.`
-}`
+}${concurrencyLimitSection}`
 
   // Coordinator mode gets the slim prompt -- the coordinator system prompt
   // already covers usage notes, examples, and when-not-to-use guidance.
