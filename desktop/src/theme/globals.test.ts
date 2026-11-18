@@ -61,6 +61,15 @@ const themes = [
 ] as const
 
 describe('desktop theme tokens', () => {
+  it('gives the mono stack a CJK sans fallback before the generic monospace face', () => {
+    // JetBrains Mono and Consolas carry no CJK glyphs; skipping straight to
+    // `monospace` rendered every Chinese code span in the Windows Song face.
+    const mono = /--font-mono:\s*([^;]+);/.exec(normalizedCss)?.[1] ?? ''
+    expect(mono).toContain("'PingFang SC'")
+    expect(mono).toContain("'Microsoft YaHei'")
+    expect(mono.indexOf("'Microsoft YaHei'")).toBeLessThan(mono.lastIndexOf('monospace'))
+  })
+
   /**
    * The source variables every palette owes the semantic layer. A palette that
    * skips one does not fail loudly — the token inherits whatever the previous

@@ -169,6 +169,35 @@ function normalizeDiffStats(diffStats: {
   return preview
 }
 
+export type TurnCheckpointFileStats = {
+  path: string
+  insertions: number
+  deletions: number
+}
+
+/**
+ * 把内部按规范化路径索引的每文件统计转成响应里的顺序列表
+ *
+ * 内部映射的键是规范化后的绝对路径（Windows 下为小写），响应里的 `filesChanged` 保留原样，
+ * 所以按每条上报路径重新解析身份，冻结与非冻结两种身份都尝试
+ */
+export function turnCheckpointFileStats(
+  checkpoint: SessionTurnCheckpointPreview,
+  frozen: boolean,
+): TurnCheckpointFileStats[] {
+  const stats = checkpoint.code[fileChangeStats]
+  if (!stats || stats.size === 0) return []
+
+  const entries: TurnCheckpointFileStats[] = []
+  for (const filePath of checkpoint.code.filesChanged) {
+    const entry = stats.get(toFileIdentityPath(filePath, frozen)) ?? stats.get(toFileIdentityPath(filePath))
+    // 非文本文件没有行概念，返回 0/0 只会误导
+    if (!entry || entry.textComparable === false) continue
+    entries.push({ path: filePath, insertions: entry.insertions, deletions: entry.deletions })
+  }
+  return entries
+}
+
 function normalizePromptText(text: string): string {
   return text.replace(/\r\n/g, '\n').trim()
 }

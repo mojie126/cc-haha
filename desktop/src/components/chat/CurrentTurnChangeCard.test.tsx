@@ -210,6 +210,39 @@ describe('CurrentTurnChangeCard – disclosure', () => {
     expect(screen.queryByText('main.ts')).not.toBeInTheDocument()
   })
 
+  it('shows each file’s own insertion and deletion counts', () => {
+    const checkpoint: SessionTurnCheckpoint = {
+      ...makeCheckpoint(['/w/proj/src/main.ts', '/w/proj/src/util.ts']),
+      code: {
+        ...makeCheckpoint([]).code,
+        filesChanged: ['/w/proj/src/main.ts', '/w/proj/src/util.ts'],
+        insertions: 12,
+        deletions: 3,
+        fileStats: [
+          { path: '/w/proj/src/main.ts', insertions: 9, deletions: 1 },
+          { path: '/w/proj/src/util.ts', insertions: 3, deletions: 2 },
+        ],
+      },
+    }
+    render(
+      <CurrentTurnChangeCard
+        sessionId="s1"
+        workDir="/w/proj"
+        checkpoint={checkpoint}
+        error={null}
+        isUndoing={false}
+        isLatest
+        expanded
+        onExpandedChange={vi.fn()}
+        onUndo={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('+12')).toBeInTheDocument()
+    expect(screen.getByText('+9')).toBeInTheDocument()
+    expect(screen.getByText('-2')).toBeInTheDocument()
+  })
+
   it('updates visibility when checkpoint files arrive or become empty', () => {
     const props = {
       sessionId: 's1',

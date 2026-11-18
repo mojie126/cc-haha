@@ -118,6 +118,8 @@ type Props = {
   isStreaming?: boolean
   /** This run is the tail of a turn that is still producing into it. */
   isLive?: boolean
+  /** The turn this run belongs to is still running; folding waits for its end. */
+  turnActive?: boolean
   /** Stable key that survives virtualized row unmount/remount. */
   disclosureKey?: string
   /** A "locate in chat" jump targets this call: open its run and mark its row. */
@@ -146,6 +148,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
   showOpenRun = true,
   isStreaming,
   isLive = false,
+  turnActive = false,
   disclosureKey,
   revealToolUseId,
   activityPresentation = 'inline',
@@ -181,6 +184,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
             activeThinkingId={activeThinkingId}
             showOpenRun={showOpenRun}
             isStreaming={isStreaming}
+            turnActive={turnActive}
             disclosureKey={disclosureKey}
             revealToolUseId={revealToolUseId}
             activityPresentation={activityPresentation}
@@ -204,6 +208,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
       showOpenRun={showOpenRun}
       isStreaming={isStreaming}
       isLive={isLive}
+      turnActive={turnActive}
       disclosureKey={disclosureKey}
       revealToolUseId={revealToolUseId}
       activityPresentation={activityPresentation}
@@ -226,6 +231,7 @@ function ToolCallGroupContent({
   showOpenRun = true,
   isStreaming,
   isLive = false,
+  turnActive = false,
   disclosureKey,
   revealToolUseId,
   activityPresentation = 'inline',
@@ -287,6 +293,7 @@ function ToolCallGroupContent({
             activeThinkingId={activeThinkingId}
             showOpenRun={showOpenRun}
             isStreaming={isStreaming}
+            turnActive={turnActive}
             revealToolUseId={revealToolUseId}
             activityPresentation={activityPresentation}
           />
@@ -303,7 +310,7 @@ function ToolCallGroupContent({
             key={step.message.id}
             content={step.message.content}
             isActive={step.message.id === activeThinkingId}
-            isTurnActive={isLive}
+            isTurnActive={turnActive}
           />
         ) : step.kind === 'text' ? (
           <div key={step.message.id} className="text-[13px] text-[var(--color-text-secondary)]">
@@ -345,12 +352,14 @@ function ToolCallGroupContent({
 
   return (
     <ActivityGroup
+      sessionId={sessionId}
       steps={steps}
       resultMap={resultMap}
       childToolCallsByParent={childToolCallsByParent}
       activeThinkingId={activeThinkingId}
       isStreaming={isStreaming}
       isLive={isLive}
+      turnActive={turnActive}
       disclosureKey={disclosureKey}
       revealToolUseId={revealToolUseId}
       awaitingToolUseIds={awaitingToolUseIds}

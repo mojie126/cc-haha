@@ -19,6 +19,7 @@ import { isDelimitedTextFile, isWorkspaceDocumentFile, isWorkspacePreviewableFil
 import { openLocalFileWithSystem, reportOpenFailure } from '../../lib/systemFileOpen'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
+import { relativizeWorkspacePath } from '../../lib/workspace/relativeWorkspacePath'
 import { MobileTurnDiffSheet } from './MobileTurnDiffSheet'
 
 type CurrentTurnChangeCardProps = {
@@ -36,9 +37,17 @@ type CurrentTurnChangeCardProps = {
 type ChangedFileEntry = {
   apiPath: string
   displayPath: string
+  /** 该文件自己的增删数，服务端未提供时缺省 */
+  insertions?: number
+  deletions?: number
 }
 
 const COLLAPSED_COUNT = 5
+
+/** 统计列表与变更列表按规范化路径配对，忽略分隔符与大小写差异 */
+function comparablePath(path: string): string {
+  return path.replace(/\\/g, '/').toLowerCase()
+}
 
 export function CurrentTurnChangeCard({
   sessionId,
@@ -60,14 +69,22 @@ export function CurrentTurnChangeCard({
   const isMobile = useMobileViewport() && !isDesktopRuntime()
   const [diffPath, setDiffPath] = useState<string | null>(null)
 
+  const statsByPath = useMemo(
+    () => new Map((checkpoint.code.fileStats ?? []).map((stats) => [comparablePath(stats.path), stats] as const)),
+    [checkpoint.code.fileStats],
+  )
   const files = useMemo<ChangedFileEntry[]>(
     () => checkpoint.code.filesChanged
-      .map((filePath) => ({
-        apiPath: filePath,
-        displayPath: relativizeWorkspacePath(filePath, workDir),
-      }))
+      .map((filePath) => {
+        const stats = statsByPath.get(comparablePath(filePath))
+        return {
+          apiPath: filePath,
+          displayPath: relativizeWorkspacePath(filePath, workDir),
+          ...(stats ? { insertions: stats.insertions, deletions: stats.deletions } : {}),
+        }
+      })
       .sort((a, b) => Number(isPreviewableChangedFile(b.displayPath)) - Number(isPreviewableChangedFile(a.displayPath))),
-    [checkpoint.code.filesChanged, workDir],
+    [checkpoint.code.filesChanged, statsByPath, workDir],
   )
 
   const canCollapse = files.length > COLLAPSED_COUNT
@@ -270,6 +287,13 @@ export function CurrentTurnChangeCard({
                     {directory}
                     <span className="font-medium text-[var(--color-text-primary)]">{fileName}</span>
                   </span>
+                  {typeof fileEntry.insertions === 'number' ? (
+                    <span className="shrink-0 whitespace-nowrap font-mono text-[11px] tabular-nums">
+                      <span className="text-[var(--color-diff-added-text)]">+{fileEntry.insertions}</span>
+                      {' '}
+                      <span className="text-[var(--color-diff-removed-text)]">-{fileEntry.deletions}</span>
+                    </span>
+                  ) : null}
                   <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">
                     {typeInfo.ext || t(typeInfo.categoryKey as Parameters<typeof t>[0])}
                   </span>
@@ -330,19 +354,4 @@ export function CurrentTurnChangeCard({
       ) : null}
     </section>
   )
-}
-
-export function relativizeWorkspacePath(filePath: string, workDir: string | null): string {
-  const normalizedPath = filePath.replace(/\\/g, '/')
-  const isAbsolute = normalizedPath.startsWith('/') || /^[a-zA-Z]:\//.test(normalizedPath)
-  if (!workDir || !isAbsolute) return normalizedPath
-
-  const normalizedWorkDir = workDir.replace(/\\/g, '/').replace(/\/+$/, '')
-  const comparablePath = normalizedPath.toLowerCase()
-  const comparableWorkDir = normalizedWorkDir.toLowerCase()
-  if (comparablePath === comparableWorkDir) return ''
-  if (comparablePath.startsWith(`${comparableWorkDir}/`)) {
-    return normalizedPath.slice(normalizedWorkDir.length + 1)
-  }
-  return normalizedPath
 }

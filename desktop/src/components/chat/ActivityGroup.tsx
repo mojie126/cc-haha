@@ -25,6 +25,8 @@ type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
 
 type Props = {
+  /** Session that owns the run, used to read edited files for real diff line numbers. */
+  sessionId?: string | null
   steps: ActivityStep[]
   resultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
@@ -37,6 +39,13 @@ type Props = {
    * one tool resolving and the next starting, many times inside a single run.
    */
   isLive?: boolean
+  /**
+   * The turn this run belongs to is still running. Folding keys off this, not
+   * `isLive`: a handoff to the reply text or the next step ends the run while
+   * the turn goes on, and folding there hid reasoning the reader was still
+   * following.
+   */
+  turnActive?: boolean
   /** Stable key that survives virtualized row unmount/remount. */
   disclosureKey?: string
   /**
@@ -99,12 +108,14 @@ export function ToolTimeline({ children, className = '' }: { children: ReactNode
  * hidden `Read MessageList.tsx` row is strictly less than the row itself.
  */
 export const ActivityGroup = memo(function ActivityGroup({
+  sessionId,
   steps,
   resultMap,
   childToolCallsByParent,
   activeThinkingId,
   isStreaming,
   isLive = false,
+  turnActive = false,
   disclosureKey,
   revealToolUseId,
   awaitingToolUseIds,
@@ -124,17 +135,17 @@ export const ActivityGroup = memo(function ActivityGroup({
     setPinnedCollapsedLocal(next)
     if (disclosureKey && next !== null) setDisclosure(disclosureKey, next)
   }
-  // 完成即折叠：直播态结束自动折回摘要行（Responses 风格），
+  // 完成即折叠：回合结束自动折回摘要行（Responses 风格），
   // 此后手动展开仍会保留，直到下一次直播态开始。关闭推理折叠时不做这次
   // 自动折叠，历史回合的工具过程保持展开。
   const reasoningFoldEnabled = useSettingsStore((state) => state.reasoningFoldEnabled)
-  const wasLiveRef = useRef(isLive)
+  const wasTurnActiveRef = useRef(turnActive)
   useEffect(() => {
-    if (reasoningFoldEnabled && wasLiveRef.current && !isLive && !userPinnedRef.current) {
+    if (reasoningFoldEnabled && wasTurnActiveRef.current && !turnActive && !userPinnedRef.current) {
       setPinnedCollapsedLocal(true)
     }
-    wasLiveRef.current = isLive
-  }, [isLive, reasoningFoldEnabled])
+    wasTurnActiveRef.current = turnActive
+  }, [turnActive, reasoningFoldEnabled])
   // 开关切换时清掉自动折叠与读者 pin，让新的默认值立即生效。
   const previousFoldEnabledRef = useRef(reasoningFoldEnabled)
   useEffect(() => {
@@ -164,18 +175,19 @@ export const ActivityGroup = memo(function ActivityGroup({
   // unresolved forever, and a spinner on it would be a lie.
   const showsProgress = isRunning && (isLive || Boolean(isStreaming) || hasActiveThinking)
   const awaitingCount = toolCalls.filter((toolCall) => !resultMap.has(toolCall.toolUseId) && isAwaiting(toolCall, awaitingToolUseIds)).length
-  // Keyed off "still being written to", never off "a tool is executing right
-  // now". The latter flickers: a run of six tools resolves and restarts six
-  // times, and folding on each gap made the whole block open and shut under the
-  // reader while they were trying to watch it.
+  // Keyed off the turn, never off "a tool is executing right now" or the run's
+  // own tail. Both flicker inside a turn — a tool resolving and the next one
+  // starting, or the reply text beginning to stream — and folding on either made
+  // the block open and shut under the reader while they were watching it.
   // Open in the same render the request arrives in, so the row is in the DOM
   // for the scroll that follows; the effect above makes it stick.
   const collapsed = revealsHere
     ? false
-    : (pinnedCollapsed ?? (reasoningFoldEnabled ? !isLive : false))
+    : (pinnedCollapsed ?? (reasoningFoldEnabled ? !turnActive : false))
   const rowProps = {
     resultMap,
     childToolCallsByParent,
+    sessionId,
     revealToolUseId,
     awaitingToolUseIds,
     live: showsProgress,
@@ -217,7 +229,7 @@ export const ActivityGroup = memo(function ActivityGroup({
             key={step.message.id}
             content={step.message.content}
             isActive={step.message.id === activeThinkingId}
-            isTurnActive={isLive}
+            isTurnActive={turnActive}
           />
         ) : step.kind === 'text' ? (
           <TimelineCommentary key={step.message.id} content={step.message.content} />
@@ -372,7 +384,7 @@ export const ActivityGroup = memo(function ActivityGroup({
                 key={step.message.id}
                 content={step.message.content}
                 isActive={step.message.id === activeThinkingId}
-                isTurnActive={isLive}
+                isTurnActive={turnActive}
               />
             ) : step.kind === 'text' ? (
               <TimelineCommentary key={step.message.id} content={step.message.content} />
@@ -483,6 +495,7 @@ type ActivityToolRowProps = {
   toolCall: ToolCall
   resultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
+  sessionId?: string | null
   revealToolUseId?: string
   awaitingToolUseIds?: ReadonlySet<string>
   /** The run is still being written to, so a resultless call is executing. */
@@ -519,6 +532,7 @@ const ActivityToolRow = memo(function ActivityToolRow({
   toolCall,
   resultMap,
   childToolCallsByParent,
+  sessionId,
   revealToolUseId,
   awaitingToolUseIds,
   live = false,
@@ -532,6 +546,7 @@ const ActivityToolRow = memo(function ActivityToolRow({
         chrome="row"
         toolName={toolCall.toolName}
         input={toolCall.input}
+        sessionId={sessionId}
         // The transcript's own result object, not a copy: `ToolCallBlock` is
         // memoized, and a fresh `{ content, isError }` here defeated it.
         result={result ?? null}
@@ -552,6 +567,7 @@ const ActivityToolRow = memo(function ActivityToolRow({
               toolCall={childToolCall}
               resultMap={resultMap}
               childToolCallsByParent={childToolCallsByParent}
+              sessionId={sessionId}
               awaitingToolUseIds={awaitingToolUseIds}
               live={live}
             />
@@ -563,6 +579,7 @@ const ActivityToolRow = memo(function ActivityToolRow({
 }, (prev, next) => (
   prev.toolCall === next.toolCall &&
   prev.live === next.live &&
+  prev.sessionId === next.sessionId &&
   prev.revealToolUseId === next.revealToolUseId &&
   sameRowInputs(next.toolCall, prev, next)
 ))

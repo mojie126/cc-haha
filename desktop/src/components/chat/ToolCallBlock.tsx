@@ -68,6 +68,8 @@ type Props = {
   toolName: string
   input: unknown
   result?: { content: unknown; isError: boolean } | null
+  /** Session that owns the call, used to read the edited file for real line numbers. */
+  sessionId?: string | null
   agentTaskNotification?: AgentTaskNotification
   compact?: boolean
   chrome?: ToolCallChrome
@@ -169,7 +171,7 @@ type ContentStats = {
   windowed?: boolean
 }
 
-export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, result, compact = false, chrome = 'card', isPending = false, status, partialInput, defaultExpanded = false, durationMs, disclosureKey, toolUseId, navigationHighlighted = false, awaitingApproval = false, running }: Props) {
+export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, result, sessionId, compact = false, chrome = 'card', isPending = false, status, partialInput, defaultExpanded = false, durationMs, disclosureKey, toolUseId, navigationHighlighted = false, awaitingApproval = false, running }: Props) {
   const isRow = chrome === 'row'
   const isExitPlanTool = isExitPlanModeTool(toolName)
   const isEnterPlanTool = isEnterPlanModeTool(toolName)
@@ -226,8 +228,8 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
     : ''
 
   const preview = useMemo(
-    () => renderPreview(toolName, obj, result, t, durationSummary),
-    [durationSummary, obj, result, toolName, t],
+    () => renderPreview(toolName, obj, result, t, durationSummary, sessionId ?? undefined),
+    [durationSummary, obj, result, sessionId, toolName, t],
   )
   const details = useMemo(
     () => renderDetails(toolName, obj, t, isPending ? partialInput : undefined),
@@ -820,6 +822,7 @@ function renderPreview(
   result?: { content: unknown; isError: boolean } | null,
   t?: Translate,
   durationSummary = '',
+  sessionId?: string,
 ) {
   const filePath = typeof obj.file_path === 'string' ? obj.file_path : 'file'
   // Must match the terminal-block condition below exactly. When they diverged, a
@@ -834,7 +837,15 @@ function renderPreview(
   if (toolName === 'Edit' && typeof obj.old_string === 'string' && typeof obj.new_string === 'string') {
     return (
       <>
-        <DiffViewer filePath={filePath} oldString={obj.old_string} newString={obj.new_string} />
+        <DiffViewer
+          filePath={filePath}
+          oldString={obj.old_string}
+          newString={obj.new_string}
+          sessionId={sessionId}
+          // 结果未到之前文件可能还没写入，先按编辑前状态定位
+          editPhase={result ? 'after' : 'before'}
+          replaceAll={obj.replace_all === true}
+        />
         {resultOutput}
       </>
     )
@@ -843,7 +854,7 @@ function renderPreview(
   if (toolName === 'Write' && typeof obj.content === 'string') {
     return (
       <>
-        <DiffViewer filePath={filePath} oldString="" newString={obj.content} />
+        <DiffViewer filePath={filePath} oldString="" newString={obj.content} sessionId={sessionId} />
         {resultOutput}
       </>
     )

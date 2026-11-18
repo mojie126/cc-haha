@@ -285,7 +285,7 @@ describe('ActivityGroup · pictures in an open run', () => {
   ])
 
   it('shows each picture once, in its own row, and none under the summary', () => {
-    renderGroup(steps, results, { isLive: true })
+    renderGroup(steps, results, { isLive: true, turnActive: true })
     const group = groupOf()
 
     expect(group).toHaveAttribute('data-expanded', 'true')
@@ -299,7 +299,7 @@ describe('ActivityGroup · pictures in an open run', () => {
   })
 
   it('moves the pictures between the rows and the summary as the reader folds and opens it', () => {
-    renderGroup(steps, results, { isLive: true })
+    renderGroup(steps, results, { isLive: true, turnActive: true })
     const group = groupOf()
     const imagesShown = () => within(group).getAllByRole('img').length
 
@@ -317,7 +317,7 @@ describe('ActivityGroup · pictures in an open run', () => {
   })
 
   it('shows the pictures of a live run the reader has folded', () => {
-    renderGroup(steps, results, { isLive: true, isStreaming: true })
+    renderGroup(steps, results, { isLive: true, turnActive: true, isStreaming: true })
     expect(stripsIn(groupOf()).every((strip) => strip.closest('[data-tool-call-chrome="row"]'))).toBe(true)
 
     fireEvent.click(summaryOf(groupOf()))

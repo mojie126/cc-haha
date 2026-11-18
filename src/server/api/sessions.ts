@@ -65,6 +65,7 @@ import {
   listSessionTurnCheckpoints,
   parseSessionRewindMode,
   previewSessionRewind,
+  turnCheckpointFileStats,
   type RewindTargetSelector,
 } from '../services/sessionRewindService.js'
 import { SessionStore } from '../../../adapters/common/session-store.js'
@@ -1832,7 +1833,8 @@ async function branchSession(req: Request, sessionId: string): Promise<Response>
 }
 
 async function getTurnCheckpoints(req: Request, sessionId: string): Promise<Response> {
-  const checkpoints = await listSessionTurnCheckpoints(sessionId, req.signal, new URL(req.url).searchParams.get('frozen') === 'true')
+  const frozen = new URL(req.url).searchParams.get('frozen') === 'true'
+  const checkpoints = await listSessionTurnCheckpoints(sessionId, req.signal, frozen)
   // Make this turn's real changed files previewable even when they live outside
   // the session workdir (e.g. the user told the model to write to an absolute
   // path on another drive). Writing them was authorized, so previewing is too.
@@ -1841,7 +1843,19 @@ async function getTurnCheckpoints(req: Request, sessionId: string): Promise<Resp
       registerChangedFileAccessRoot(filePath, checkpoint.workDir)
     }
   }
-  return Response.json({ checkpoints })
+  // 每文件增删数只在内部 Symbol 映射里，不能随 JSON 返回，这里转成列表
+  return Response.json({
+    checkpoints: checkpoints.map((checkpoint) => {
+      const fileStats = turnCheckpointFileStats(checkpoint, frozen)
+      return {
+        ...checkpoint,
+        code: {
+          ...checkpoint.code,
+          ...(fileStats.length > 0 ? { fileStats } : {}),
+        },
+      }
+    }),
+  })
 }
 
 async function getTurnCheckpointDiff(sessionId: string, url: URL): Promise<Response> {

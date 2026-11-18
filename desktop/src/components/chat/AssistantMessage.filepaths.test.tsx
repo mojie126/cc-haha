@@ -140,6 +140,38 @@ describe('AssistantMessage file references', () => {
     await waitFor(() => expect(openPreviewFn).toHaveBeenCalledWith('s1', path, {}))
   })
 
+  it('opens this turn’s diff when a changed file link in the reply is clicked', async () => {
+    render(<AssistantMessage
+      sessionId="s1"
+      content="Updated [app.ts](/work/src/app.ts)."
+      turnChangedFiles={['/work/src/app.ts']}
+      turnChangeTarget={{ turnKey: 'user-1', userMessageIndex: 0 }}
+      turnOutputEvidence={{ unlistedWrites: false }}
+    />)
+
+    fireEvent.click(await screen.findByRole('link', { name: 'app.ts' }))
+    await waitFor(() => expect(openPreviewFn).toHaveBeenCalledWith('s1', expect.objectContaining({
+      source: { kind: 'turn', turnKey: 'user-1', userMessageIndex: 0 },
+      path: 'src/app.ts',
+    })))
+  })
+
+  it('opens the diff for a changed artifact card in the reply footer', async () => {
+    render(<AssistantMessage
+      sessionId="s1"
+      content="Done."
+      turnChangedFiles={['/work/report.md']}
+      turnChangeTarget={{ turnKey: 'user-2', userMessageIndex: 1 }}
+      turnOutputEvidence={{ unlistedWrites: false }}
+    />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'chat.turnChangesOpenInWorkspaceAria' }))
+    await waitFor(() => expect(openPreviewFn).toHaveBeenCalledWith('s1', expect.objectContaining({
+      source: { kind: 'turn', turnKey: 'user-2', userMessageIndex: 1 },
+      path: 'report.md',
+    })))
+  })
+
   // Native QA: the renderer had decoded the Markdown destination into data-file-path,
   // then the click router decoded that filesystem path a second time.
   it.each([

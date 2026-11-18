@@ -68,6 +68,8 @@ function snapshot(calls: ToolCall[], results: ToolResult[], children: Array<[str
     steps: calls.map((toolCall): ActivityStep => ({ kind: 'tool', toolCall })),
     resultMap: new Map(results.map((result) => [result.toolUseId, result])),
     childToolCallsByParent: new Map(children.map(([parent, calls]) => [parent, [...calls]])),
+    // These runs belong to the turn under test; folding is pinned by that.
+    turnActive: true,
   }
 }
 
@@ -126,7 +128,7 @@ describe('ActivityGroup re-rendering while a run streams (#1480)', () => {
     const header = group.querySelector('[data-chat-disclosure="true"]')!
     fireEvent.click(header)
     fireEvent.click(header)
-    rerender(<ActivityGroup {...snapshot(calls, results)} isLive={false} />)
+    rerender(<ActivityGroup {...snapshot(calls, results)} turnActive={false} isLive={false} />)
     expect(group).toHaveAttribute('data-expanded', 'true')
     expect(row()).toHaveAttribute('data-tool-status', 'idle')
   })
@@ -139,7 +141,7 @@ describe('ActivityGroup re-rendering while a run streams (#1480)', () => {
       const group = screen.getByTestId('activity-group')
       expect(group).toHaveAttribute('data-expanded', 'true')
 
-      rerender(<ActivityGroup {...snapshot(calls, [])} isLive={false} />)
+      rerender(<ActivityGroup {...snapshot(calls, [])} turnActive={false} isLive={false} />)
 
       // 关闭推理折叠：历史回合的工具过程也不自动折回摘要行。
       expect(group).toHaveAttribute('data-expanded', 'true')

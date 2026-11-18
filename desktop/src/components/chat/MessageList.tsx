@@ -1351,7 +1351,11 @@ function buildTurnCardInsertionMap(
   return cardsByRenderIndex
 }
 
-type TurnFileEvidence = TurnOutputEvidence & { changedFiles: string[] }
+type TurnFileEvidence = TurnOutputEvidence & {
+  changedFiles: string[]
+  /** 本轮检查点的标识，用于把总结里的变更文件直接打开成差异 */
+  turnChangeTarget?: { turnKey: string; userMessageIndex: number }
+}
 
 const UNKNOWN_TURN_OUTPUT_EVIDENCE: TurnOutputEvidence = { unlistedWrites: true }
 
@@ -1374,6 +1378,14 @@ function buildChangedFilesByRenderIndex(
       // An older server does not say; assume the worst.
       unlistedWrites: unverifiedChangeSources === undefined || unverifiedChangeSources.length > 0,
       ...(typeof startedAt === 'number' ? { startedAt } : {}),
+      ...(card.checkpoint.target.targetUserMessageId
+        ? {
+            turnChangeTarget: {
+              turnKey: card.checkpoint.target.targetUserMessageId,
+              userMessageIndex: card.checkpoint.target.userMessageIndex,
+            },
+          }
+        : {}),
     })
   }
   if (filesByTurnId.size === 0) return new Map()
@@ -1648,7 +1660,8 @@ const USER_SCROLL_INTENT_WINDOW_MS = 500
 const DISCLOSURE_FOLLOW_SUPPRESS_MS = 400
 /** Collapse toggles inside the transcript, matched via event delegation. */
 const CHAT_DISCLOSURE_SELECTOR = '[data-chat-disclosure="true"]'
-const CONVERSATION_NAVIGATION_MIN_ITEMS = 4
+// 有一条用户提示词就显示对话导航，读者不必等到第 4 条才发现它可用于定位
+const CONVERSATION_NAVIGATION_MIN_ITEMS = 1
 const CONVERSATION_NAVIGATION_FULL_MIN_WIDTH_PX = 960
 const CONVERSATION_NAVIGATION_COMPACT_MIN_WIDTH_PX = 560
 const STREAMING_ASSISTANT_NAVIGATION_KEY = 'streaming-assistant-message'
@@ -1826,6 +1839,20 @@ function clampNumber(value: number, min: number, max: number) {
 function getRenderItemKey(item: RenderItem) {
   if (item.kind === 'tool_group' || item.kind === 'team_card') return item.id
   return item.message.id
+}
+
+/**
+ * The moment a render item entered the transcript, used to tell which turn it
+ * belongs to. A run starts with its first step; a card starts when its team
+ * did. `0` means "unknown", which never counts as part of the current turn
+ * unless the turn has no boundary at all.
+ */
+function renderItemTimestamp(item: RenderItem): number {
+  if (item.kind === 'message') return item.message.timestamp
+  if (item.kind === 'team_card') return item.startedAt
+  const firstStep = item.steps[0]
+  if (!firstStep) return item.toolCalls[0]?.timestamp ?? 0
+  return firstStep.kind === 'tool' ? firstStep.toolCall.timestamp : firstStep.message.timestamp
 }
 
 function findConversationMatches(
@@ -4078,6 +4105,13 @@ export function MessageList({
       : undefined
   )
 
+  // A run stays open for the whole turn it belongs to, even after its own last
+  // step resolves: the reply text that follows is not the end of the task, and
+  // folding there hid reasoning the reader was still following.
+  const turnActiveForItem = (item: RenderItem): boolean => (
+    isTurnRunning && renderItemTimestamp(item) >= lastUserMessageTimestamp
+  )
+
   const renderTranscriptItem = (item: RenderItem, index: number) => {
     const cardsForItem = turnCardsByRenderIndex.get(index) ?? []
 
@@ -4102,9 +4136,10 @@ export function MessageList({
               }
               // Only the tail of a live turn can still grow. Everything above it
               // is finished, whatever any individual tool's state looks like this
-              // instant — which is why this, and not `isStreaming`, decides
-              // whether a run stands open.
+              // instant. This drives the running marker; folding follows the
+              // turn (`turnActive`), not the run's own tail.
               isLive={chatState !== 'idle' && index === renderItems.length - 1 && !hasTrailingStreamingItem}
+              turnActive={turnActiveForItem(item)}
               disclosureKey={getRenderItemKey(item)}
               revealToolUseId={navigationToolUseIdFor(item)}
               activityPresentation={mobileLayout ? 'sheet' : 'inline'}
@@ -4157,6 +4192,7 @@ export function MessageList({
               editAction={editActionByMessageId.get(item.message.id)}
               turnChangedFiles={changedFilesByRenderIndex.get(index)?.changedFiles}
               turnOutputEvidence={changedFilesByRenderIndex.get(index) ?? (turnEvidenceUnavailable ? UNKNOWN_TURN_OUTPUT_EVIDENCE : undefined)}
+              turnChangeTarget={changedFilesByRenderIndex.get(index)?.turnChangeTarget}
               isTurnOutputOwner={turnOutputOwnerIndexes.has(index)}
               turnCompletion={turnCompletionByMessageId.get(item.message.id)}
               supersededAskUserQuestionIds={supersededAskUserQuestionIds}
@@ -4435,6 +4471,7 @@ export const MessageBlock = memo(function MessageBlock({
   editAction,
   turnChangedFiles,
   turnOutputEvidence,
+  turnChangeTarget,
   isTurnOutputOwner,
   turnCompletion,
   supersededAskUserQuestionIds,
@@ -4459,6 +4496,7 @@ export const MessageBlock = memo(function MessageBlock({
   editAction?: UserMessageEditAction
   turnChangedFiles?: string[]
   turnOutputEvidence?: TurnOutputEvidence
+  turnChangeTarget?: { turnKey: string; userMessageIndex: number }
   isTurnOutputOwner?: boolean
   turnCompletion?: TurnCompletion
   supersededAskUserQuestionIds?: ReadonlySet<string>
@@ -4521,6 +4559,7 @@ export const MessageBlock = memo(function MessageBlock({
             sessionId={sessionId ?? undefined}
             turnChangedFiles={turnChangedFiles}
             turnOutputEvidence={turnOutputEvidence}
+            turnChangeTarget={turnChangeTarget}
             isTurnOutputOwner={isTurnOutputOwner}
             turnCompletion={turnCompletion}
           />
@@ -4566,6 +4605,7 @@ export const MessageBlock = memo(function MessageBlock({
           toolName={message.toolName}
           input={message.input}
           result={toolResult}
+          sessionId={sessionId}
           isPending={message.isPending}
           status={message.status}
           partialInput={message.partialInput}

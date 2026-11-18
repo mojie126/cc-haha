@@ -22,7 +22,7 @@ import {
   type VirtualRenderItemMetric,
 } from './virtualHeightCache'
 import { setComposerText, stubRangeGeometry } from './composerTestUtils'
-import { relativizeWorkspacePath } from './CurrentTurnChangeCard'
+import { relativizeWorkspacePath } from '../../lib/workspace/relativeWorkspacePath'
 import { sessionsApi } from '../../api/sessions'
 import { ApiError } from '../../api/client'
 import { subagentsApi, type SubagentRunResponse } from '../../api/subagents'
@@ -1193,12 +1193,24 @@ describe('MessageList nested tool calls', () => {
     { compact: true, mobileLayout: true, gutter: 'px-3' },
   ])('aligns a transcript without navigation with the composer at $gutter', ({ compact, mobileLayout, gutter }) => {
     useChatStore.setState({ sessions: { [ACTIVE_TAB]: makeSessionState({
-      messages: [{ id: 'single-message', type: 'user_text', content: 'Review this change', timestamp: 1 }],
+      // No user prompt: the navigator has nothing to locate.
+      messages: [{ id: 'single-reply', type: 'assistant_text', content: 'Review this change', timestamp: 1 }],
     }) } })
     render(<MessageList compact={compact} mobileLayout={mobileLayout} />)
     expect(screen.queryByTestId('conversation-navigator')).toBeNull()
     const scroller = screen.getByTestId('message-list').querySelector('.chat-scroll-area') as HTMLElement
     expect(scroller.className.split(/\s+/)).toContain(gutter)
+  })
+
+  it('shows the conversation navigator from the first prompt', () => {
+    useChatStore.setState({ sessions: { [ACTIVE_TAB]: makeSessionState({
+      messages: [{ id: 'first-prompt', type: 'user_text', content: 'Review this change', timestamp: 1 }],
+    }) } })
+
+    render(<MessageList />)
+
+    expect(screen.getByTestId('conversation-navigator')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /Turn 1 of 1/ })).toHaveLength(1)
   })
 
   it('keeps the conversation navigator available in compact desktop transcripts', () => {
@@ -5189,6 +5201,9 @@ describe('MessageList nested tool calls', () => {
               isError: false,
               timestamp: 5,
             },
+            // A newer prompt bounds the run above to a finished turn, so the
+            // reader opens it instead of the live turn holding it open.
+            { id: 'user-2', type: 'user_text', content: 'follow up', timestamp: 6 },
           ],
           streamingText: 'seed',
         }),
@@ -5228,7 +5243,6 @@ describe('MessageList nested tool calls', () => {
       })
     }
 
-    // The reader opens the run; it grows by 500px.
     const setStreamingText = (text: string) => {
       useChatStore.setState((state) => ({
         sessions: {
@@ -5238,6 +5252,7 @@ describe('MessageList nested tool calls', () => {
       }))
     }
 
+    // The reader opens the run; it grows by 500px.
     const disclosure = container.querySelector('[data-chat-disclosure="true"]') as HTMLButtonElement
     expect(disclosure).toBeTruthy()
     scrollHeight = 1500

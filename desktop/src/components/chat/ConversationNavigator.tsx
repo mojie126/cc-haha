@@ -128,6 +128,7 @@ export function ConversationNavigator({
   const [pointerIndex, setPointerIndex] = useState<number | null>(null)
   const [focusIndex, setFocusIndex] = useState<number | null>(null)
   const markerRefs = useRef(new Map<string, HTMLButtonElement>())
+  const laneRef = useRef<HTMLDivElement>(null)
   const previewItem = items.find((item) => item.id === previewItemId) ?? null
   const modeStyles = NAVIGATION_MODE_STYLES[mode]
   const interactionIndex = pointerIndex ?? focusIndex
@@ -143,6 +144,9 @@ export function ConversationNavigator({
 
   useEffect(() => {
     if (!activeItemId) return
+    // 只有轨道本身需要滚动时才挪动标记，短会话不该触发布局滚动
+    const lane = laneRef.current
+    if (!lane || lane.scrollHeight <= lane.clientHeight + 1) return
     markerRefs.current.get(activeItemId)?.scrollIntoView?.({ block: 'nearest' })
   }, [activeItemId])
 
@@ -154,6 +158,7 @@ export function ConversationNavigator({
       className={`absolute top-1/2 z-30 flex max-h-[64%] -translate-y-1/2 flex-col overflow-visible ${modeStyles.position}`}
     >
       <div
+        ref={laneRef}
         className={`conversation-navigation-scroll flex max-h-full flex-col items-start gap-px overflow-y-auto overflow-x-hidden py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${modeStyles.lane}`}
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect()

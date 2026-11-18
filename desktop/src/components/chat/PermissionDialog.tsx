@@ -58,16 +58,26 @@ const RESOLVED_ROW =
 const INSET_BLOCK =
   'rounded-[var(--radius-md)] bg-[var(--color-surface-container)] px-3 py-2.5 font-mono text-xs leading-[1.6] text-[var(--color-text-primary)]'
 
-function renderPermissionPreview(toolName: string, input: unknown) {
+function renderPermissionPreview(toolName: string, input: unknown, sessionId?: string | null) {
   const obj = (input && typeof input === 'object') ? input as Record<string, unknown> : {}
   const filePath = typeof obj.file_path === 'string' ? obj.file_path : 'file'
 
   if (toolName === 'Edit' && typeof obj.old_string === 'string' && typeof obj.new_string === 'string') {
-    return <DiffViewer filePath={filePath} oldString={obj.old_string} newString={obj.new_string} />
+    // 权限确认时文件尚未修改，按编辑前状态定位真实行号
+    return (
+      <DiffViewer
+        filePath={filePath}
+        oldString={obj.old_string}
+        newString={obj.new_string}
+        sessionId={sessionId ?? undefined}
+        editPhase="before"
+        replaceAll={obj.replace_all === true}
+      />
+    )
   }
 
   if (toolName === 'Write' && typeof obj.content === 'string') {
-    return <DiffViewer filePath={filePath} oldString="" newString={obj.content} />
+    return <DiffViewer filePath={filePath} oldString="" newString={obj.content} sessionId={sessionId ?? undefined} />
   }
 
   if (toolName === 'Bash' && typeof obj.command === 'string') {
@@ -110,7 +120,7 @@ export function PermissionDialog({ sessionId, requestId, toolName, input, descri
   const ToolIcon = PERMISSION_TOOL_ICONS[toolName] ?? Shield
   const details = extractToolDetails(toolName, input, t)
   const rawInput = typeof input === 'string' ? input : JSON.stringify(input, null, 2)
-  const preview = renderPermissionPreview(toolName, input)
+  const preview = renderPermissionPreview(toolName, input, targetSessionId)
   const title = getPermissionTitle(toolName, input, t, displayName)
   const allowRawToggle = !preview
   const permissionContext = (details.primary || description || toolName).slice(0, 160)

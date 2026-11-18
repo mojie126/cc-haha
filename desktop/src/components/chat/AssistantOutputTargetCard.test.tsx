@@ -140,6 +140,21 @@ describe('AssistantOutputTargetCard', () => {
     await waitFor(() => expect(openPreviewFn).toHaveBeenCalledWith('s1', 'docs/readme.md', {}))
   })
 
+  it('opens the turn diff for a changed file instead of a plain preview', async () => {
+    render(
+      <AssistantOutputTargetCard
+        target={{ ...markdownTarget, source: 'changed-file' }}
+        sessionId="s1"
+        turnDiff={{ turnKey: 'user-1', userMessageIndex: 2, path: 'docs/readme.md' }}
+      />,
+    )
+    fireEvent.click(screen.getByText('readme.md'))
+    expect(openPreviewFn).toHaveBeenCalledWith('s1', expect.objectContaining({
+      source: { kind: 'turn', turnKey: 'user-1', userMessageIndex: 2 },
+      path: 'docs/readme.md',
+    }))
+  })
+
   it('opens a file whose folder name holds a space instead of ignoring the click (#1556)', async () => {
     render(<AssistantOutputTargetCard target={spacedWindowsTarget} sessionId="s1" />)
     fireEvent.click(screen.getByLabelText('assistantOutputs.open'))

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { ChevronDown, ExternalLink, Globe } from 'lucide-react'
 import type { AssistantOutputTarget } from '../../lib/assistantOutputTargets'
@@ -12,17 +12,35 @@ import { describeFileType, type OpenWithItem } from '../../lib/openWithItems'
 import { buildOpenWithMenuItemsForHref } from '../../lib/openWithMenuItems'
 import { openPreviewLink } from '../../lib/openPreviewLink'
 import { reportOpenFailure } from '../../lib/systemFileOpen'
+import { workspaceOpen } from '../../lib/workspace/openTarget'
+import { useMobileViewport } from '../../hooks/useMobileViewport'
+import { isDesktopRuntime } from '../../lib/desktopRuntime'
+import { MobileTurnDiffSheet } from './MobileTurnDiffSheet'
 import type { PreviewLinkTarget } from '@/lib/previewLinkRouter'
+
+/** 本轮变更文件在检查点中的位置，点击卡片时用它打开差异 */
+export type AssistantOutputTurnDiff = {
+  turnKey: string
+  userMessageIndex: number
+  /** 工作区相对路径 */
+  path: string
+}
 
 type Props = {
   target: AssistantOutputTarget
   sessionId: string
   workDir?: string
+  /** 目标属于本轮变更文件时给出，点击打开差异而不是当前文件内容 */
+  turnDiff?: AssistantOutputTurnDiff
 }
 
-export function AssistantOutputTargetCard({ target, sessionId, workDir }: Props) {
+export function AssistantOutputTargetCard({ target, sessionId, workDir, turnDiff }: Props) {
   const t = useTranslation()
+  const openerId = useId()
   const [openWith, setOpenWith] = useState<{ items: OpenWithItem[]; anchor: DOMRect; triggerEl: HTMLElement } | null>(null)
+  // 手机上没有并排的工作区，差异改在整屏浮层里看，与轮次变更卡片一致
+  const isMobile = useMobileViewport() && !isDesktopRuntime()
+  const [diffPath, setDiffPath] = useState<string | null>(null)
 
   const isLocalhost = target.kind === 'localhost-url'
   // normalizedPath is a disk path, even when the authored href was encoded.
@@ -44,10 +62,26 @@ export function AssistantOutputTargetCard({ target, sessionId, workDir }: Props)
 
   const handleOpen = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
+    if (turnDiff) {
+      if (isMobile) {
+        setDiffPath(turnDiff.path)
+        return
+      }
+      const renderItem = event.currentTarget.closest<HTMLElement>('[data-chat-render-item-key]')
+      workspaceOpen.review(sessionId, {
+        source: { kind: 'turn', turnKey: turnDiff.turnKey, userMessageIndex: turnDiff.userMessageIndex },
+        path: turnDiff.path,
+        origin: {
+          sourceTurnKey: renderItem?.dataset.chatRenderItemKey ?? turnDiff.turnKey,
+          sourceElementId: openerId,
+        },
+      })
+      return
+    }
     // A card is only shown for something it can open; one the router cannot
     // place must say so rather than leave the click looking dead (#1556).
     if (!openPreviewLink(linkTarget, sessionId)) reportOpenFailure(target.href)
-  }, [sessionId, linkTarget, target.href])
+  }, [isMobile, linkTarget, openerId, sessionId, target.href, turnDiff])
 
   const handleOpenWith = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
@@ -78,8 +112,11 @@ export function AssistantOutputTargetCard({ target, sessionId, workDir }: Props)
           because a `button` may only contain phrasing content. */}
       <button
         type="button"
+        id={openerId}
         onClick={handleOpen}
-        aria-label={t('assistantOutputs.openAria', { title: target.title })}
+        aria-label={turnDiff
+          ? t('chat.turnChangesOpenInWorkspaceAria', { path: turnDiff.path })
+          : t('assistantOutputs.openAria', { title: target.title })}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-border-focus)]"
       >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-surface-container)] text-[var(--color-text-secondary)]">
@@ -129,6 +166,16 @@ export function AssistantOutputTargetCard({ target, sessionId, workDir }: Props)
       </div>
 
       {openWith && <OpenWithMenu items={openWith.items} anchor={openWith.anchor} triggerEl={openWith.triggerEl} onClose={() => setOpenWith(null)} />}
+      {turnDiff && isMobile ? (
+        <MobileTurnDiffSheet
+          sessionId={sessionId}
+          targetUserMessageId={turnDiff.turnKey}
+          userMessageIndex={turnDiff.userMessageIndex}
+          paths={[turnDiff.path]}
+          openPath={diffPath}
+          onOpenPathChange={setDiffPath}
+        />
+      ) : null}
     </section>
   )
 }

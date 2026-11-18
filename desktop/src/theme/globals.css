@@ -727,7 +727,10 @@
   --font-headline: var(--font-body);
   --font-serif: 'Noto Serif SC', 'Songti SC', Georgia, serif;
   --font-label: var(--font-body);
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+  /* CJK after the Latin mono faces: JetBrains Mono and Consolas have no CJK
+     glyphs, and falling straight to the generic `monospace` picks the system
+     Song/serif face on Windows, which reads as prose in every code span. */
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
 
   /* Corner scale (「素」): 4 chips / 6 rows and small controls / 8 controls and
      inner blocks / 12 cards / 16 composer and large panels / 20 dialogs. */

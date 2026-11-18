@@ -7285,6 +7285,7 @@ describe('Sessions API', () => {
           filesChanged: [fixture.stepFile],
           insertions: 1,
           deletions: 1,
+          fileStats: [{ path: fixture.stepFile, insertions: 1, deletions: 1 }],
         },
         workDir: fixture.workDir,
         restoreAvailable: true,
@@ -7303,6 +7304,7 @@ describe('Sessions API', () => {
           filesChanged: [fixture.stepFile],
           insertions: 1,
           deletions: 1,
+          fileStats: [{ path: fixture.stepFile, insertions: 1, deletions: 1 }],
         },
         workDir: fixture.workDir,
         restoreAvailable: true,
@@ -7321,6 +7323,10 @@ describe('Sessions API', () => {
           filesChanged: [fixture.stepFile, fixture.createdFile],
           insertions: 2,
           deletions: 1,
+          fileStats: [
+            { path: fixture.stepFile, insertions: 1, deletions: 1 },
+            { path: fixture.createdFile, insertions: 1, deletions: 0 },
+          ],
         },
         workDir: fixture.workDir,
         restoreAvailable: true,
@@ -7937,6 +7943,7 @@ describe('Sessions API', () => {
       filesChanged: [transcriptFile],
       insertions: 1,
       deletions: 0,
+      fileStats: [{ path: transcriptFile, insertions: 1, deletions: 0 }],
     })
   })
 
@@ -8026,6 +8033,10 @@ describe('Sessions API', () => {
       filesChanged: [capturedFile, missedFile],
       insertions: 2,
       deletions: 2,
+      fileStats: [
+        { path: capturedFile, insertions: 1, deletions: 1 },
+        { path: missedFile, insertions: 1, deletions: 1 },
+      ],
     })
 
     const dryRunRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/rewind`, {

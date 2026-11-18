@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued'
 import { Highlight, type PrismTheme } from 'prism-react-renderer'
 import { CircleCheck, Copy, FileCode } from 'lucide-react'
@@ -5,12 +6,91 @@ import { CopyButton } from '@/components/ui/CopyButton'
 import { useTranslation } from '../../i18n'
 import { useUIStore } from '../../stores/uiStore'
 import { isDarkTheme } from '../../types/settings'
+import { sessionsApi } from '../../api/sessions'
+import { resolveSnippetStartLine } from '../../lib/diffSnippetLines'
 import { countDiffLines } from './toolCallPresentation'
 
 type Props = {
   filePath: string
   oldString: string
   newString: string
+  /** 读取文件真实行号所需的会话，缺省时沿用片段自身的编号 */
+  sessionId?: string
+  /** 文件是否仍处于编辑前状态（权限确认阶段） */
+  editPhase?: 'before' | 'after'
+  /** 编辑是否替换了全部匹配 */
+  replaceAll?: boolean
+}
+
+type LineNumberState =
+  /** 没有会话可读文件，保持片段自身的编号 */
+  | { status: 'legacy' }
+  | { status: 'pending' }
+  | { status: 'resolved'; startLine: number }
+  /** 读到了文件但定位不到片段，隐藏行号而不是显示错误编号 */
+  | { status: 'unknown' }
+
+/**
+ * 片段在文件中的起始行
+ *
+ * 编辑工具不带行号，只能按片段在文件里的位置反推，`newString` 为空时（纯删除）通常定位不到，
+ * 这种时候返回 unknown 让调用方隐藏行号
+ */
+function useSnippetStartLine({
+  sessionId,
+  filePath,
+  oldString,
+  newString,
+  editPhase,
+  replaceAll,
+}: {
+  sessionId?: string
+  filePath: string
+  oldString: string
+  newString: string
+  editPhase?: 'before' | 'after'
+  replaceAll?: boolean
+}): LineNumberState {
+  const [state, setState] = useState<LineNumberState>(() => {
+    if (!sessionId) return { status: 'legacy' }
+    // 新建或整体覆盖的文件从第 1 行开始，不需要读盘
+    if (!oldString && newString) return { status: 'resolved', startLine: 1 }
+    return { status: 'pending' }
+  })
+
+  useEffect(() => {
+    if (!sessionId) {
+      setState({ status: 'legacy' })
+      return
+    }
+    // 新建或整体覆盖的文件从第 1 行开始，不需要读盘
+    if (!oldString && newString) {
+      setState({ status: 'resolved', startLine: 1 })
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+    setState({ status: 'pending' })
+    sessionsApi.getWorkspaceFile(sessionId, filePath, controller.signal)
+      .then((result) => {
+        if (cancelled) return
+        const startLine = result.state === 'ok' && !result.truncated && typeof result.content === 'string'
+          ? resolveSnippetStartLine(result.content, oldString, newString, { phase: editPhase, replaceAll })
+          : null
+        setState(startLine === null ? { status: 'unknown' } : { status: 'resolved', startLine })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: 'unknown' })
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [editPhase, filePath, newString, oldString, replaceAll, sessionId])
+
+  return state
 }
 
 function inferLanguage(filePath: string): string {
@@ -136,11 +216,22 @@ const diffStyles = {
  * A file change as a block: a 32px head (path, `+N −N`, copy path) over a
  * unified diff with old/new line numbers.
  */
-export function DiffViewer({ filePath, oldString, newString }: Props) {
+export function DiffViewer({
+  filePath,
+  oldString,
+  newString,
+  sessionId,
+  editPhase,
+  replaceAll,
+}: Props) {
   const t = useTranslation()
   const theme = useUIStore((state) => state.theme)
   const language = inferLanguage(filePath)
   const { additions, deletions } = countDiffLines(oldString, newString)
+  const lineNumbers = useSnippetStartLine({ sessionId, filePath, oldString, newString, editPhase, replaceAll })
+  // 读文件是异步的，定位完成前先隐藏行号，避免先显示片段编号再跳到真实编号
+  const hideLineNumbers = lineNumbers.status === 'pending' || lineNumbers.status === 'unknown'
+  const linesOffset = lineNumbers.status === 'resolved' ? lineNumbers.startLine - 1 : 0
   // Split so a long absolute path gives way from the left: the directory
   // truncates, the file name never does.
   const slash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
@@ -180,7 +271,8 @@ export function DiffViewer({ filePath, oldString, newString }: Props) {
           splitView={false}
           compareMethod={DiffMethod.WORDS}
           renderContent={(str) => highlightSyntax(str, language)}
-          hideLineNumbers={false}
+          hideLineNumbers={hideLineNumbers}
+          linesOffset={linesOffset}
           hideSummary
           styles={diffStyles}
           useDarkTheme={isDarkTheme(theme)}

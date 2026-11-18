@@ -166,6 +166,8 @@ export type SessionRewindResponse = {
     filesChanged: string[]
     insertions: number
     deletions: number
+    /** 每个文件自己的增删数，旧版服务端不返回该字段 */
+    fileStats?: Array<{ path: string; insertions: number; deletions: number }>
   }
   restoreAvailable?: boolean
   /**

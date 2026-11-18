@@ -62,14 +62,14 @@ describe('ActivityGroup', () => {
 
   it('keeps stable tool anchors when an expanded group gains older steps', () => {
     const steps: ActivityStep[] = [{ kind: 'tool', toolCall: bashCall }]
-    const props = { steps, resultMap: new Map(), childToolCallsByParent: new Map(), isStreaming: true, isLive: true }
+    const props = { steps, resultMap: new Map(), childToolCallsByParent: new Map(), isStreaming: true, isLive: true, turnActive: true }
     const view = render(<ActivityGroup {...props} />)
     expect(view.container.querySelector('[data-chat-anchor-id="use-bash"]')).not.toBeNull()
     view.rerender(<ActivityGroup {...props} steps={[{ kind: 'tool', toolCall: readCall }, ...steps]} />)
     expect(view.container.querySelector('[data-chat-anchor-id="use-bash"]')).not.toBeNull()
   })
 
-  it('plays open while live, then folds itself into a counted summary', () => {
+  it('plays open while its turn runs, then folds itself into a counted summary', () => {
     const steps: ActivityStep[] = [
       thinkingStep('think-1', '- Locate the five call sites first.\nThen patch each file.', 500),
       thinkingStep('think-2', 'Then check the retry path.', 800),
@@ -82,16 +82,16 @@ describe('ActivityGroup', () => {
     ])
 
     const { rerender } = render(
-      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive />,
+      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive turnActive />,
     )
     let group = screen.getByTestId('activity-group')
     expect(group.getAttribute('data-expanded')).toBe('true')
     expect(within(group).getByText('MessageList.tsx')).toBeTruthy()
 
-    // The turn moves on: rows fold away and the counted digest stands in for
-    // them, so finished machinery stops competing with the prose around it.
+    // The turn ends: rows fold away and the counted digest stands in for them,
+    // so finished machinery stops competing with the prose around it.
     rerender(
-      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive={false} />,
+      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive={false} turnActive={false} />,
     )
     group = screen.getByTestId('activity-group')
     expect(group.getAttribute('data-expanded')).toBe('false')
@@ -104,6 +104,33 @@ describe('ActivityGroup', () => {
     expect(summary.textContent).toContain('ran a command')
   })
 
+  it('stays open after the run stops being live while its turn is still running', () => {
+    // The bug this pins: a run folded as soon as it stopped being the tail of
+    // the transcript — when the reply text began streaming or the next step
+    // arrived — even though the turn had not finished.
+    const steps: ActivityStep[] = [
+      { kind: 'tool', toolCall: readCall },
+      { kind: 'tool', toolCall: bashCall },
+    ]
+    const settled = resultsOf([
+      toolResult({ id: 'res-read', toolUseId: 'read-1', timestamp: 2_400 }),
+      toolResult({ id: 'res-bash', toolUseId: 'bash-1', timestamp: 5_700 }),
+    ])
+
+    const { rerender } = render(
+      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive turnActive />,
+    )
+    rerender(
+      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive={false} turnActive />,
+    )
+    expect(screen.getByTestId('activity-group').getAttribute('data-expanded')).toBe('true')
+
+    rerender(
+      <ActivityGroup steps={steps} resultMap={settled} childToolCallsByParent={new Map()} isLive={false} turnActive={false} />,
+    )
+    expect(screen.getByTestId('activity-group').getAttribute('data-expanded')).toBe('false')
+  })
+
   it('stays open across the gaps between one tool resolving and the next starting', () => {
     // The bug this pins: a live run folds and reopens on every step boundary,
     // because "a tool is executing right now" goes false in each gap. Six tools
@@ -113,7 +140,7 @@ describe('ActivityGroup', () => {
       { kind: 'tool', toolCall: bashCall },
     ]
     const renderWith = (resultMap: ReturnType<typeof resultsOf>) => (
-      <ActivityGroup steps={steps} resultMap={resultMap} childToolCallsByParent={new Map()} isLive />
+      <ActivityGroup steps={steps} resultMap={resultMap} childToolCallsByParent={new Map()} isLive turnActive />
     )
 
     const { rerender } = render(renderWith(resultsOf([])))
@@ -272,6 +299,7 @@ describe('ActivityGroup', () => {
         ])}
         childToolCallsByParent={new Map()}
         isLive
+        turnActive
       />,
     )
 
@@ -297,6 +325,7 @@ describe('ActivityGroup', () => {
         childToolCallsByParent={new Map()}
         awaitingToolUseIds={new Set(['bash-1'])}
         isLive
+        turnActive
       />,
     )
 
@@ -316,14 +345,14 @@ describe('ActivityGroup', () => {
       resultMap: resultsOf([toolResult({ id: 'res-read', toolUseId: 'read-1', timestamp: 1_400 })]),
       childToolCallsByParent: new Map(),
     }
-    const { rerender } = render(<ActivityGroup {...props} isLive />)
+    const { rerender } = render(<ActivityGroup {...props} isLive turnActive />)
     let group = screen.getByTestId('activity-group')
     expect(group.querySelector('[data-tool-status="running"]')).toBeTruthy()
     expect(group.querySelector('[data-chat-disclosure="true"]')?.textContent).toContain(t('agentStatus.running'))
 
     // A replayed transcript whose last call never got a result is not running —
     // the process that would have produced it is gone.
-    rerender(<ActivityGroup {...props} isLive={false} />)
+    rerender(<ActivityGroup {...props} isLive={false} turnActive={false} />)
     group = screen.getByTestId('activity-group')
     expect(group.querySelector('[data-chat-disclosure="true"]')?.textContent).not.toContain(t('agentStatus.running'))
     fireEvent.click(group.querySelector('[data-chat-disclosure="true"]')!)

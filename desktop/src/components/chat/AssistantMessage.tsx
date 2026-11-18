@@ -12,7 +12,9 @@ import type { TurnCompletion } from '../../lib/turnCompletion'
 import { ImageGalleryModal } from './ImageGalleryModal'
 import { InlineImageGallery } from './InlineImageGallery'
 import { InlineVideoGallery } from './InlineVideoGallery'
-import { AssistantOutputTargetCard } from './AssistantOutputTargetCard'
+import { AssistantOutputTargetCard, type AssistantOutputTurnDiff } from './AssistantOutputTargetCard'
+import { relativizeWorkspacePath } from '../../lib/workspace/relativeWorkspacePath'
+import { workspaceOpen } from '../../lib/workspace/openTarget'
 import { openPreviewLink } from '../../lib/openPreviewLink'
 import { extractAssistantOutputTargets, type TurnOutputEvidence } from '../../lib/assistantOutputTargets'
 import { resolveAssistantFileHref } from '@/lib/assistantFileContext'
@@ -25,6 +27,8 @@ import { useTranslation, type TranslationKey } from '../../i18n'
 import { useDiskConfirmedTargets } from '../../hooks/useDiskConfirmedTargets'
 import { useTurnWrittenTargets } from '../../hooks/useTurnWrittenTargets'
 import { createWorkspaceFileLinkVerifier } from '../../lib/workspaceFileStats'
+import { isAbsoluteLocalPath } from '../../lib/handlePreviewLink'
+import { isDelimitedTextFile, isWorkspaceDocumentFile, isWorkspacePreviewableFile } from '../../lib/fileCapabilities'
 import type { PreviewLinkTarget } from '@/lib/previewLinkRouter'
 
 type Props = {
@@ -35,6 +39,8 @@ type Props = {
   /** This turn's real changed files (absolute), used to anchor output chips onto
    *  files that were actually written instead of guessing from the prose. */
   turnChangedFiles?: string[]
+  /** This turn's checkpoint identity, so a changed file opens its diff. */
+  turnChangeTarget?: { turnKey: string; userMessageIndex: number }
   /**
    * What the turn's checkpoint says it could have written. Absent while it is
    * still loading, so no card is shown on a guess that the checkpoint then drops.
@@ -54,6 +60,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   branchAction,
   sessionId,
   turnChangedFiles,
+  turnChangeTarget,
   turnOutputEvidence,
   isTurnOutputOwner = true,
   turnCompletion,
@@ -67,11 +74,25 @@ export const AssistantMessage = memo(function AssistantMessage({
   const handleLinkClick = useCallback(
     (href: PreviewLinkTarget, event: ReactMouseEvent<HTMLDivElement>): boolean => {
       if (!sessionId) return false
-      const handled = openPreviewLink(resolveAssistantFileHref(href, content), sessionId)
+      const resolved = resolveAssistantFileHref(href, content)
+      const path = typeof resolved === 'string' ? resolved : resolved.path
+      const turnChange = turnChangeTarget
+      const diffPath = turnChange
+        ? resolveTurnDiffPath(path, turnChangedFiles, workDir ?? null)
+        : null
+      if (turnChange && diffPath) {
+        workspaceOpen.review(sessionId, {
+          source: { kind: 'turn', turnKey: turnChange.turnKey, userMessageIndex: turnChange.userMessageIndex },
+          path: diffPath,
+        })
+        event.preventDefault()
+        return true
+      }
+      const handled = openPreviewLink(resolved, sessionId)
       if (handled) event.preventDefault()
       return handled
     },
-    [content, sessionId],
+    [content, sessionId, turnChangeTarget, turnChangedFiles, workDir],
   )
 
   // A reference guessed from a code span or prose links only once its file is
@@ -134,6 +155,23 @@ export const AssistantMessage = memo(function AssistantMessage({
   // then a file no changed file accounts for must show it was written this turn.
   const settledTargets = useDiskConfirmedTargets(sessionId, extractedTargets)
   const outputTargets = useTurnWrittenTargets(sessionId, settledTargets, turnOutputEvidence?.startedAt)
+  // 属于本轮变更的文件，点击时打开差异而不是当前文件内容
+  const turnDiffByTargetId = useMemo(() => {
+    const diffs = new Map<string, AssistantOutputTurnDiff>()
+    if (!sessionId || !turnChangeTarget || !turnChangedFiles?.length) return diffs
+    for (const target of outputTargets) {
+      const path = target.normalizedPath
+      if (!path) continue
+      const displayPath = resolveTurnDiffPath(path, turnChangedFiles, workDir ?? null)
+      if (!displayPath) continue
+      diffs.set(target.id, {
+        turnKey: turnChangeTarget.turnKey,
+        userMessageIndex: turnChangeTarget.userMessageIndex,
+        path: displayPath,
+      })
+    }
+    return diffs
+  }, [outputTargets, sessionId, turnChangeTarget, turnChangedFiles, workDir])
   const resolveAssistantImageSrc = useMemo(
     () => {
       if (isStreaming || !sessionId) return undefined
@@ -239,7 +277,13 @@ export const AssistantMessage = memo(function AssistantMessage({
         {!isStreaming && sessionId && outputTargets.length > 0 && (
           <div className="mt-1 flex w-full flex-col gap-2">
             {outputTargets.slice(0, MAX_CARDS).map((target) => (
-              <AssistantOutputTargetCard key={target.id} target={target} sessionId={sessionId} workDir={workDir} />
+              <AssistantOutputTargetCard
+                key={target.id}
+                target={target}
+                sessionId={sessionId}
+                workDir={workDir}
+                turnDiff={turnDiffByTargetId.get(target.id)}
+              />
             ))}
             {outputTargets.length > MAX_CARDS && (
               <div className="px-1 text-xs text-[var(--color-text-tertiary)]">
@@ -292,6 +336,50 @@ export const AssistantMessage = memo(function AssistantMessage({
     </div>
   )
 })
+
+/**
+ * 找出输出卡片路径对应的本轮变更文件
+ *
+ * 卡片路径已相对工作区，变更文件列表是绝对路径，统一按相对路径比较，避免同名文件误配
+ */
+function findTurnChangedFile(
+  normalizedPath: string,
+  changedFiles: string[],
+  workDir: string | null,
+): string | null {
+  const comparable = relativizeWorkspacePath(normalizedPath, workDir)
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .toLowerCase()
+  for (const changedFile of changedFiles) {
+    const relative = relativizeWorkspacePath(changedFile, workDir)
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '')
+      .toLowerCase()
+    if (relative === comparable) return changedFile
+  }
+  return null
+}
+
+/**
+ * 解析成本轮变更文件的评审路径，工作区外、不可预览与文档这三类返回 null
+ *
+ * 这三类要么没有检查点基线，要么没有行级差异，打开评审会落到空页面，保留原预览更合适
+ */
+function resolveTurnDiffPath(
+  path: string,
+  changedFiles: string[] | undefined,
+  workDir: string | null,
+): string | null {
+  if (!changedFiles?.length) return null
+  const changedPath = findTurnChangedFile(path, changedFiles, workDir)
+  if (!changedPath) return null
+  const displayPath = relativizeWorkspacePath(changedPath, workDir)
+  if (isAbsoluteLocalPath(displayPath)) return null
+  if (!isWorkspacePreviewableFile(displayPath)) return null
+  if (isWorkspaceDocumentFile(displayPath) && !isDelimitedTextFile(displayPath)) return null
+  return displayPath
+}
 
 function shouldUseDocumentLayout(content: string) {
   const normalized = content.trim()
