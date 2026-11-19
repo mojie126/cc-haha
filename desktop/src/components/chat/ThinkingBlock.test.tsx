@@ -2,37 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
-import { ThinkingBlock, thinkingPreview } from './ThinkingBlock'
+import { ThinkingBlock } from './ThinkingBlock'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { clearDisclosureMemory, getDisclosure } from '../../lib/disclosureMemory'
-
-describe('thinkingPreview', () => {
-  it('follows the tail while streaming so the row says what it is thinking now', () => {
-    const content = 'Diagnosis complete:\nlint is clean\nnow checking the retry path'
-    expect(thinkingPreview(content, { streaming: true })).toBe('now checking the retry path')
-  })
-
-  it('settles back onto the opening line once the block is done', () => {
-    const content = 'The user ran the lifecycle suite and hit real failures.\nSo I will reset #7.'
-    expect(thinkingPreview(content)).toBe('The user ran the lifecycle suite and hit real failures.')
-  })
-
-  it('skips an opening that is only a heading for what follows', () => {
-    // `Diagnosis complete:` is the one line in the block that carries nothing.
-    expect(thinkingPreview('Diagnosis complete:\nlint is clean, 2 files left')).toBe('lint is clean, 2 files left')
-  })
-
-  it('keeps a long opening that merely happens to end in a colon', () => {
-    const content = 'The user wants me to handle GitHub issue #498 about the new KS signature, specifically:\n1. read the issue'
-    expect(thinkingPreview(content)).toBe(
-      'The user wants me to handle GitHub issue #498 about the new KS signature, specifically:',
-    )
-  })
-
-  it('keeps a bare heading when it is all there is', () => {
-    expect(thinkingPreview('Diagnosis complete:')).toBe('Diagnosis complete:')
-  })
-})
 
 describe('ThinkingBlock', () => {
   beforeEach(() => {
@@ -69,24 +41,24 @@ describe('ThinkingBlock', () => {
     expect(screen.getByRole('button')).toHaveTextContent('Thought')
   })
 
-  it('draws one upright row whose chevron turns and whose preview yields to the body when open', () => {
+  it('draws one upright row that never leaks the reasoning into the collapsed line', () => {
     // CJK has no italic: the old slanted row was the browser shearing glyphs.
     const { container } = render(<ThinkingBlock content={'Checking the retry path first'} />)
     const row = screen.getByRole('button')
     expect(container.querySelector('.italic')).toBeNull()
     expect(row.textContent).not.toMatch(/[▸▾]/)
+    // 折叠行只留标签，思考正文片段不再冒充摘要。
+    expect(row).toHaveTextContent('已思考')
+    expect(row).not.toHaveTextContent('Checking the retry path first')
     const chevron = row.querySelector('.lucide-chevron-right')
     expect(chevron).not.toBeNull()
     expect(chevron).not.toHaveClass('rotate-90')
-    const preview = screen.getByText('Checking the retry path first')
-    expect(preview).not.toHaveClass('invisible')
 
     fireEvent.click(row)
 
     expect(row.querySelector('.lucide-chevron-right')).toHaveClass('rotate-90')
-    // Hidden but kept, so the row does not reflow when it opens.
-    expect(preview).toHaveClass('invisible')
     expect(container.querySelector('[data-thinking-content="expanded"]')).toHaveClass('border-l')
+    expect(screen.getByText('Checking the retry path first')).toBeInTheDocument()
   })
 
   it('leaves settled segments untouched while an expanded block streams', () => {

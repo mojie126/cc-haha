@@ -361,8 +361,8 @@ describe('chat blocks', () => {
     const content = Array.from({ length: 12 }, (_, index) => `line-${index + 1}`).join('\n')
     const { container } = render(<ThinkingBlock content={content} />)
 
-    // Collapsed shows the opening line only; the body stays shut.
-    expect(container.textContent).toContain('line-1')
+    // 折叠行只留标签，思考正文一行也不显示。
+    expect(container.textContent).not.toContain('line-1')
     expect(container.textContent).not.toContain('line-11')
     expect(container.querySelector('[data-thinking-content="expanded"]')).toBeNull()
 

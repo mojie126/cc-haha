@@ -11,7 +11,7 @@ import {
 } from '../../lib/streamingMarkdownSegments'
 
 /**
- * One line: the label, a preview of the reasoning, and the full text on demand.
+ * One line: the label (with its duration when known) and the full text on demand.
  *
  * The Codex Responses flow keeps the reasoning on screen for the whole turn —
  * a block streams open and stays open after its deltas stop, because the turn
@@ -57,10 +57,6 @@ export function ThinkingBlock({
   const contentRef = useRef<HTMLDivElement>(null)
   const displayContent = useMemo(() => content.replace(/\r\n?/g, '\n').trimEnd(), [content])
   const hasDisplayContent = displayContent.trim().length > 0
-  const preview = useMemo(
-    () => thinkingPreview(displayContent, { streaming: isActive }),
-    [displayContent, isActive],
-  )
 
   useEffect(() => {
     if (expanded && isActive && contentRef.current) {
@@ -107,15 +103,9 @@ export function ThinkingBlock({
         <span className="shrink-0 font-medium text-[var(--color-text-secondary)]">
           {label}
         </span>
-        {preview ? (
-          // Hidden, not removed, once open: the body below says the same thing
-          // in full, and keeping the box holds the row's chevron in place.
-          <span className={`min-w-0 flex-1 truncate ${expanded ? 'invisible' : ''}`}>
-            {preview}
-          </span>
-        ) : (
-          <span className="flex-1" />
-        )}
+        {/* 折叠行只留标签与用时：思考正文片段容易与随后的最终回答混淆，
+            完整推理展开后可见，这里用弹性占位把箭头推到行尾。 */}
+        <span className="flex-1" />
         <ChevronRight
           size={14}
           strokeWidth={1.75}
@@ -185,57 +175,6 @@ function StreamingThinkingMarkdown({ content }: { content: string }) {
       />
     </div>
   )
-}
-
-const THINKING_PREVIEW_MAX_CHARS = 160
-/** A short line ending in a colon is a heading for what comes after it. */
-const THINKING_OPENER_MAX_CHARS = 24
-
-function cleanThinkingLines(content: string): string[] {
-  const lines: string[] = []
-  for (const rawLine of content.split('\n')) {
-    const line = rawLine
-      .trim()
-      .replace(/^#{1,6}\s+/, '')
-      .replace(/^[-*+]\s+/, '')
-      .replace(/^>\s*/, '')
-      .replace(/^\d+\.\s+/, '')
-      .trim()
-    if (!line || line === '---') continue
-    lines.push(line)
-  }
-  return lines
-}
-
-/**
- * One line of reasoning for the collapsed row, stripped of the markdown that
- * would otherwise show as literal `##` / `-` noise. Always a hint — the full
- * block is one click away, so truncating here loses nothing.
- *
- * While the block is still streaming this follows the tail, because the useful
- * question then is "what is it thinking about *now*"; a first line pinned for
- * the thirty seconds a long deliberation takes answers nothing. Once it settles
- * the opening line becomes the summary again — except when that opening is a
- * bare heading like `Diagnosis complete:`, which is the one line in the block
- * that says least, so the substance under it is shown instead.
- */
-export function thinkingPreview(content: string, options: { streaming?: boolean } = {}): string {
-  const lines = cleanThinkingLines(content)
-  if (lines.length === 0) return ''
-
-  const picked = options.streaming
-    ? lines[lines.length - 1]!
-    : pickSettledPreviewLine(lines)
-
-  return picked.length > THINKING_PREVIEW_MAX_CHARS
-    ? `${picked.slice(0, THINKING_PREVIEW_MAX_CHARS)}…`
-    : picked
-}
-
-function pickSettledPreviewLine(lines: string[]): string {
-  const first = lines[0]!
-  const isBareHeading = first.length <= THINKING_OPENER_MAX_CHARS && /[:：]$/.test(first)
-  return isBareHeading ? lines[1] ?? first : first
 }
 
 const thinkingStyles = `
