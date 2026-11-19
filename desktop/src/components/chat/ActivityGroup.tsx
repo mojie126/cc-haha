@@ -19,7 +19,7 @@ import {
 } from './activityGroupModel'
 import { useTranslation } from '../../i18n'
 import { useSettingsStore } from '../../stores/settingsStore'
-import type { UIMessage } from '../../types/chat'
+import type { BackgroundAgentTask, UIMessage } from '../../types/chat'
 
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
@@ -56,6 +56,11 @@ type Props = {
   revealToolUseId?: string
   /** Calls whose permission prompt is waiting on the user. */
   awaitingToolUseIds?: ReadonlySet<string>
+  /**
+   * 后台任务的最终状态，按启动它的工具调用 id 关联，让读者在调用处看到
+   * 那个后台任务后来怎么样了，而不必去对话末尾找唤醒后的回复。
+   */
+  backgroundTasksByToolUseId?: ReadonlyMap<string, BackgroundAgentTask>
   /**
    * `inline` opens the run in place. `sheet` (the phone) keeps every run one
    * card: the counted summary, plus the step under way while it runs; a tap
@@ -119,6 +124,7 @@ export const ActivityGroup = memo(function ActivityGroup({
   disclosureKey,
   revealToolUseId,
   awaitingToolUseIds,
+  backgroundTasksByToolUseId,
   presentation = 'inline',
 }: Props) {
   const t = useTranslation()
@@ -190,6 +196,7 @@ export const ActivityGroup = memo(function ActivityGroup({
     sessionId,
     revealToolUseId,
     awaitingToolUseIds,
+    backgroundTasksByToolUseId,
     live: showsProgress,
   }
 
@@ -498,6 +505,8 @@ type ActivityToolRowProps = {
   sessionId?: string | null
   revealToolUseId?: string
   awaitingToolUseIds?: ReadonlySet<string>
+  /** 该调用启动的后台任务及其最终状态。 */
+  backgroundTasksByToolUseId?: ReadonlyMap<string, BackgroundAgentTask>
   /** The run is still being written to, so a resultless call is executing. */
   live?: boolean
 }
@@ -518,6 +527,7 @@ function sameRowInputs(
   next: ActivityToolRowProps,
 ): boolean {
   if (prev.resultMap.get(toolCall.toolUseId) !== next.resultMap.get(toolCall.toolUseId)) return false
+  if (prev.backgroundTasksByToolUseId?.get(toolCall.toolUseId) !== next.backgroundTasksByToolUseId?.get(toolCall.toolUseId)) return false
   if (isAwaiting(toolCall, prev.awaitingToolUseIds) !== isAwaiting(toolCall, next.awaitingToolUseIds)) return false
   const prevChildren = prev.childToolCallsByParent.get(toolCall.toolUseId) ?? NO_CHILD_TOOL_CALLS
   const nextChildren = next.childToolCallsByParent.get(toolCall.toolUseId) ?? NO_CHILD_TOOL_CALLS
@@ -525,6 +535,40 @@ function sameRowInputs(
   return nextChildren.every((child, index) => (
     child === prevChildren[index] && sameRowInputs(child, prev, next)
   ))
+}
+
+/**
+ * 后台任务结束后，在启动它的工具行下方补一行结果摘要：状态、耗时与任务自述。
+ * 结果晚于原回合到达，末尾的唤醒回复仍会保留；这一行让读者在调用处就能
+ * 知道那个任务后来怎么样了。
+ */
+function BackgroundTaskOutcomeRow({ task }: { task: BackgroundAgentTask }) {
+  const t = useTranslation()
+  if (task.status === 'running') return null
+  const elapsed = task.usage?.durationMs ?? Math.max(0, task.updatedAt - task.startedAt)
+  const summary = (task.summary ?? task.description ?? '').trim()
+  const statusKey = task.status === 'completed'
+    ? 'toolGroup.backgroundTaskCompleted'
+    : task.status === 'failed'
+      ? 'toolGroup.backgroundTaskFailed'
+      : 'toolGroup.backgroundTaskStopped'
+
+  return (
+    <div
+      data-testid="background-task-outcome"
+      className={`ml-[30px] flex min-w-0 items-center gap-1.5 pb-1 pt-0.5 text-[12px] ${
+        task.status === 'failed'
+          ? 'text-[var(--color-error)]'
+          : 'text-[var(--color-text-tertiary)]'
+      }`}
+    >
+      <span className="shrink-0 font-medium">{t(statusKey)}</span>
+      {elapsed > 0 && (
+        <span className="shrink-0 font-mono tabular-nums">{formatDuration(elapsed)}</span>
+      )}
+      {summary && <span className="min-w-0 truncate">{summary}</span>}
+    </div>
+  )
 }
 
 /** A tool row plus, indented under it on its own rail, the rows of anything it dispatched. */
@@ -535,10 +579,12 @@ const ActivityToolRow = memo(function ActivityToolRow({
   sessionId,
   revealToolUseId,
   awaitingToolUseIds,
+  backgroundTasksByToolUseId,
   live = false,
 }: ActivityToolRowProps) {
   const result = resultMap.get(toolCall.toolUseId)
   const childToolCalls = childToolCallsByParent.get(toolCall.toolUseId) ?? NO_CHILD_TOOL_CALLS
+  const backgroundTask = backgroundTasksByToolUseId?.get(toolCall.toolUseId)
 
   return (
     <div data-chat-anchor-id={toolCall.id}>
@@ -559,6 +605,7 @@ const ActivityToolRow = memo(function ActivityToolRow({
         awaitingApproval={!result && isAwaiting(toolCall, awaitingToolUseIds)}
         running={live && !result && toolCall.status !== 'stopped'}
       />
+      {backgroundTask && <BackgroundTaskOutcomeRow task={backgroundTask} />}
       {childToolCalls.length > 0 && (
         <ToolTimeline className="ml-[30px]">
           {childToolCalls.map((childToolCall) => (

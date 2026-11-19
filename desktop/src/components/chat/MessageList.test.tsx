@@ -2044,6 +2044,64 @@ describe('MessageList nested tool calls', () => {
     ])
   })
 
+  it('associates each background task with the tool call that started it', () => {
+    const messages: UIMessage[] = [
+      { id: 'tool-1', type: 'tool_use', toolUseId: 'bash-1', toolName: 'Bash', input: { command: 'sleep 60', run_in_background: true }, timestamp: 1 },
+      { id: 'result-1', type: 'tool_result', toolUseId: 'bash-1', content: 'Command running in background with ID: task-1', isError: false, timestamp: 2 },
+      // 同一工具先后报运行中与终态，调用处只该显示最新的一条。
+      { id: 'bg-running', type: 'background_task', task: { taskId: 'task-1', toolUseId: 'bash-1', status: 'running', startedAt: 1, updatedAt: 3 }, timestamp: 3 },
+      { id: 'bg-done', type: 'background_task', task: { taskId: 'task-1', toolUseId: 'bash-1', status: 'completed', summary: 'Server ready on port 3000', startedAt: 1, updatedAt: 39_001 }, timestamp: 40 },
+      // 没有 toolUseId 的事件不归属任何调用，也不该凭空出现。
+      { id: 'bg-orphan', type: 'background_task', task: { taskId: 'task-2', status: 'failed', startedAt: 1, updatedAt: 5 }, timestamp: 5 },
+    ]
+
+    const { backgroundTasksByToolUseId } = buildRenderModel(messages)
+
+    expect(Array.from(backgroundTasksByToolUseId.keys())).toEqual(['bash-1'])
+    expect(backgroundTasksByToolUseId.get('bash-1')).toMatchObject({
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Server ready on port 3000',
+    })
+  })
+
+  it('shows the background task outcome under the tool call that started it', () => {
+    const messages: UIMessage[] = [
+      { id: 'tool-1', type: 'tool_use', toolUseId: 'bash-1', toolName: 'Bash', input: { command: 'sleep 60', run_in_background: true }, timestamp: 1 },
+      { id: 'result-1', type: 'tool_result', toolUseId: 'bash-1', content: 'Command running in background with ID: task-1', isError: false, timestamp: 2 },
+      { id: 'bg-done', type: 'background_task', task: { taskId: 'task-1', toolUseId: 'bash-1', status: 'completed', summary: 'Server ready on port 3000', startedAt: 1, updatedAt: 39_001 }, timestamp: 40 },
+    ]
+    useChatStore.setState({
+      sessions: { [ACTIVE_TAB]: makeSessionState({ messages }) },
+    })
+
+    render(<MessageList />)
+
+    const group = screen.getByTestId('activity-group')
+    // 结束的回合默认折叠，结果行随工具行一起藏起来，展开后才出现在调用处。
+    fireEvent.click(group.querySelector('[data-chat-disclosure="true"]')!)
+    const outcome = within(group).getByTestId('background-task-outcome')
+    expect(outcome.textContent).toContain('Background task done')
+    expect(outcome.textContent).toContain('39s')
+    expect(outcome.textContent).toContain('Server ready on port 3000')
+  })
+
+  it('keeps running background tasks out of the tool row', () => {
+    const messages: UIMessage[] = [
+      { id: 'tool-1', type: 'tool_use', toolUseId: 'bash-1', toolName: 'Bash', input: { command: 'sleep 60', run_in_background: true }, timestamp: 1 },
+      { id: 'result-1', type: 'tool_result', toolUseId: 'bash-1', content: 'Command running in background with ID: task-1', isError: false, timestamp: 2 },
+      { id: 'bg-running', type: 'background_task', task: { taskId: 'task-1', toolUseId: 'bash-1', status: 'running', startedAt: 1, updatedAt: 3 }, timestamp: 3 },
+    ]
+    useChatStore.setState({
+      sessions: { [ACTIVE_TAB]: makeSessionState({ messages }) },
+    })
+
+    render(<MessageList />)
+
+    fireEvent.click(screen.getByTestId('activity-group').querySelector('[data-chat-disclosure="true"]')!)
+    expect(screen.queryByTestId('background-task-outcome')).toBeNull()
+  })
+
   it('does not render agent background task events as separate transcript cards', () => {
     useChatStore.setState({
       sessions: {
@@ -3167,6 +3225,41 @@ describe('MessageList nested tool calls', () => {
     expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
       'group:group-tool-read',
       'message:assistant-final',
+    ])
+  })
+
+  it('keeps the reply before a background-task wake-up out of the next run', () => {
+    const messages: UIMessage[] = [
+      { id: 'think-1', type: 'thinking', content: 'Check the handler first.', timestamp: 1 },
+      {
+        id: 'tool-read',
+        type: 'tool_use',
+        toolName: 'Read',
+        toolUseId: 'read-1',
+        input: { file_path: '/tmp/example.ts' },
+        timestamp: 2,
+      },
+      { id: 'answer-1', type: 'assistant_text', content: '第一轮总结。', timestamp: 3 },
+      {
+        id: 'bg-1',
+        type: 'system',
+        content: 'Background task finished.',
+        backgroundContinueTaskIds: ['task-1'],
+        timestamp: 4,
+      },
+      { id: 'think-2', type: 'thinking', content: 'Handle the notification.', timestamp: 5 },
+      { id: 'answer-2', type: 'assistant_text', content: '通知已处理。', timestamp: 6 },
+    ]
+
+    const { renderItems } = buildRenderModel(messages)
+
+    // 后台任务结果是新一轮工作的边界：上一轮的回答留在对话里，不能被折进
+    // 紧接着的活动组。
+    expect(renderItems.map((item) => item.kind === 'message' ? `message:${item.message.id}` : `group:${item.id}`)).toEqual([
+      'group:group-tool-read',
+      'message:answer-1',
+      'group:group-think-2',
+      'message:answer-2',
     ])
   })
 

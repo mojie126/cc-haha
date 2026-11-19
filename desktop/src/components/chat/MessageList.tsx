@@ -122,6 +122,8 @@ type RenderModel = {
   renderItems: RenderItem[]
   toolResultMap: Map<string, ToolResult>
   childToolCallsByParent: Map<string, ToolCall[]>
+  /** 后台任务的最终状态，按启动它的工具调用 id 关联。 */
+  backgroundTasksByToolUseId: Map<string, BackgroundAgentTask>
   /**
    * Unresolved AskUserQuestion tool_use ids followed by a user message. The user
    * has already spoken past that question, so no live permission request can
@@ -809,6 +811,7 @@ export function buildRenderModel(
 ): RenderModel {
   const items: RenderItem[] = []
   const toolResultMap = new Map<string, ToolResult>()
+  const backgroundTasksByToolUseId = new Map<string, BackgroundAgentTask>()
   const childToolCallsByParent = new Map<string, ToolCall[]>()
   const toolUseIds = new Set<string>()
   const lastUnresolvedAskUserQuestionIndexByToolUseId = new Map<string, number>()
@@ -925,6 +928,13 @@ export function buildRenderModel(
     if (msg.type === 'tool_result') {
       toolResultMap.set(msg.toolUseId, msg)
     }
+    if (msg.type === 'background_task' && msg.task.toolUseId) {
+      // 同一工具可能先报运行中、后报终态；保留最新一条，供调用处显示结果。
+      const existing = backgroundTasksByToolUseId.get(msg.task.toolUseId)
+      if (!existing || msg.task.updatedAt >= existing.updatedAt) {
+        backgroundTasksByToolUseId.set(msg.task.toolUseId, msg.task)
+      }
+    }
   }
   const hasTeamLifecycleEvidence = Boolean(options.teamTaskWindows?.length) || messages.some((msg) => (
     msg.type === 'tool_use' &&
@@ -957,10 +967,17 @@ export function buildRenderModel(
     // Activity owns task lifecycle/status, including failures and stops. Keep
     // the records for task details and trajectory, but do not turn internal
     // wake-ups into conversation rows or split a contiguous tool activity run.
-    if (
-      msg.type === 'background_task' ||
-      (msg.type === 'system' && msg.backgroundContinueTaskIds !== undefined)
-    ) {
+    if (msg.type === 'background_task') {
+      continue
+    }
+    if (msg.type === 'system' && msg.backgroundContinueTaskIds !== undefined) {
+      // 后台任务结果开启的是新一轮工作，紧挨在前面的回答已经是那一轮的
+      // 最终答复，应留在对话里，而不是被并进接下来这一段的活动组。
+      // 没有待定回答时保持连续的工具活动不被这条隐藏消息切断。
+      if (pendingCommentary.length > 0) {
+        flushGroup()
+        flushCommentaryAsMessages()
+      }
       continue
     }
 
@@ -1127,7 +1144,7 @@ export function buildRenderModel(
 
   flushGroup()
   flushCommentaryAsMessages()
-  return { renderItems: items, toolResultMap, childToolCallsByParent, supersededAskUserQuestionIds }
+  return { renderItems: items, toolResultMap, childToolCallsByParent, backgroundTasksByToolUseId, supersededAskUserQuestionIds }
 }
 
 function coordinationToolSummary(toolCall: ToolCall): string | null {
@@ -3174,6 +3191,7 @@ export function MessageList({
   const {
     toolResultMap,
     childToolCallsByParent,
+    backgroundTasksByToolUseId,
     renderItems,
     supersededAskUserQuestionIds,
   } = useMemo(
@@ -4142,6 +4160,7 @@ export function MessageList({
               turnActive={turnActiveForItem(item)}
               disclosureKey={getRenderItemKey(item)}
               revealToolUseId={navigationToolUseIdFor(item)}
+              backgroundTasksByToolUseId={backgroundTasksByToolUseId}
               activityPresentation={mobileLayout ? 'sheet' : 'inline'}
             />
           ) : item.kind === 'team_card' ? (

@@ -124,6 +124,8 @@ type Props = {
   disclosureKey?: string
   /** A "locate in chat" jump targets this call: open its run and mark its row. */
   revealToolUseId?: string
+  /** 后台任务最终状态，按启动它的工具调用 id 关联。 */
+  backgroundTasksByToolUseId?: ReadonlyMap<string, BackgroundAgentTask>
   /** See ActivityGroup: the phone folds each run into a card. */
   activityPresentation?: 'inline' | 'sheet'
 }
@@ -151,6 +153,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
   turnActive = false,
   disclosureKey,
   revealToolUseId,
+  backgroundTasksByToolUseId,
   activityPresentation = 'inline',
 }: Props) {
   const resolvedSteps = useMemo(() => steps ?? toActivitySteps(toolCalls), [steps, toolCalls])
@@ -187,6 +190,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
             turnActive={turnActive}
             disclosureKey={disclosureKey}
             revealToolUseId={revealToolUseId}
+            backgroundTasksByToolUseId={backgroundTasksByToolUseId}
             activityPresentation={activityPresentation}
           />
         ) : null}
@@ -211,6 +215,7 @@ export const ToolCallGroup = memo(function ToolCallGroup({
       turnActive={turnActive}
       disclosureKey={disclosureKey}
       revealToolUseId={revealToolUseId}
+      backgroundTasksByToolUseId={backgroundTasksByToolUseId}
       activityPresentation={activityPresentation}
     />
   )
@@ -234,6 +239,7 @@ function ToolCallGroupContent({
   turnActive = false,
   disclosureKey,
   revealToolUseId,
+  backgroundTasksByToolUseId,
   activityPresentation = 'inline',
 }: ContentProps) {
   const awaitingToolUseIds = useAwaitingToolUseIds(sessionId)
@@ -362,6 +368,7 @@ function ToolCallGroupContent({
       turnActive={turnActive}
       disclosureKey={disclosureKey}
       revealToolUseId={revealToolUseId}
+      backgroundTasksByToolUseId={backgroundTasksByToolUseId}
       awaitingToolUseIds={awaitingToolUseIds}
       presentation={activityPresentation}
     />
