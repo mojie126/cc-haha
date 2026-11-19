@@ -136,7 +136,18 @@ export function resolveSessionRuntimeFromCatalog(input: SessionRuntimeInput, par
   }
   const candidate = catalog.find(item => item.providerId === selection.providerId && item.modelId === selection.modelId)
     ?? catalog.find(item => item.providerId === selection.providerId && item.aliases?.includes(selection.modelId))
-  if (!candidate) throw new ApiError(400, 'Requested provider/model is unavailable; choose from ListSessionModels', 'SESSION_MODEL_UNAVAILABLE')
+  if (!candidate) {
+    // 已保存服务商的显式历史模型对允许通过：重启后发现目录可能还是空的，
+    // 槽位映射也可能改过，拒绝会让选择器回退到主模型，而下一轮请求仍用
+    // 会话里持久化的那个模型。官方账号目录保持严格。
+    const isSavedProviderPair = typeof selection.providerId === 'string' &&
+      selection.providerId !== 'openai-official' &&
+      selection.providerId !== 'grok-official' &&
+      selection.providerId !== 'deepseek-account' &&
+      catalog.some(item => item.providerId === selection.providerId)
+    if (isSavedProviderPair && input.runtime) return selection
+    throw new ApiError(400, 'Requested provider/model is unavailable; choose from ListSessionModels', 'SESSION_MODEL_UNAVAILABLE')
+  }
   selection.modelId = candidate.modelId
   if (selection.effortLevel !== undefined && !candidate.supportedEfforts.includes(selection.effortLevel)) {
     if (!input.runtime && input.model === undefined && input.providerId === undefined) delete selection.effortLevel

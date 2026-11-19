@@ -138,9 +138,9 @@ function resolveRuntimeRefreshSelection(
     const modelId = resolveProviderRuntimeModelId(provider, currentSelection.modelId)
     return {
       providerId: provider.id,
-      modelId: modelIds.has(modelId)
-        ? modelId
-        : resolveProviderSlotModelId(provider, 'main'),
+      // 不在当前槽位里的历史模型保留原值：会话可能一直在用它发请求，
+      // 强制换成主模型会让显示与实际请求分叉。
+      modelId: modelIds.has(modelId) ? modelId : currentSelection.modelId,
       ...(currentSelection.effortLevel ? { effortLevel: currentSelection.effortLevel } : {}),
     }
   }
@@ -166,7 +166,10 @@ function refreshSessionsForProvider(provider: SavedProvider, activeId: string | 
     // against the current provider before submitting the prompt.
     if (session && session.chatState !== 'idle') continue
     const currentSelection = runtimeStore.selections[sessionId]
-    if (!currentSelection && session?.connectionState !== 'connected') continue
+    // 无本地选择的历史会话不在首载时补写主模型：它的真实运行时由服务端
+    // 持久化决定，connectToSession 会采纳摘要里的模型；这里抢先写入会让
+    // 显示与实际请求分叉。只有服务商更新（非首载）才给已连接会话补默认值。
+    if (!currentSelection && (onlyChanged || session?.connectionState !== 'connected')) continue
 
     const selection = resolveRuntimeRefreshSelection(
       provider,

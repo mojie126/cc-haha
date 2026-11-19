@@ -9910,6 +9910,44 @@ describe('chatStore history mapping', () => {
     expect(sendMock).not.toHaveBeenCalledWith(TEST_SESSION_ID, expect.objectContaining({ modelId: 'k3[1m]' }))
   })
 
+  it('adopts the persisted launch model into the picker when no local selection exists', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      runtimeProviderId: 'a2api',
+      runtimeModelId: 'GLM-5.3-Flash-Official',
+      effortLevel: 'high',
+    }] as SessionListItem[]
+
+    useChatStore.getState().connectToSession(TEST_SESSION_ID)
+
+    expect(useSessionRuntimeStore.getState().selections[TEST_SESSION_ID]).toEqual({
+      providerId: 'a2api',
+      modelId: 'GLM-5.3-Flash-Official',
+      effortLevel: 'high',
+    })
+    // 只写选择器，不重启 CLI。
+    expect(sendMock).not.toHaveBeenCalledWith(TEST_SESSION_ID, expect.objectContaining({
+      type: 'set_runtime_config',
+    }))
+  })
+
+  it('keeps a user choice over the persisted launch model', () => {
+    sessionStoreSnapshot.sessions = [{
+      id: TEST_SESSION_ID,
+      runtimeProviderId: 'a2api',
+      runtimeModelId: 'GLM-5.3-Flash-Official',
+    }] as SessionListItem[]
+    useSessionRuntimeStore.getState().setSelection(TEST_SESSION_ID, {
+      providerId: 'a2api',
+      modelId: 'deepseek-v4.1-flash[1m]',
+    })
+
+    useChatStore.getState().connectToSession(TEST_SESSION_ID)
+
+    expect(useSessionRuntimeStore.getState().selections[TEST_SESSION_ID]?.modelId)
+      .toBe('deepseek-v4.1-flash[1m]')
+  })
+
   it.each(['before-send', 'after-send', 'after-confirmation'] as const)(
     'keeps the new model when stopping, switching, and sending despite an old response arriving %s',
     (arrival) => {

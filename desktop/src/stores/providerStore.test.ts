@@ -35,7 +35,7 @@ const {
     setSessionRuntime: vi.fn(),
   },
   runtimeStoreState: {
-    selections: {} as Record<string, { providerId: string | null; modelId: string }>,
+    selections: {} as Record<string, { providerId: string | null; modelId: string; effortLevel?: string }>,
     setSelection: vi.fn(),
   },
   setSessionRuntimeMock: vi.fn(),
@@ -250,6 +250,46 @@ describe('providerStore runtime refresh', () => {
 
     expect(setSessionRuntimeMock).toHaveBeenCalledWith('restored', { providerId: provider.id, modelId: 'model-main[1m]' })
     expect(setSelectionMock).toHaveBeenCalledWith('restored', { providerId: provider.id, modelId: 'model-main[1m]' })
+  })
+
+  it('does not seed a historical session with the provider main model on first load', async () => {
+    const provider = makeProvider()
+    providersApiMock.list.mockResolvedValue({ providers: [provider], activeId: provider.id })
+    // 历史会话已连接但本地没有运行时选择：真实模型由服务端持久化决定，
+    // connectToSession 采纳摘要；首载不得抢先写入主模型。
+    chatStoreState.sessions = { historical: { connectionState: 'connected', chatState: 'idle' } }
+    runtimeStoreState.selections = {}
+    const { useProviderStore } = await import('./providerStore')
+    useProviderStore.setState({ hasLoadedProviders: false })
+
+    await useProviderStore.getState().fetchProviders()
+
+    expect(setSelectionMock).not.toHaveBeenCalled()
+    expect(setSessionRuntimeMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps a historical model outside current slots instead of resetting to main', async () => {
+    const provider = makeProvider()
+    providersApiMock.update.mockResolvedValue({ provider })
+    providersApiMock.list.mockResolvedValue({ providers: [provider], activeId: provider.id })
+    chatStoreState.sessions = { historical: { connectionState: 'connected', chatState: 'idle' } }
+    runtimeStoreState.selections = {
+      historical: { providerId: provider.id, modelId: 'GLM-5.3-Flash-Official', effortLevel: 'high' },
+    }
+    const { useProviderStore } = await import('./providerStore')
+
+    await useProviderStore.getState().updateProvider(provider.id, { apiKey: 'new-key' })
+
+    expect(setSelectionMock).toHaveBeenCalledWith('historical', {
+      providerId: provider.id,
+      modelId: 'GLM-5.3-Flash-Official',
+      effortLevel: 'high',
+    })
+    expect(setSessionRuntimeMock).toHaveBeenCalledWith('historical', {
+      providerId: provider.id,
+      modelId: 'GLM-5.3-Flash-Official',
+      effortLevel: 'high',
+    })
   })
 
   it('keeps the saved DeepSeek account mapping from the providers list', async () => {

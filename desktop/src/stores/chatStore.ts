@@ -3492,6 +3492,24 @@ export const useChatStore = create<ChatStore>((setState, get) => {
     const runtimeSelection = useSessionRuntimeStore.getState().selections[sessionId]
     if (runtimeSelection && options?.applyRuntimeSelection !== false) {
       get().setSessionRuntime(sessionId, runtimeSelection)
+    } else if (
+      options?.applyRuntimeSelection !== false &&
+      !sessionId.startsWith('__') &&
+      !isSideChatSession(sessionId) &&
+      !useTeamStore.getState().getMemberBySessionId(sessionId)
+    ) {
+      // 本地还没有该会话的运行时选择时，采纳会话元数据里持久化的模型，
+      // 让选择器显示实际会用到的模型，而不是回退到服务商主模型。
+      // 只写本地选择器，不回发 set_runtime_config，避免把恢复中的 CLI 重启一遍。
+      const summary = useSessionStore.getState().sessions.find((session) => session.id === sessionId)
+      if (summary?.runtimeModelId) {
+        useSessionRuntimeStore.getState().setSelection(sessionId, {
+          providerId: summary.runtimeProviderId ?? null,
+          modelId: summary.runtimeModelId,
+          ...(summary.effortLevel ? { effortLevel: summary.effortLevel } : {}),
+          ...(summary.openAIFastMode !== undefined ? { openAIFastMode: summary.openAIFastMode } : {}),
+        })
+      }
     }
     if (
       options?.prewarm !== false &&

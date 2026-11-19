@@ -38,6 +38,23 @@ describe('session model catalog and strict runtime identity', () => {
     expect(() => resolveSessionRuntimeFromCatalog({ runtime: { providerId: 'second', modelId: 'shared-model', effortLevel: 'invalid' } }, parent, catalog)).toThrow('effort')
     expect(() => resolveSessionRuntimeFromCatalog({ runtime: parent, model: 'shared-model' }, parent, catalog)).toThrow('not both')
   })
+  test('a known saved provider accepts a historical model outside current slots', () => {
+    const catalog = buildSessionModelCatalog([provider('first')], accounts, 'first')
+    // 显式历史模型对保留，不回退到主模型
+    expect(resolveSessionRuntimeFromCatalog(
+      { runtime: { providerId: 'first', modelId: 'GLM-5.3-Flash-Official' } },
+      parent,
+      catalog,
+    )).toEqual({ providerId: 'first', modelId: 'GLM-5.3-Flash-Official' })
+    // 裸模型名仍然拒绝，避免跨服务商歧义
+    expect(() => resolveSessionRuntimeFromCatalog({ model: 'GLM-5.3-Flash-Official' }, parent, catalog)).toThrow('unavailable')
+    // 已删除的服务商仍然拒绝
+    expect(() => resolveSessionRuntimeFromCatalog(
+      { runtime: { providerId: 'deleted', modelId: 'GLM-5.3-Flash-Official' } },
+      parent,
+      catalog,
+    )).toThrow('unavailable')
+  })
   test('the Claude catalog offers Fable 5.2 and keeps the older Fable releases selectable', () => {
     const catalog = buildSessionModelCatalog([], { ...accounts, claude: true })
     const fableIds = catalog.filter(item => item.providerId === null && item.modelId.startsWith('claude-fable-')).map(item => item.modelId)
