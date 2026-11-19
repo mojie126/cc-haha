@@ -1838,19 +1838,42 @@ describe('Sidebar', () => {
     })
   })
 
-  it('persists project header sort preferences through desktop UI settings', async () => {
+  it('keeps project groups in a stable order instead of re-sorting them by session activity', async () => {
     useSessionStore.setState({
       sessions: [
-        makeSession('alpha-1', 'Alpha Session', '/workspace/alpha', '2026-03-01T00:00:00.000Z'),
-        {
-          ...makeSession('beta-1', 'Beta Session', '/workspace/beta', '2026-02-01T00:00:00.000Z'),
-          createdAt: '2026-04-01T00:00:00.000Z',
-        },
+        makeSession('beta-newest', 'Beta newest', '/workspace/beta', '2026-09-01T00:00:00.000Z'),
+        makeSession('alpha-older', 'Alpha older', '/workspace/alpha', '2026-01-01T00:00:00.000Z'),
+        makeSession('alpha-newer', 'Alpha newer', '/workspace/alpha', '2026-03-01T00:00:00.000Z'),
       ],
     })
 
     render(<Sidebar />)
 
+    // 项目组之间只按稳定顺序排列：beta 的最新会话更晚，也不会把 beta 提到 alpha 前面。
+    await waitFor(() => {
+      expect(projectGroupNames().slice(0, 2)).toEqual(['alpha', 'beta'])
+    })
+    // 排序只作用于组内：alpha 的两条仍按更新时间倒序。
+    const alphaGroup = screen.getByTestId('sidebar-project-group-workspace-alpha')
+    expect(within(alphaGroup).getAllByText(/^Alpha (newer|older)$/).map((row) => row.textContent))
+      .toEqual(['Alpha newer', 'Alpha older'])
+  })
+
+  it('persists project header sort preferences through desktop UI settings', async () => {
+    useSessionStore.setState({
+      sessions: [
+        makeSession('alpha-recent', 'Alpha recent', '/workspace/alpha', '2026-03-01T00:00:00.000Z'),
+        {
+          ...makeSession('alpha-old', 'Alpha old', '/workspace/alpha', '2026-02-01T00:00:00.000Z'),
+          createdAt: '2026-05-01T00:00:00.000Z',
+        },
+        makeSession('beta-1', 'Beta Session', '/workspace/beta', '2026-06-01T00:00:00.000Z'),
+      ],
+    })
+
+    render(<Sidebar />)
+
+    // 项目组顺序按稳定名称排列，beta 的最新会话更晚也不会被提到前面。
     expect(projectGroupNames().slice(0, 2)).toEqual(['alpha', 'beta'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Project menu' }))
@@ -1865,8 +1888,12 @@ describe('Sidebar', () => {
         projectOrganization: 'recentProject',
         projectSortBy: 'createdAt',
       })
-      expect(projectGroupNames().slice(0, 2)).toEqual(['beta', 'alpha'])
+      expect(projectGroupNames().slice(0, 2)).toEqual(['alpha', 'beta'])
     })
+    // 排序条件只作用于组内：切换创建时间后 alpha 的会话顺序随之变化。
+    const alphaGroup = screen.getByTestId('sidebar-project-group-workspace-alpha')
+    expect(within(alphaGroup).getAllByText(/^Alpha (recent|old)$/).map((row) => row.textContent))
+      .toEqual(['Alpha old', 'Alpha recent'])
     expect(window.localStorage.getItem(PROJECT_SORT_STORAGE_KEY)).toBe('createdAt')
   })
 

@@ -320,8 +320,8 @@ export function Sidebar({
     return extras.length > 0 ? [...projectGroups, ...extras] : projectGroups
   }, [projectDisplayNameRevision, projectGroups, rememberedProjectKeys])
   const orderedProjectGroups = useMemo(
-    () => applyProjectOrder(projectGroupsWithRemembered, projectOrder, pinnedProjectKeys, projectOrganization, projectSortBy),
-    [projectGroupsWithRemembered, projectOrder, pinnedProjectKeys, projectOrganization, projectSortBy],
+    () => applyProjectOrder(projectGroupsWithRemembered, projectOrder, pinnedProjectKeys, projectOrganization),
+    [projectGroupsWithRemembered, projectOrder, pinnedProjectKeys, projectOrganization],
   )
   const visibleProjectGroups = useMemo(() => {
     if (hiddenProjectKeys.size === 0) return orderedProjectGroups
@@ -2210,7 +2210,8 @@ function groupByProject(
     }
   })
 
-  return groups.sort((a, b) => compareSessionsByTimestamp(a.sessions[0], b.sessions[0], sortBy))
+  // 组间顺序由 applyProjectOrder 决定，不按会话时间全局重排。
+  return groups
 }
 
 function applyProjectOrder(
@@ -2218,13 +2219,14 @@ function applyProjectOrder(
   projectOrder: string[],
   pinnedProjectKeys: Set<string>,
   organization: SidebarProjectOrganization,
-  sortBy: SidebarProjectSortBy,
 ): ProjectGroup[] {
   const orderIndex = new Map(projectOrder.map((key, index) => [key, index]))
   return [...groups].sort((a, b) => {
     const aPinned = pinnedProjectKeys.has(a.key)
     const bPinned = pinnedProjectKeys.has(b.key)
     if (aPinned !== bPinned) return aPinned ? -1 : 1
+    // 项目组之间只用用户拖拽顺序与稳定的名称顺序，不按会话时间重排，
+    // 排序只作用于每个分组内部，避免某个项目更新一次就整体跳动。
     if (organization === 'project') {
       const titleOrder = a.title.localeCompare(b.title)
       return titleOrder || a.key.localeCompare(b.key)
@@ -2234,7 +2236,8 @@ function applyProjectOrder(
     if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex
     if (aIndex !== undefined) return -1
     if (bIndex !== undefined) return 1
-    return compareSessionsByTimestamp(a.sessions[0], b.sessions[0], sortBy)
+    const titleOrder = a.title.localeCompare(b.title)
+    return titleOrder || a.key.localeCompare(b.key)
   })
 }
 
