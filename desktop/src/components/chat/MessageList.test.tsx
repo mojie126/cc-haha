@@ -3060,15 +3060,18 @@ describe('MessageList nested tool calls', () => {
     // Whether a thought is followed by a tool call is a fact about the run, not
     // about the thought, so it must not change how the thought is drawn — the
     // lone one used to show its label and nothing else.
-    expect(screen.getByText('先加载浏览器技能再读 issue。')).toBeTruthy()
-    expect(screen.getByText('gh issue 失败了,改用 REST API。')).toBeTruthy()
-
     const [lone, inRun] = Array.from(
       container.querySelectorAll<HTMLElement>('[data-thinking-row="true"]'),
     )
     expect(lone).toBeTruthy()
     expect(inRun).toBeTruthy()
     expect(lone!.className).toBe(inRun!.className)
+    // 折叠行只显示标签，思考正文要点开这一行才出现。
+    expect(lone!.textContent).not.toContain('先加载浏览器技能再读 issue。')
+    fireEvent.click(lone!)
+    expect(screen.getByText('先加载浏览器技能再读 issue。')).toBeTruthy()
+    fireEvent.click(inRun!)
+    expect(screen.getByText('gh issue 失败了,改用 REST API。')).toBeTruthy()
   })
 
   it('folds a run of pure reasoning into one summary row', () => {
