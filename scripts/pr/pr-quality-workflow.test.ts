@@ -421,7 +421,7 @@ describe('PR quality workflow', () => {
     const enforce = (jobs['policy-enforcement'].steps ?? []).find((step) => step.name === 'Enforce change policy')!.run!
 
     // The fork disabled the pull-request and merge triggers; manual dispatch
-    // is the only entry point (see FORK_2026-11-14.md).
+    // is the only entry point (see FORK_2026-11-20.md).
     expect(Object.keys(parsed.on)).toEqual(['workflow_dispatch'])
     expect(collect).toContain('git diff --name-only -z "$PUSH_BEFORE" "$PUSH_AFTER"')
     // Pushes to main must not cancel one another: each merge gets its own verdict.
@@ -490,7 +490,7 @@ describe('full quality workflow', () => {
 
     expect(workflow).toContain('workflow_dispatch:')
     // Fork policy: manual only; the upstream daily cron sweep is removed
-    // (see FORK_2026-11-14.md). The sweep costs about ninety minutes.
+    // (see FORK_2026-11-20.md). The sweep costs about ninety minutes.
     const schedule = (parse(workflow) as { on: { schedule?: Array<{ cron: string }> } }).on.schedule ?? []
     expect(schedule).toEqual([])
     for (const command of [
@@ -549,7 +549,7 @@ describe('docs deployment workflow', () => {
     const workflow = readFileSync('.github/workflows/deploy-docs.yml', 'utf8')
 
     // Fork policy: manual only; the push-to-main trigger is removed
-    // (see FORK_2026-11-14.md).
+    // (see FORK_2026-11-20.md).
     expect(workflow).toContain('workflow_dispatch:')
     expect(workflow).not.toContain('push:')
     expect(workflow).toContain('cache-dependency-path: site/package-lock.json')

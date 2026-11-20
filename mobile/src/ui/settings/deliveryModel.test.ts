@@ -706,4 +706,17 @@ describe('iPhone alerts stopped by missing publisher credentials', () => {
     const healthy = { status: 'registered' } as const
     expect(reconcilePushTestFeedback(feedback, healthy, 'host-1')).toBeNull()
   })
+  test('a successful test on another provider cannot mask the current provider failure', () => {
+    const direct = { status: 'registered', provider: 'direct' } as const
+    const expoFailing = { status: 'registered', provider: 'expo', issue: 'relayCredentials', error: 'Expo 推送服务拒绝了发送（InvalidCredentials）' } as const
+    const feedback = createPushTestFeedback({ via: 'remote', note: pushTestNote({ status: 'failed' }, direct) }, 'host-1', direct)
+    expect(feedback.failed).toBe(true)
+
+    // The switch drops the old feedback; the card then explains the current
+    // channel's own failure instead of keeping the previous success/failure.
+    expect(reconcilePushTestFeedback(feedback, expoFailing, 'host-1')).toBeNull()
+    expect(deliveryCardNote(feedback, expoFailing, undefined, 'host-1')).toContain('Expo 项目中补齐 APNs 推送凭证')
+    const healthyExpo = { status: 'registered', provider: 'expo' } as const
+    expect(reconcilePushTestFeedback(feedback, healthyExpo, 'host-1')).toBeNull()
+  })
 })

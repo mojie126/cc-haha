@@ -115,7 +115,7 @@ describe('release desktop workflow', () => {
       .filter((fileName) => {
         const workflow = readFileSync(`.github/workflows/${fileName}`, 'utf8')
         // The fork removed the version-tag trigger; manual dispatch is the
-        // only release path (see FORK_2026-11-14.md).
+        // only release path (see FORK_2026-11-20.md).
         return workflow.includes('softprops/action-gh-release@v2')
       })
 
