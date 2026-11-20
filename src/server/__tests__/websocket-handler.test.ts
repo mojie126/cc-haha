@@ -1007,6 +1007,39 @@ describe('WebSocket handler session isolation', () => {
     expect(sdkUrls[1]!.startsWith(`ws://127.0.0.1:4321/sdk/${sessionId}?token=`)).toBe(true)
   })
 
+  it('binds existing leader clients to a cold CLI started by team resume', async () => {
+    const sessionId = `team-control-cold-start-${crypto.randomUUID()}`
+    const clients = [makeClientSocket(sessionId), makeClientSocket(sessionId)]
+    const callbacks = new Set<(frame: unknown) => void>()
+    let started = false
+    spyOn(ProviderService.prototype, 'getProvider').mockResolvedValue(null)
+    spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({})
+    spyOn(sessionService, 'getSessionWorkDir').mockResolvedValue('/fixture/team-control-cold-start')
+    spyOn(sessionService, 'getSessionLaunchInfo').mockResolvedValue(null)
+    spyOn(conversationService, 'hasSession').mockImplementation(() => started)
+    spyOn(conversationService, 'startSession').mockImplementation(async () => { started = true })
+    spyOn(conversationService, 'onOutput').mockImplementation((_id, callback) => { callbacks.add(callback) })
+    spyOn(conversationService, 'removeOutputCallback').mockImplementation((_id, callback) => { callbacks.delete(callback) })
+    for (const client of clients) handleWebSocket.open(client)
+
+    const url = new URL('http://127.0.0.1:3456/api/teams/taskboard/runtime-control/resume')
+    await Promise.all([ensureCliSessionStartedForControl(sessionId, url), ensureCliSessionStartedForControl(sessionId, url)])
+    await ensureCliSessionStartedForControl(sessionId, url)
+    const forwardedPermission = {
+      type: 'control_request', request_id: 'resumed-worker-permission',
+      request: { subtype: 'can_use_tool', tool_name: 'Bash', display_name: 'reader', agent_id: 'reader@taskboard' },
+    }
+    for (const callback of callbacks) callback(forwardedPermission)
+
+    for (const client of clients) {
+      const requests = client.sent.map(payload => JSON.parse(payload)).filter(message => message.type === 'permission_request')
+      expect(requests).toEqual([expect.objectContaining({
+        requestId: 'resumed-worker-permission', toolName: 'Bash', displayName: 'reader',
+      })])
+    }
+    expect(conversationService.startSession).toHaveBeenCalledTimes(1)
+  })
+
   it('gives pet clients only sanitized state and denies privileged client messages', () => {
     const sessionId = `pet-capability-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId, 'pet')
@@ -5086,6 +5119,81 @@ describe('WebSocket handler session isolation', () => {
     )
   })
 
+  it('switches the planning model in-process before denying ExitPlanMode on Keep planning', async () => {
+    mockSavedDeepSeekProvider()
+    const sessionId = `plan-keep-same-provider-${crypto.randomUUID()}`
+    const ws = makeClientSocket(sessionId)
+    const callOrder: string[] = []
+
+    spyOn(conversationService, 'hasSession').mockReturnValue(true)
+    spyOn(conversationService, 'getPendingPermissionToolName').mockReturnValue('ExitPlanMode')
+    spyOn(conversationService, 'getSessionWorkDir').mockReturnValue('/tmp')
+    spyOn(conversationService, 'setModel').mockImplementation(async () => {
+      callOrder.push('setModel')
+      return true
+    })
+    spyOn(conversationService, 'respondToPermission').mockImplementation(() => {
+      callOrder.push('respondToPermission')
+      return true
+    })
+    const launchInfo = {
+      filePath: '/tmp/plan-session.jsonl',
+      projectDir: '/tmp',
+      workDir: '/tmp',
+      transcriptMessageCount: 0,
+      customTitle: null,
+      permissionMode: 'plan',
+      runtimeProviderId: 'deepseek',
+      runtimeModelId: 'deepseek-v4-pro',
+      effortLevel: 'high',
+    }
+    spyOn(sessionService, 'getSessionLaunchInfo').mockImplementation(async () => launchInfo)
+    spyOn(sessionService, 'appendSessionMetadata').mockImplementation(async (_id, metadata) => {
+      Object.assign(launchInfo, metadata)
+    })
+    const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+    const stopSession = spyOn(conversationService, 'stopSession').mockImplementation(() => {})
+
+    handleWebSocket.open(ws)
+    handleWebSocket.message(ws, JSON.stringify({
+      type: 'permission_response',
+      requestId: 'perm-plan-keep-1',
+      allowed: false,
+      denyMessage: 'Use migrating adapters instead of a full rewrite.',
+      runtimeOverride: {
+        providerId: 'deepseek',
+        modelId: 'deepseek-v4-flash',
+      },
+    }))
+    await flushMicrotasks(30)
+
+    expect(callOrder).toEqual(['setModel', 'respondToPermission'])
+    expect(conversationService.setModel).toHaveBeenCalledWith(sessionId, 'deepseek-v4-flash')
+    expect(conversationService.respondToPermission).toHaveBeenCalledWith(
+      sessionId,
+      'perm-plan-keep-1',
+      false,
+      undefined,
+      undefined,
+      'Use migrating adapters instead of a full rewrite.',
+      undefined,
+    )
+    expect(startSession).not.toHaveBeenCalled()
+    expect(stopSession).not.toHaveBeenCalled()
+    expect(ws.sent.map((payload) => JSON.parse(payload))).toContainEqual({
+      type: 'runtime_config_applied',
+      providerId: 'deepseek',
+      modelId: 'deepseek-v4-flash',
+      effortLevel: 'high',
+      requestedConfig: { providerId: 'deepseek', modelId: 'deepseek-v4-flash' },
+    })
+    expect(await getRuntimeSettings(sessionId)).toMatchObject({
+      permissionMode: 'plan',
+      model: 'deepseek-v4-flash',
+      effort: 'high',
+    })
+  })
+
   it('keeps the permission pending when the in-process model switch fails', async () => {
     mockSavedDeepSeekProvider()
     const sessionId = `plan-set-model-fail-${crypto.randomUUID()}`
@@ -5126,6 +5234,7 @@ describe('WebSocket handler session isolation', () => {
       type: 'error',
       message: 'Failed to apply the execution model. The plan is still waiting for approval.',
       code: 'RUNTIME_CONFIG_INVALID',
+      permissionRequestId: 'perm-plan-3',
     })
   })
 

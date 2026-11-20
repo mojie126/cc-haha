@@ -1055,7 +1055,7 @@ for (const disableAdaptive of [false, true]) {
       `cc_version=${CLAUDE_CODE_COMPAT_VERSION}`,
     )
     expect(JSON.stringify(requests[0]?.system)).toContain('cc_entrypoint=cli;')
-    // The SDK release the Claude Code CLI ships (2.1.288 uses 0.128.0); its
+    // The SDK release the Claude Code CLI ships (2.1.321 uses 0.128.0); its
     // stainless headers are part of the request's client identity.
     expect(requestHeaders[0]?.get('x-stainless-package-version')).toBe('0.128.0')
   }, 10_000)

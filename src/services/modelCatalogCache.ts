@@ -34,12 +34,16 @@ export interface ResolveCatalogInput<T> {
   fallback: T
   /** Await the upstream request instead of refreshing in the background. */
   forceRefresh?: boolean
+  /** Wait for the first listing when runtime configuration needs its metadata. */
+  waitForInitial?: boolean
   /** An explicit user refresh must report failures instead of claiming fallback data is fresh. */
   throwOnError?: boolean
 }
 
 export interface ModelCatalogCache<T> {
   resolve(input: ResolveCatalogInput<T>): Promise<T>
+  /** Last accepted listing for this account, without starting a refresh. */
+  peek(accountKey: string): T | undefined
   /** Drops the cached entry and any failure backoff. */
   clear(): void
 }
@@ -80,7 +84,7 @@ export function createModelCatalogCache<T>(
   }
 
   return {
-    async resolve({ accountKey, fetchCatalog, fallback, forceRefresh, throwOnError }) {
+    async resolve({ accountKey, fetchCatalog, fallback, forceRefresh, waitForInitial, throwOnError }) {
       if (activeAccountKey !== accountKey) {
         activeAccountKey = accountKey
         revision += 1
@@ -109,8 +113,20 @@ export function createModelCatalogCache<T>(
       if (Date.now() >= retryAfter) {
         void revalidate(accountKey, fetchCatalog).catch(() => {})
       }
+      if (!usable && waitForInitial) {
+        // Backoff blocks new background requests, not a manual refresh already
+        // in progress. Follow a replacement request if the first was superseded.
+        while (activeAccountKey === accountKey && !cached && inFlight) {
+          await inFlight.catch(() => {})
+        }
+        return cached?.accountKey === accountKey ? cached.models : fallback
+      }
       // Stale data still beats the bundled fallback for the account in question.
       return usable ? usable.models : fallback
+    },
+
+    peek(accountKey) {
+      return cached?.accountKey === accountKey ? cached.models : undefined
     },
 
     clear() {

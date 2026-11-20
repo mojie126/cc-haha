@@ -86,6 +86,23 @@ describe('model catalog cache', () => {
     expect(settled).toBe(true)
   })
 
+  test('lets runtime wait for the initial refresh already started by the picker', async () => {
+    const cache = makeCache()
+    let complete!: (models: string[]) => void
+    let calls = 0
+    const fetchCatalog = () => {
+      calls++
+      return new Promise<string[]>(resolve => { complete = resolve })
+    }
+    const input = { accountKey: 'a', fetchCatalog, fallback: FALLBACK }
+
+    expect(await cache.resolve(input)).toEqual(FALLBACK)
+    const runtime = cache.resolve({ ...input, waitForInitial: true })
+    complete(REMOTE)
+    expect(await runtime).toEqual(REMOTE)
+    expect(calls).toBe(1)
+  })
+
   test('serves the refreshed catalog once the background request lands', async () => {
     const cache = makeCache()
     const fetchCatalog = async () => REMOTE

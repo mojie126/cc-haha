@@ -2,7 +2,7 @@ name: Release Desktop
 
 on:
   # Fork policy: manual only (upstream also released on version tags);
-  # see FORK_2026-11-14.md for the divergence.
+  # see FORK_2026-11-20.md for the divergence.
   workflow_dispatch:
     inputs:
       draft:

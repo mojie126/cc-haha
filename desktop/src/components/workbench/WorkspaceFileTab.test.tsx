@@ -140,6 +140,10 @@ import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextS
 import { useWorkspaceContentStore, type WorkspaceFileEntry } from '../../stores/workspaceContentStore'
 import { useWorkspaceStore } from '../../stores/workspaceStore'
 import type { WorkspaceFileTab as WorkspaceFileTabModel } from '../../lib/workspace/types'
+import {
+  WORKSPACE_FILE_PREFERENCES_STORAGE_KEY,
+  readWorkspaceFilePreferences,
+} from '../../lib/workspaceFilePreferences'
 
 const SESSION = 'session-a'
 
@@ -170,6 +174,7 @@ function renderTab(path: string, overrides: Partial<WorkspaceFileTabModel> = {})
 
 beforeEach(() => {
   useSettingsStore.setState({ locale: 'en' })
+  localStorage.removeItem(WORKSPACE_FILE_PREFERENCES_STORAGE_KEY)
   useWorkspaceContentStore.setState({
     filesByKey: {},
     treeByKey: {},
@@ -221,6 +226,36 @@ describe('content states', () => {
     expect(header).toBeVisible()
     expect(screen.getByTestId('workspace-tree-sidebar')).not.toBeVisible()
     expect(screen.getByTestId('code-surface')).toBeVisible()
+  })
+
+  it('restores the collapsed tree and hidden preview saved by the last file tab', () => {
+    localStorage.setItem(WORKSPACE_FILE_PREFERENCES_STORAGE_KEY, JSON.stringify({
+      treeOpen: false,
+      previewVisible: false,
+    }))
+    seedEntry('src/a.ts', { content: 'export const value = 1', language: 'typescript' })
+
+    renderTab('src/a.ts')
+
+    expect(screen.getByTestId('workspace-file-preview')).not.toBeVisible()
+    expect(screen.getByTestId('workspace-tree-sidebar')).toHaveStyle({ width: '100%', maxWidth: '100%' })
+    expect(screen.getByRole('button', { name: 'Show preview' })).toBeInTheDocument()
+  })
+
+  it('writes both toggles so the next file tab opens the same way', () => {
+    seedEntry('src/a.ts', { content: 'export const value = 1', language: 'typescript' })
+    renderTab('src/a.ts')
+
+    fireEvent.click(screen.getByTestId('workspace-file-tree-toggle'))
+    expect(readWorkspaceFilePreferences().treeOpen).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide preview' }))
+    expect(readWorkspaceFilePreferences().previewVisible).toBe(false)
+
+    cleanup()
+    renderTab('src/a.ts')
+    expect(screen.getByTestId('workspace-file-preview')).not.toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show preview' })).toBeInTheDocument()
   })
 
   it('asks for the file as soon as the tab is shown', () => {

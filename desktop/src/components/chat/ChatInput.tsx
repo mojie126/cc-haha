@@ -39,7 +39,7 @@ import {
   useWorkspaceChatContextStore,
   type WorkspaceChatReference,
 } from '../../stores/workspaceChatContextStore'
-import { sessionsApi, type SessionGitInfo } from '../../api/sessions'
+import { sessionsApi } from '../../api/sessions'
 import { agentsApi } from '../../api/agents'
 import { PermissionModeSelector, type PermissionModeSelectorHandle } from '../controls/PermissionModeSelector'
 import { PERMISSION_MODE_LABEL_KEYS, useResolvedPermissionMode } from '../controls/permissionModeState'
@@ -108,11 +108,10 @@ import {
 import type { PermissionMode } from '../../types/settings'
 import { getSessionWorkspaceState, getSessionSeedWorkDir } from '../../lib/sessionWorkspace'
 import { useSessionStopOffer } from '../../hooks/useSessionStopOffer'
+import { useSessionGitInfo } from '../../hooks/useSessionGitInfo'
 import { useComposerDictation } from '@/features/voiceInput/useComposerDictation'
 import { VoiceInputButton } from '@/features/voiceInput/VoiceInputButton'
 import { VoiceRecordingBar } from '@/features/voiceInput/VoiceRecordingBar'
-
-type GitInfo = SessionGitInfo
 
 type Attachment = ComposerAttachment
 
@@ -379,8 +378,6 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
       (historyIndex !== null && historyIndex !== undefined),
     )
   })
-  const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
-  const gitInfoRequest = useRef(0)
   const workspaceReferences = useWorkspaceChatContextStore(
     (s) => activeTabId ? s.referencesBySession[activeTabId] ?? EMPTY_WORKSPACE_REFERENCES : EMPTY_WORKSPACE_REFERENCES,
   )
@@ -431,6 +428,15 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
   }, [])
 
   const isMemberSession = !!memberInfo || activeTabType === 'subagent'
+  const { gitInfo, refreshGitInfo } = useSessionGitInfo({
+    sessionId: activeTabId,
+    enabled: Boolean(activeTabId) && !isMemberSession,
+    visible,
+    workDir: activeSession?.workDir,
+    chatState,
+    messageCount,
+    secondaryRefreshKey: slashCommands.length,
+  })
   // A desktop team member runs in its own CLI. That CLI's session, not this
   // page's tab id, answers for the member's commands, context and model. A
   // SubAgent run, or a member without a CLI of its own, has none of them.
@@ -758,34 +764,15 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     setComposerInput,
   ])
 
-  const refreshGitInfo = useCallback(() => {
-    const request = ++gitInfoRequest.current
-    if (!activeTabId) {
-      setGitInfo(null)
-      return
-    }
-    if (isMemberSession) {
-      setGitInfo(null)
-      return
-    }
-    sessionsApi.getGitInfo(activeTabId).then(info => {
-      if (gitInfoRequest.current === request) setGitInfo(info)
-    }).catch(() => {
-      if (gitInfoRequest.current === request) setGitInfo(null)
-    })
-  }, [activeTabId, isMemberSession, activeSession?.workDir])
-
-  useEffect(() => {
-    setGitInfo(null)
-    refreshGitInfo()
-    return () => { gitInfoRequest.current++ }
+  const refreshGitInfoCompat = useCallback(() => {
+    void refreshGitInfo()
   }, [refreshGitInfo])
 
   useEffect(() => {
     if (!activeTabId || isMemberSession || messageCount === 0) return
-    const timeout = setTimeout(refreshGitInfo, chatState === 'idle' ? 0 : 500)
+    const timeout = setTimeout(refreshGitInfoCompat, chatState === 'idle' ? 0 : 500)
     return () => clearTimeout(timeout)
-  }, [activeTabId, chatState, isMemberSession, messageCount, refreshGitInfo, slashCommandCount])
+  }, [activeTabId, chatState, isMemberSession, messageCount, refreshGitInfoCompat, slashCommandCount])
 
   useEffect(() => {
     if (!isMemberSession) return

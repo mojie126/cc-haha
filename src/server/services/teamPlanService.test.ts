@@ -3,6 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TeamPlanService } from './teamPlanService.js'
+import { sessionService } from './sessionService.js'
+import { ApiError } from '../middleware/errorHandler.js'
 import { approveTeamPlan, ensureTeamDraft, readTeamPlan, replaceTeamPlan, stageMember, submitTeamPlan } from '../../utils/swarm/teamPlanStore.js'
 import * as teamPlanStore from '../../utils/swarm/teamPlanStore.js'
 import { writeTeamFileAsync } from '../../utils/swarm/teamHelpers.js'
@@ -351,4 +353,44 @@ test.each([false, true])('GET preserves a conflict without its exact advancing r
     expect(recovery).toHaveBeenCalledTimes(1)
     expect((await readTeamPlan('review'))?.state).toBe(otherError ? 'running' : 'launching')
   } finally { recovery.mockRestore() }
+})
+
+test('retries a plan update once when the leader transcript changed under review', async () => {
+  const service = new TeamPlanService({ validate: async item => item, launch: async () => ({ memberIds: {} }), stop: async () => {} })
+  let calls = 0
+  const lookup = spyOn(sessionService, 'getSessionLaunchInfo').mockImplementation(async () => {
+    calls++
+    if (calls === 1) throw new ApiError(409, 'Session history changed', 'HISTORY_CHANGED')
+    return { agentProfile: 'default' } as never
+  })
+  try {
+    const plan = await ready()
+    const updated = await service.update('review', identity(plan), {})
+    expect(updated.members).toHaveLength(1)
+    expect(calls).toBe(2)
+  } finally { lookup.mockRestore() }
+})
+
+test('cancels a plan update while it waits to retry a changed leader transcript', async () => {
+  const service = new TeamPlanService({ validate: async item => item, launch: async () => ({ memberIds: {} }), stop: async () => {} })
+  const controller = new AbortController()
+  const lookup = spyOn(sessionService, 'getSessionLaunchInfo').mockImplementation(async () => {
+    throw new ApiError(409, 'Session history changed', 'HISTORY_CHANGED')
+  })
+  try {
+    const plan = await ready()
+    const update = service.update('review', identity(plan), {}, controller.signal)
+    controller.abort()
+    await expect(update).rejects.toThrow()
+  } finally { lookup.mockRestore() }
+})
+
+test('an already cancelled plan update does not read the leader session', async () => {
+  const service = new TeamPlanService({ validate: async item => item, launch: async () => ({ memberIds: {} }), stop: async () => {} })
+  const lookup = spyOn(sessionService, 'getSessionLaunchInfo')
+  try {
+    const plan = await ready()
+    await expect(service.update('review', identity(plan), {}, AbortSignal.abort())).rejects.toThrow()
+    expect(lookup).not.toHaveBeenCalled()
+  } finally { lookup.mockRestore() }
 })

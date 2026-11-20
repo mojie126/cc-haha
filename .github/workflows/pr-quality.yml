@@ -1,7 +1,7 @@
 name: PR Quality
 
 # Fork policy: this workflow is manual only. Upstream ran it on pull requests
-# and after every merge to main; see FORK_2026-11-14.md for the divergence.
+# and after every merge to main; see FORK_2026-11-20.md for the divergence.
 on:
   workflow_dispatch:
 

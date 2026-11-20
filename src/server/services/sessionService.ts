@@ -65,6 +65,7 @@ import type { AssistantMessage } from '../../types/message.js'
 import { SYNTHETIC_MODEL } from '../../utils/messages.js'
 import { getTokenUsage, isUsableContextUsage } from '../../utils/tokens.js'
 import { ProviderService } from './providerService.js'
+import { OPENAI_OFFICIAL_PROVIDER_ID, isOpenAIOfficialProviderId } from './openaiOfficialProvider.js'
 import { shouldHideCommandMetadataContent } from '../../utils/commandMetadata.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
@@ -277,6 +278,7 @@ export type MessageEntry = {
   businessErrorCode?: string
   bodyTruncated?: boolean
   toolUseResult?: unknown
+  durationMs?: number
   timestamp: string
   model?: string
   usage?: MessageUsage
@@ -513,6 +515,7 @@ type RawEntry = {
     }
   }
   timestamp?: string
+  durationMs?: number
   version?: string
   snapshot?: {
     messageId?: string
@@ -2279,6 +2282,13 @@ export class SessionService {
         })
       }
     }
+    const durationMs =
+      type === 'tool_result' &&
+      typeof entry.durationMs === 'number' &&
+      Number.isFinite(entry.durationMs) &&
+      entry.durationMs >= 0
+        ? entry.durationMs
+        : undefined
     return {
       id: entry.uuid || crypto.randomUUID(),
       type,
@@ -2291,6 +2301,7 @@ export class SessionService {
       ...(scheduledTask ? { scheduledTask } : {}),
       ...(entry.bodyTruncated === true ? { bodyTruncated: true } : {}),
       ...(entry.toolUseResult !== undefined ? { toolUseResult: entry.toolUseResult } : {}),
+      ...(durationMs !== undefined ? { durationMs } : {}),
       timestamp: entry.timestamp || new Date().toISOString(),
       model: msg.model,
       ...(usage ? { usage } : {}),
@@ -3192,6 +3203,7 @@ export class SessionService {
     model: string,
     launchInfoOverride?: ProviderContextWindowHint | null,
     hints: { autoCompactWindow?: string } = {},
+    openAIRuntimeEnv?: Record<string, string> | null,
   ): Promise<number | undefined> {
     const launchInfo = launchInfoOverride ?? await this.getSessionLaunchInfo(sessionId).catch(() => null)
     const providerIds: string[] = []
@@ -3231,7 +3243,9 @@ export class SessionService {
     let sessionProviderAutoCompactWindow: string | undefined
     let sawSessionProvider = false
     for (const providerId of providerIds) {
-      const env = await this.providerService.getProviderRuntimeEnv(providerId).catch(() => null)
+      const env = openAIRuntimeEnv !== undefined && isOpenAIOfficialProviderId(providerId)
+        ? openAIRuntimeEnv
+        : await this.providerService.getProviderRuntimeEnv(providerId, { cachedCatalogOnly: true }).catch(() => null)
       hints.autoCompactWindow = env?.[AUTO_COMPACT_WINDOW_ENV_KEY]
       if (env && !sawSessionProvider) {
         sawSessionProvider = true
@@ -3383,6 +3397,7 @@ export class SessionService {
     sessionId: string,
     model: string,
     launchInfo?: ProviderContextWindowHint | null,
+    openAIRuntimeEnv?: Record<string, string> | null,
   ): Promise<number> {
     const hints: { autoCompactWindow?: string } = {}
     const providerContextWindow = await this.getProviderContextWindowForSession(
@@ -3390,6 +3405,7 @@ export class SessionService {
       model,
       launchInfo,
       hints,
+      openAIRuntimeEnv,
     )
     if (providerContextWindow !== undefined) {
       return applyAutoCompactWindowLimit(providerContextWindow, hints.autoCompactWindow, true)
@@ -3416,8 +3432,8 @@ export class SessionService {
     return (await this.getInspectionTranscriptSnapshot(sessionId))?.metadata ?? null
   }
 
-  private async buildTranscriptContextEstimate(
-    sessionId: string,
+  private buildTranscriptContextEstimate(
+    rawMaxTokens: number,
     latest: {
       model: string
       inputTokens: number
@@ -3428,9 +3444,7 @@ export class SessionService {
     estimatedTokensFromMessages: number,
     estimatedTokensAfterUsage: number,
     transcriptHasMediaInput: boolean,
-    launchInfo?: ProviderContextWindowHint | null,
-  ): Promise<TranscriptContextEstimate> {
-    const rawMaxTokens = await this.getSessionModelContextWindow(sessionId, latest.model, launchInfo)
+  ): TranscriptContextEstimate {
     const promptTokens = latest.inputTokens + latest.cacheReadInputTokens + latest.cacheCreationInputTokens
     const providerTokens = promptTokens + latest.outputTokens
     const hasProviderUsage = promptTokens > 0
@@ -3522,9 +3536,13 @@ export class SessionService {
     const stat = await fs.stat(found.filePath, { bigint: true })
     // The transcript is immutable between polls, but its interpreted token budget
     // also depends on editable provider settings and process-level overrides.
-    const providers = await this.providerService.listProviders().catch(() => null)
+    const [providers, openAIRuntimeEnv] = await Promise.all([
+      this.providerService.listProviders().catch(() => null),
+      this.providerService.getProviderRuntimeEnv(OPENAI_OFFICIAL_PROVIDER_ID, { cachedCatalogOnly: true }).catch(() => null),
+    ])
     const contextRevision = createHash('sha256').update(JSON.stringify({
       activeId: providers?.activeId,
+      openAIRuntimeEnv,
       providers: providers?.providers.map(provider => ({
         id: provider.id,
         models: provider.models,
@@ -3543,7 +3561,7 @@ export class SessionService {
     const existing = this.inspectionSnapshots.get(key)
     if (existing) return existing
     const request = (async () => {
-      const snapshot = await this.readInspectionTranscriptSnapshot(sessionId)
+      const snapshot = await this.readInspectionTranscriptSnapshot(sessionId, openAIRuntimeEnv)
       const after = await fs.stat(found.filePath, { bigint: true })
       if (after.dev !== stat.dev || after.ino !== stat.ino || after.size !== stat.size || after.mtimeNs !== stat.mtimeNs || after.ctimeNs !== stat.ctimeNs) {
         throw ApiError.conflict('Transcript changed during inspection; retry the request')
@@ -3559,7 +3577,10 @@ export class SessionService {
     catch (error) { this.inspectionSnapshots.delete(key); throw error }
   }
 
-  private async readInspectionTranscriptSnapshot(sessionId: string): Promise<SessionInspectionTranscriptSnapshot | null> {
+  private async readInspectionTranscriptSnapshot(
+    sessionId: string,
+    openAIRuntimeEnv: Record<string, string> | null,
+  ): Promise<SessionInspectionTranscriptSnapshot | null> {
     const found = await this.findSessionFile(sessionId)
     if (!found) return null
 
@@ -3777,6 +3798,7 @@ export class SessionService {
         sessionId,
         modelUsage.model,
         modelRuntimeHints.get(modelUsage.model),
+        openAIRuntimeEnv,
       )
     }
 
@@ -3808,13 +3830,12 @@ export class SessionService {
         }
     const latestContextUsage = resolveTranscriptContextUsage(contextState)
     const contextEstimate = latestContextUsage
-      ? await this.buildTranscriptContextEstimate(
-          sessionId,
+      ? this.buildTranscriptContextEstimate(
+          await this.getSessionModelContextWindow(sessionId, latestContextUsage.model, launchInfo, openAIRuntimeEnv),
           latestContextUsage,
           contextState.estimatedTokensFromMessages,
           contextState.estimatedTokensAfterUsage + contextState.unreportedOutputTokens,
           contextState.transcriptHasMediaInput,
-          launchInfo,
         )
       : null
 

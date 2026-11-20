@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  CLAUDE_CODE_BILLING_HEADER_PREFIX,
   CLAUDE_CODE_COMPAT_VERSION,
   CLAUDE_CODE_WIRE_ENTRYPOINT,
 } from './claudeCodeCompatibility.js'
@@ -19,14 +20,16 @@ function withEntrypoint<T>(value: string | undefined, run: () => T): T {
 
 describe('getAttributionHeader', () => {
   test('tracks the audited upstream Claude Code compatibility release', () => {
-    expect(CLAUDE_CODE_COMPAT_VERSION).toBe('2.1.288')
+    expect(CLAUDE_CODE_COMPAT_VERSION).toBe('2.1.321')
   })
 
   test('uses Claude Code compatibility version and always includes CCH placeholder', () => {
     withEntrypoint('cli', () => {
-      expect(getAttributionHeader('abc')).toBe(
-        'x-anthropic-billing-header: cc_version=2.1.288.abc; cc_entrypoint=cli; cch=00000;',
-      )
+      const header = getAttributionHeader('abc')
+      expect(header.startsWith(`${CLAUDE_CODE_BILLING_HEADER_PREFIX} `)).toBe(true)
+      expect(header).toContain(`cc_version=${CLAUDE_CODE_COMPAT_VERSION}.abc`)
+      expect(header).toContain('cc_entrypoint=cli')
+      expect(header).toContain(`cch=${'0'.repeat(5)}`)
     })
   })
 
@@ -36,7 +39,7 @@ describe('getAttributionHeader', () => {
     expect(CLAUDE_CODE_WIRE_ENTRYPOINT).toBe('cli')
     for (const hostValue of ['claude-desktop', 'sdk-cli', undefined]) {
       withEntrypoint(hostValue, () => {
-        expect(getAttributionHeader('abc')).toContain('cc_entrypoint=cli;')
+        expect(getAttributionHeader('abc')).toContain('cc_entrypoint=cli')
       })
     }
   })

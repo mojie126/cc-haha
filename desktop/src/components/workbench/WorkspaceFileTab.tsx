@@ -20,6 +20,7 @@ import { useMenuKeyboard } from './menuKeyboard'
 import { useWorkspaceContentStore, type WorkspaceFileView } from '../../stores/workspaceContentStore'
 import { useWorkspaceChatContextStore } from '../../stores/workspaceChatContextStore'
 import { workspaceOpen } from '../../lib/workspace/openTarget'
+import { readWorkspaceFilePreferences, writeWorkspaceFilePreferences } from '../../lib/workspaceFilePreferences'
 import { isRootedLocalPath } from '../../lib/handlePreviewLink'
 import { resolveAbsoluteOpenPath } from '../../lib/systemFileOpen'
 import { basenameOf, type WorkspaceFileTab as WorkspaceFileTabModel } from '../../lib/workspace/types'
@@ -47,16 +48,18 @@ function isMarkdown(path: string) {
 export function WorkspaceFileTab({ sessionId, tab }: WorkspaceFileTabProps) {
   const t = useTranslation()
   const treeToggleRef = useRef<HTMLButtonElement>(null)
-  const treeOpen = useWorkspaceContentStore((state) => state.treeViewBySession[sessionId]?.open ?? true)
+  const [initialPreferences] = useState(readWorkspaceFilePreferences)
+  const treeOpen = useWorkspaceContentStore((state) => state.treeViewBySession[sessionId]?.open ?? initialPreferences.treeOpen)
   const setTreeOpen = useCallback((next: boolean | ((open: boolean) => boolean)) => {
     const state = useWorkspaceContentStore.getState()
-    const open = state.treeViewBySession[sessionId]?.open ?? true
+    const open = state.treeViewBySession[sessionId]?.open ?? initialPreferences.treeOpen
     const nextOpen = typeof next === 'function' ? next(open) : next
     if (!nextOpen && document.activeElement?.closest('[data-testid="workspace-tree-sidebar"]')) {
       treeToggleRef.current?.focus({ preventScroll: true })
     }
     state.setTreeView(sessionId, { open: nextOpen })
-  }, [sessionId])
+    writeWorkspaceFilePreferences({ ...readWorkspaceFilePreferences(), treeOpen: nextOpen })
+  }, [initialPreferences.treeOpen, sessionId])
   const [openWithOpen, setOpenWithOpen] = useState(false)
   const openWithRef = useRef<HTMLDivElement>(null)
   const openWithTriggerRef = useRef<HTMLButtonElement>(null)
@@ -79,7 +82,9 @@ export function WorkspaceFileTab({ sessionId, tab }: WorkspaceFileTabProps) {
   const viewKey = `${sessionId}::${path}`
   // Explicit file opens replace the tab model, including same-path chat links.
   // Keep collapse local to this activation so a later open can reveal content.
-  const [hiddenPreviewTab, setHiddenPreviewTab] = useState<WorkspaceFileTabModel | null>(null)
+  const [hiddenPreviewTab, setHiddenPreviewTab] = useState<WorkspaceFileTabModel | null>(
+    () => initialPreferences.previewVisible ? null : tab,
+  )
   const previewVisible = !!path && hiddenPreviewTab !== tab
   const revealKey = `${viewKey}::${tab.reveal?.nonce}`
   const restoredView = useRef<{ key: string; view: WorkspaceFileView | undefined }>()
@@ -241,8 +246,10 @@ export function WorkspaceFileTab({ sessionId, tab }: WorkspaceFileTabProps) {
               tone="muted"
               pressed={previewVisible}
               onClick={() => {
-                setHiddenPreviewTab(previewVisible ? tab : null)
-                if (previewVisible) setTreeOpen(true)
+                const nextVisible = !previewVisible
+                setHiddenPreviewTab(nextVisible ? null : tab)
+                if (!nextVisible) setTreeOpen(true)
+                writeWorkspaceFilePreferences({ ...readWorkspaceFilePreferences(), previewVisible: nextVisible })
               }}
             />
             <span className="relative ml-1 flex h-7 shrink-0 items-stretch rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)]">

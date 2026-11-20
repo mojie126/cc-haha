@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { ActivityGroup } from './ActivityGroup'
-import { buildActivitySegments, formatActivitySummary, type ActivityStep } from './activityGroupModel'
+import { buildActivitySegments, countFailedToolCalls, formatActivitySummary, type ActivityStep } from './activityGroupModel'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { translate } from '../../i18n'
 import type { UIMessage } from '../../types/chat'
+import { PLAN_REJECTION_MESSAGE, PLAN_REJECTION_WITH_REASON_PREFIX } from '../../../../src/constants/messages'
 
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
@@ -67,6 +68,27 @@ describe('ActivityGroup', () => {
     expect(view.container.querySelector('[data-chat-anchor-id="use-bash"]')).not.toBeNull()
     view.rerender(<ActivityGroup {...props} steps={[{ kind: 'tool', toolCall: readCall }, ...steps]} />)
     expect(view.container.querySelector('[data-chat-anchor-id="use-bash"]')).not.toBeNull()
+  })
+
+  it.each([
+    { content: PLAN_REJECTION_MESSAGE },
+    { content: [{ type: 'text', text: `${PLAN_REJECTION_WITH_REASON_PREFIX}Add a rollback step.` }] },
+  ])('does not count a returned plan as an activity failure', ({ content }) => {
+    const planCall = toolCall({ id: 'plan-1', toolUseId: 'plan-1', toolName: 'ExitPlanMode' })
+    const results = resultsOf([
+      toolResult({ id: 'result-1', toolUseId: 'plan-1', content, isError: true }),
+    ])
+
+    expect(countFailedToolCalls([planCall], results, new Map())).toBe(0)
+  })
+
+  it('still counts an actual ExitPlanMode error as a failure', () => {
+    const planCall = toolCall({ id: 'plan-1', toolUseId: 'plan-1', toolName: 'ExitPlanMode' })
+    const results = resultsOf([
+      toolResult({ id: 'result-1', toolUseId: 'plan-1', content: 'Plan file unavailable', isError: true }),
+    ])
+
+    expect(countFailedToolCalls([planCall], results, new Map())).toBe(1)
   })
 
   it('plays open while its turn runs, then folds itself into a counted summary', () => {

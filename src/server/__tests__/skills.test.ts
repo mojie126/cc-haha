@@ -1093,4 +1093,159 @@ describe('Skills API', () => {
       })
     })
   })
+
+  describe('plugin manifest slash commands before first CLI turn', () => {
+    it('lists enabled plugin commands from manifest commandsPaths, updates without restart, and isolates project scopes', async () => {
+      const projectA = path.join(tmpHome, 'project-a')
+      const projectB = path.join(tmpHome, 'project-b')
+      const pluginsDir = path.join(tmpHome, '.claude', 'plugins')
+      const marketDir = path.join(tmpHome, 'nexuskit-market')
+      const cachedPluginDir = path.join(pluginsDir, 'cache', 'nexuskit-skills', 'nexuskit', '0.4.0')
+
+      await Promise.all([
+        fs.mkdir(path.join(projectA, '.claude'), { recursive: true }),
+        fs.mkdir(path.join(projectB, '.claude'), { recursive: true }),
+        fs.mkdir(path.join(cachedPluginDir, '.claude-plugin'), { recursive: true }),
+        fs.mkdir(path.join(cachedPluginDir, '.claude', 'commands', 'ui'), { recursive: true }),
+        fs.mkdir(path.join(marketDir, '.claude-plugin'), { recursive: true }),
+        fs.mkdir(pluginsDir, { recursive: true }),
+      ])
+
+      await fs.writeFile(
+        path.join(cachedPluginDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({
+          name: 'nexuskit',
+          version: '0.4.0',
+          description: 'NexusKit workflow commands',
+          commands: ['./.claude/commands'],
+        }),
+        'utf-8',
+      )
+      await fs.writeFile(
+        path.join(cachedPluginDir, '.claude', 'commands', 'nk-build.md'),
+        ['---', 'description: Build NexusKit target', 'argument-hint: <target>', 'disable-model-invocation: true', '---', '', 'Build the requested target.'].join('\n'),
+        'utf-8',
+      )
+      await fs.writeFile(
+        path.join(cachedPluginDir, '.claude', 'commands', 'ui', 'nk-preview.md'),
+        ['---', 'description: Preview NexusKit UI', '---', '', 'Preview UI.'].join('\n'),
+        'utf-8',
+      )
+      await fs.writeFile(
+        path.join(cachedPluginDir, '.claude', 'commands', 'nk-forked.md'),
+        ['---', 'description: Forked NexusKit task', 'context: fork', '---', '', 'Run in subagent.'].join('\n'),
+        'utf-8',
+      )
+
+      await fs.writeFile(
+        path.join(marketDir, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify({
+          name: 'nexuskit-skills',
+          owner: { name: 'NexusKit' },
+          plugins: [{ name: 'nexuskit', source: { source: 'github', repo: 'nexuskit/nexuskit-skills' }, version: '0.4.0' }],
+        }),
+        'utf-8',
+      )
+      await fs.writeFile(
+        path.join(pluginsDir, 'known_marketplaces.json'),
+        JSON.stringify({
+          'nexuskit-skills': {
+            source: { source: 'github', repo: 'nexuskit/nexuskit-skills' },
+            installLocation: marketDir,
+            lastUpdated: new Date(0).toISOString(),
+          },
+        }),
+        'utf-8',
+      )
+
+      const writeInstalled = (scope: 'user' | 'project') =>
+        fs.writeFile(
+          path.join(pluginsDir, 'installed_plugins.json'),
+          JSON.stringify({
+            version: 2,
+            plugins: {
+              'nexuskit@nexuskit-skills': [{
+                scope,
+                ...(scope === 'project' ? { projectPath: projectA } : {}),
+                installPath: cachedPluginDir,
+                version: '0.4.0',
+                installedAt: new Date(0).toISOString(),
+                lastUpdated: new Date(0).toISOString(),
+              }],
+            },
+          }),
+          'utf-8',
+        )
+
+      await writeInstalled('user')
+      await fs.writeFile(
+        path.join(tmpHome, '.claude', 'settings.json'),
+        JSON.stringify({ enabledPlugins: { 'nexuskit@nexuskit-skills': true } }),
+        'utf-8',
+      )
+      await fs.writeFile(
+        path.join(projectB, '.claude', 'settings.json'),
+        JSON.stringify({ enabledPlugins: { 'nexuskit@nexuskit-skills': false } }),
+        'utf-8',
+      )
+
+      const fetchCommands = async (cwd: string, extraQuery = '') => {
+        const { req, url, segments } = makeRequest(`/api/skills/commands?cwd=${encodeURIComponent(cwd)}${extraQuery}`)
+        const response = await handleSkillsApi(req, url, segments)
+        expect(response.status).toBe(200)
+        const body = (await response.json()) as { commands: SkillSlashCommand[] }
+        return body.commands
+      }
+
+      const [commandsA, commandsB] = await Promise.all([fetchCommands(projectA), fetchCommands(projectB)])
+
+      expect(commandsA).toContainEqual({
+        name: 'nexuskit:nk-build',
+        description: 'Build NexusKit target',
+        argumentHint: '<target>',
+        kind: 'command',
+        source: 'plugin',
+      })
+      expect(commandsA).toContainEqual({
+        name: 'nexuskit:ui:nk-preview',
+        description: 'Preview NexusKit UI',
+        kind: 'command',
+        source: 'plugin',
+      })
+      expect(commandsA).toContainEqual(
+        expect.objectContaining({ name: 'nexuskit:nk-forked', kind: 'command', source: 'plugin', leanCompatible: false }),
+      )
+      expect(commandsB.some((cmd) => cmd.name.startsWith('nexuskit:'))).toBe(false)
+
+      const leanCommandsA = await fetchCommands(projectA, '&agentProfile=lean')
+      expect(leanCommandsA.map((cmd) => cmd.name)).toContain('nexuskit:nk-build')
+      expect(leanCommandsA.map((cmd) => cmd.name)).toContain('nexuskit:ui:nk-preview')
+      expect(leanCommandsA.map((cmd) => cmd.name)).not.toContain('nexuskit:nk-forked')
+
+      // Adding a new command file and toggling user settings dynamically takes effect without server restart.
+      await fs.writeFile(
+        path.join(cachedPluginDir, '.claude', 'commands', 'nk-ship.md'),
+        '---\ndescription: Ship NexusKit release\n---\nShip it.',
+        'utf-8',
+      )
+      expect((await fetchCommands(projectA)).map((cmd) => cmd.name)).toContain('nexuskit:nk-ship')
+
+      await fs.writeFile(
+        path.join(tmpHome, '.claude', 'settings.json'),
+        JSON.stringify({ enabledPlugins: { 'nexuskit@nexuskit-skills': false } }),
+        'utf-8',
+      )
+      expect((await fetchCommands(projectA)).some((cmd) => cmd.name.startsWith('nexuskit:'))).toBe(false)
+
+      // Project-scoped installation is only visible in projectA, never leaked into projectB.
+      await writeInstalled('project')
+      await fs.writeFile(path.join(projectA, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'nexuskit@nexuskit-skills': true } }), 'utf-8')
+      await fs.writeFile(path.join(projectB, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'nexuskit@nexuskit-skills': true } }), 'utf-8')
+
+      const [scopedA, scopedB] = await Promise.all([fetchCommands(projectA), fetchCommands(projectB)])
+      expect(scopedA.map((cmd) => cmd.name)).toContain('nexuskit:nk-build')
+      expect(scopedB.some((cmd) => cmd.name.startsWith('nexuskit:'))).toBe(false)
+      expect(getCwdState()).toBe(tmpHome)
+    })
+  })
 })

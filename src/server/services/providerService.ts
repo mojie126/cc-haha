@@ -26,8 +26,10 @@ import { openaiResponsesToAnthropic } from '../proxy/transform/openaiResponsesTo
 import type { AnthropicRequest } from '../proxy/transform/types.js'
 import {
   OPENAI_OFFICIAL_PROVIDER,
+  buildOpenAIOfficialRuntimeEnv,
   isOpenAIOfficialProviderId,
 } from './openaiOfficialProvider.js'
+import { getDesktopOpenAICodexModelCatalog, readCachedDesktopOpenAICodexModelCatalog } from './openaiModelCatalog.js'
 import { hahaOpenAIOAuthService } from './hahaOpenAIOAuthService.js'
 import { hahaOAuthService } from './hahaOAuthService.js'
 import {
@@ -320,6 +322,12 @@ export class ProviderService {
 
   async getProvider(id: string): Promise<SavedProvider> {
     const index = await this.readIndex()
+    const provider = this.resolveProviderFromIndex(index, id)
+    if (!provider) throw ApiError.notFound(`Provider not found: ${id}`)
+    return provider
+  }
+
+  private resolveProviderFromIndex(index: ProvidersIndex, id: string): SavedProvider | undefined {
     if (isOpenAIOfficialProviderId(id)) {
       return this.resolveOpenAIOfficialProvider(index)
     }
@@ -336,9 +344,7 @@ export class ProviderService {
       }
     }
 
-    const provider = index.providers.find((p) => p.id === id)
-    if (!provider) throw ApiError.notFound(`Provider not found: ${id}`)
-    return provider
+    return index.providers.find((item) => item.id === id)
   }
 
   /** The built-in ChatGPT provider as saved: the user's model mapping and window overrides over its defaults. */
@@ -788,11 +794,19 @@ export class ProviderService {
     })
   }
 
-  async getProviderRuntimeEnv(id: string): Promise<Record<string, string>> {
-    const provider = await this.getProvider(id)
-    const env = this.buildManagedEnv(provider, {
-      proxyPath: `/proxy/providers/${provider.id}`,
-    })
+  async getProviderRuntimeEnv(id: string, options?: { cachedCatalogOnly?: boolean }): Promise<Record<string, string>> {
+    const index = await this.readIndex()
+    const provider = this.resolveProviderFromIndex(index, id)
+    if (!provider) throw ApiError.notFound(`Provider not found: ${id}`)
+    const env = isOpenAIOfficialProviderId(id)
+      ? buildOpenAIOfficialRuntimeEnv(
+        provider.models,
+        index.officialProviderContextWindows[id],
+        options?.cachedCatalogOnly
+          ? await readCachedDesktopOpenAICodexModelCatalog()
+          : await getDesktopOpenAICodexModelCatalog({ waitForInitial: true }),
+      )
+      : this.buildManagedEnv(provider, { proxyPath: `/proxy/providers/${provider.id}` })
     // The JSON editor belongs to the active provider. Pass its subagent choice
     // in the host's launch snapshot; the CLI must still filter settings-sourced
     // model vars so another provider (and approved team workers) stays isolated.

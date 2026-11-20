@@ -23,7 +23,11 @@ import { sanitizePath } from '../../utils/sessionStoragePortable.js'
 import { clearInstalledPluginsCache } from '../../utils/plugins/installedPluginsManager.js'
 import { clearPluginCache } from '../../utils/plugins/pluginLoader.js'
 import { resetSettingsCache } from '../../utils/settings/settingsCache.js'
-import { updateSessionSlashCommands } from '../ws/handler.js'
+import {
+  __markActiveTurnForTests,
+  __resetWebSocketHandlerStateForTests,
+  updateSessionSlashCommands,
+} from '../ws/handler.js'
 import { reduceTranscript } from '../services/localIndex/transcriptReducer.js'
 import { openLocalIndexDatabase } from '../services/localIndex/database.js'
 import { readSessionEntriesByLocator } from '../services/localIndex/sessionEntries.js'
@@ -5102,7 +5106,7 @@ describe('Sessions API', () => {
     }
   })
 
-  it('GET /api/sessions/:id/git-info should keep the session launch branch stable', async () => {
+  it('GET /api/sessions/:id/git-info should report the live checked-out branch in a regular checkout', async () => {
     const workDir = await createCleanGitRepo(tmpDir)
     const { sessionId } = await sessionService.createSession(
       workDir,
@@ -5118,7 +5122,7 @@ describe('Sessions API', () => {
 
       const body = (await res.json()) as { branch: string | null; workDir: string }
       expect(body.workDir).toBe(workDir)
-      expect(body.branch).toBe('feature/rail')
+      expect(body.branch).toBe('main')
     } finally {
       sessionsMap.delete(sessionId)
     }
@@ -10581,6 +10585,31 @@ describe('Sessions API', () => {
     expect(turn.restoreAvailable).toBe(false)
     expect(turn.code.reason).toContain('before')
     expect(turn.unverifiedChangeSources.length).toBeGreaterThan(0)
+  })
+
+  it('POST /api/sessions/:id/chat/stop interrupts a live CLI turn immediately without waiting for WebSocket handshake (#1917)', async () => {
+    const sessionId = 'bbbbbbbb-1917-cccc-dddd-eeeeeeeeeeee'
+    __markActiveTurnForTests(sessionId)
+    const hasSessionSpy = spyOn(conversationService, 'hasSession').mockImplementation((id) => id === sessionId)
+    const sendInterruptSpy = spyOn(conversationService, 'sendInterrupt').mockReturnValue(true)
+
+    try {
+      const beforeRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/chat/status`)
+      expect(((await beforeRes.json()) as { activityState: string }).activityState).toBe('running')
+
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/chat/stop`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(sendInterruptSpy).toHaveBeenCalledWith(sessionId)
+
+      const afterRes = await fetch(`${baseUrl}/api/sessions/${sessionId}/chat/status`)
+      expect(((await afterRes.json()) as { activityState: string }).activityState).toBe('idle')
+    } finally {
+      hasSessionSpy.mockRestore()
+      sendInterruptSpy.mockRestore()
+      __resetWebSocketHandlerStateForTests()
+    }
   })
 
   it.each(['legacy', 'completed'] as const)('frozen review keeps a valid empty %s checkpoint complete', async (kind) => {
