@@ -3509,6 +3509,7 @@ Row 9, all 8 cells: continuing from straight down, turning left through lower-le
   'chat.generationStopped': 'Stopped',
   'chat.backgroundContinue': 'Continued automatically after a background task ended: {summary}',
   'chat.backgroundContinueGeneric': 'Continued automatically after a background task ended',
+  'chat.backgroundReplyFolded': 'Automatic reply after a background task ended',
   'chat.jumpToLatest': 'Latest',
   'chat.memorySavedTitle': 'Saved {count} memory file(s)',
   'chat.memorySavedFromToolsTitle': 'Saved {count} memory item(s)',

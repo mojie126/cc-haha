@@ -3509,6 +3509,7 @@ export const zh: Record<TranslationKey, string> = {
   'chat.generationStopped': '已停止',
   'chat.backgroundContinue': '背景任務已結束，自動繼續：{summary}',
   'chat.backgroundContinueGeneric': '背景任務已結束，自動繼續',
+  'chat.backgroundReplyFolded': '背景任務結束後的自動回覆',
   'chat.jumpToLatest': '回到最新',
   'chat.memorySavedTitle': '已儲存 {count} 個記憶檔案',
   'chat.memorySavedFromToolsTitle': '儲存了 {count} 條記憶',

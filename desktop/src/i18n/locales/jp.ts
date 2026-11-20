@@ -3510,6 +3510,7 @@ export const jp: Record<TranslationKey, string> = {
   'chat.generationStopped': '停止しました',
   'chat.backgroundContinue': 'バックグラウンドタスクが終了したため自動的に続行：{summary}',
   'chat.backgroundContinueGeneric': 'バックグラウンドタスクが終了したため自動的に続行',
+  'chat.backgroundReplyFolded': 'バックグラウンドタスク終了後の自動返信',
   'chat.jumpToLatest': '最新',
   'chat.memorySavedTitle': '{count} 件のメモリファイルを保存しました',
   'chat.memorySavedFromToolsTitle': '{count} 件のメモリ項目を保存しました',

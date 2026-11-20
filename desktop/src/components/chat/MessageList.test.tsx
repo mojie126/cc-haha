@@ -1980,7 +1980,8 @@ describe('MessageList nested tool calls', () => {
     },
   )
 
-  it.each([{ taskIds: ['task-1'] }, { taskIds: [] }])('hides structured background continuation notices ($taskIds) without hiding regular system messages or useful replies', ({ taskIds }) => {
+  it.each([{ taskIds: ['task-1'] }, { taskIds: [] }])('hides structured background continuation notices ($taskIds) and folds the wake reply without hiding regular system messages or user text', ({ taskIds }) => {
+    clearDisclosureMemory()
     const messages: UIMessage[] = [
       { id: 'notice', type: 'system', content: 'Background task completed; continuing automatically: exit code 143', backgroundContinueTaskIds: taskIds, timestamp: 1 },
       { id: 'reply', type: 'assistant_text', content: 'The build failed because a dependency is missing.', timestamp: 2 },
@@ -1993,10 +1994,30 @@ describe('MessageList nested tool calls', () => {
     render(<MessageList />)
 
     expect(screen.queryByText(/exit code 143/)).toBeNull()
+    // 唤醒回合的回答默认折叠，展开后才可见
+    expect(screen.queryByText('The build failed because a dependency is missing.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Automatic reply after a background task ended/i }))
     expect(screen.getByText('The build failed because a dependency is missing.')).toBeTruthy()
     expect(screen.getByText('Connection restored')).toBeTruthy()
     expect(screen.getByText('Background task completed; continuing automatically')).toBeTruthy()
     expect(buildRenderModel(messages).renderItems.map((item) => item.kind === 'message' && item.message.id)).toEqual(['reply', 'system', 'user'])
+  })
+
+  it('folds wake replies only, leaving the answer to a user prompt expanded', () => {
+    const messages: UIMessage[] = [
+      { id: 'user', type: 'user_text', content: '修一下构建', timestamp: 1 },
+      { id: 'answer', type: 'assistant_text', content: '依赖缺失，已经补上。', timestamp: 2 },
+      { id: 'notice', type: 'system', content: 'Background task finished.', backgroundContinueTaskIds: ['task-1'], timestamp: 3 },
+      { id: 'wake-reply', type: 'assistant_text', content: '后台任务没有新增信息。', timestamp: 4 },
+      { id: 'wake-reply-2', type: 'assistant_text', content: '仍然没有新增信息。', timestamp: 5 },
+    ]
+
+    expect(buildRenderModel(messages).renderItems).toMatchObject([
+      { kind: 'message', message: { id: 'user' } },
+      { kind: 'message', message: { id: 'answer' } },
+      { kind: 'message', message: { id: 'wake-reply' }, wakeReply: true },
+      { kind: 'message', message: { id: 'wake-reply-2' }, wakeReply: true },
+    ])
   })
 
   it('keeps reloaded background failures in Activity while hiding both current and legacy wake-up rows', () => {

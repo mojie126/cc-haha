@@ -28,6 +28,7 @@ import type { TranslationKey } from '../../i18n/locales/en'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { ThinkingBlock } from './ThinkingBlock'
+import { BackgroundReplyFold } from './BackgroundReplyFold'
 import { ToolCallBlock } from './ToolCallBlock'
 import {
   ToolCallGroup,
@@ -102,7 +103,11 @@ type RenderItem =
    * agent/image/memory renderers still work from.
    */
   | { kind: 'tool_group'; toolCalls: ToolCall[]; steps: ActivityStep[]; id: string }
-  | { kind: 'message'; message: UIMessage }
+  /**
+   * `wakeReply` 标出后台任务结束后自动继续那一轮里的助手回答，渲染时默认折叠，
+   * 与用户自己提示词所开回合的最终回答区分开
+   */
+  | { kind: 'message'; message: UIMessage; wakeReply?: boolean }
   /**
    * Stands in for the TeamCreate call so the transcript records that this turn
    * handed work to a team, without expanding into the workbench inline.
@@ -876,6 +881,8 @@ export function buildRenderModel(
   // tool or a thought comes next, it was commentary and joins the run; if the
   // turn ends instead, it is the final answer and stays in the transcript.
   let pendingCommentary: Array<Extract<UIMessage, { type: 'assistant_text' }>> = []
+  // 后台任务结果开启的回合里，助手回答不是对用户提示词的最终答复，默认折叠
+  let wakeTurn = false
   const appendCommentaryToRun = () => {
     if (pendingCommentary.length === 0) return
     for (const message of pendingCommentary) pendingSteps.push({ kind: 'text', message })
@@ -883,7 +890,11 @@ export function buildRenderModel(
   }
   const flushCommentaryAsMessages = () => {
     if (pendingCommentary.length === 0) return
-    for (const message of pendingCommentary) items.push({ kind: 'message', message })
+    for (const message of pendingCommentary) {
+      items.push(wakeTurn
+        ? { kind: 'message', message, wakeReply: true }
+        : { kind: 'message', message })
+    }
     pendingCommentary = []
   }
   const ensureTeamCardForCoordination = (
@@ -978,6 +989,8 @@ export function buildRenderModel(
         flushGroup()
         flushCommentaryAsMessages()
       }
+      // 这一轮由任务结果唤醒，后面到下一个用户提示词之前的回答默认折叠
+      wakeTurn = true
       continue
     }
 
@@ -1138,6 +1151,8 @@ export function buildRenderModel(
     } else {
       flushGroup()
       flushCommentaryAsMessages()
+      // 用户提示词开启新回合，之后的回答回到正常呈现
+      if (msg.type === 'user_text') wakeTurn = false
       items.push({ kind: 'message', message: msg })
     }
   }
@@ -2126,7 +2141,15 @@ const TEAM_CARD_HEIGHT = 86
 const TEAM_CARD_WITH_AUDIT_HEIGHT = 116
 
 export function estimateRenderItemHeight(item: RenderItem): number {
-  if (item.kind === 'message') return estimateMessageHeight(item.message)
+  if (item.kind === 'message') {
+    // 后台任务结束后的自动回复默认折叠成一行，点开才按正文高度算
+    if (item.wakeReply) {
+      return getDisclosure(item.message.id) === true
+        ? estimateMessageHeight(item.message)
+        : ACTIVITY_GROUP_COLLAPSED_HEIGHT
+    }
+    return estimateMessageHeight(item.message)
+  }
   if (item.kind === 'team_card') {
     return item.coordinationToolCalls.length > 0
       ? TEAM_CARD_WITH_AUDIT_HEIGHT
@@ -2218,9 +2241,8 @@ export function carryMeasuredHeightsToRenamedItems(
 function getRenderItemReloadSignature(item: RenderItem): string {
   if (item.kind !== 'message') return JSON.stringify(item)
   const message = item.message
-  const expanded = message.type === 'thinking' || message.type === 'tool_result'
-    ? getDisclosure(message.id) ?? false
-    : false
+  const foldable = message.type === 'thinking' || message.type === 'tool_result' || item.wakeReply === true
+  const expanded = foldable ? getDisclosure(message.id) ?? false : false
   return JSON.stringify([{ ...message, id: undefined, timestamp: undefined }, expanded])
 }
 
@@ -4132,6 +4154,37 @@ export function MessageList({
 
   const renderTranscriptItem = (item: RenderItem, index: number) => {
     const cardsForItem = turnCardsByRenderIndex.get(index) ?? []
+    const messageBody = item.kind === 'message' ? (
+      <MessageBlock
+        sessionId={resolvedSessionId}
+        message={item.message}
+        team={memberSessionTeam ?? undefined}
+        activeThinkingId={activeThinkingId}
+        reasoningTurnActive={
+          isTurnRunning && item.message.timestamp >= lastUserMessageTimestamp
+        }
+        thinkingDurationMs={thinkingDurations.get(item.message.id)}
+        agentTaskNotifications={agentTaskNotifications}
+        toolResult={
+          item.message.type === 'tool_use'
+            ? toolResultByToolUseId.get(item.message.toolUseId) ?? null
+            : null
+        }
+        branchAction={branchActionByMessageId.get(item.message.id)}
+        editAction={editActionByMessageId.get(item.message.id)}
+        turnChangedFiles={changedFilesByRenderIndex.get(index)?.changedFiles}
+        turnOutputEvidence={changedFilesByRenderIndex.get(index) ?? (turnEvidenceUnavailable ? UNKNOWN_TURN_OUTPUT_EVIDENCE : undefined)}
+        turnChangeTarget={changedFilesByRenderIndex.get(index)?.turnChangeTarget}
+        isTurnOutputOwner={turnOutputOwnerIndexes.has(index)}
+        turnCompletion={turnCompletionByMessageId.get(item.message.id)}
+        supersededAskUserQuestionIds={supersededAskUserQuestionIds}
+        decisionsInComposer={decisionsInComposer}
+        navigationHighlighted={
+          item.message.type === 'tool_use' &&
+          navigationToolUseIdFor(item) === item.message.toolUseId
+        }
+      />
+    ) : null
 
     return (
       <>
@@ -4191,37 +4244,11 @@ export function MessageList({
               </AgentTeamsInlineCard>
               )
             })() : null
-          ) : (
-            <MessageBlock
-              sessionId={resolvedSessionId}
-              message={item.message}
-              team={memberSessionTeam ?? undefined}
-              activeThinkingId={activeThinkingId}
-              reasoningTurnActive={
-                isTurnRunning && item.message.timestamp >= lastUserMessageTimestamp
-              }
-              thinkingDurationMs={thinkingDurations.get(item.message.id)}
-              agentTaskNotifications={agentTaskNotifications}
-              toolResult={
-                item.message.type === 'tool_use'
-                  ? toolResultByToolUseId.get(item.message.toolUseId) ?? null
-                  : null
-              }
-              branchAction={branchActionByMessageId.get(item.message.id)}
-              editAction={editActionByMessageId.get(item.message.id)}
-              turnChangedFiles={changedFilesByRenderIndex.get(index)?.changedFiles}
-              turnOutputEvidence={changedFilesByRenderIndex.get(index) ?? (turnEvidenceUnavailable ? UNKNOWN_TURN_OUTPUT_EVIDENCE : undefined)}
-              turnChangeTarget={changedFilesByRenderIndex.get(index)?.turnChangeTarget}
-              isTurnOutputOwner={turnOutputOwnerIndexes.has(index)}
-              turnCompletion={turnCompletionByMessageId.get(item.message.id)}
-              supersededAskUserQuestionIds={supersededAskUserQuestionIds}
-              decisionsInComposer={decisionsInComposer}
-              navigationHighlighted={
-                item.message.type === 'tool_use' &&
-                navigationToolUseIdFor(item) === item.message.toolUseId
-              }
-            />
-          )}
+          ) : item.kind === 'message' && item.wakeReply && item.message.type === 'assistant_text' ? (
+            <BackgroundReplyFold disclosureKey={getRenderItemKey(item)}>
+              {messageBody}
+            </BackgroundReplyFold>
+          ) : messageBody}
         </RenderItemBoundary>
 
 

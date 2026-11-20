@@ -3512,6 +3512,7 @@ export const kr: Record<TranslationKey, string> = {
   'chat.generationStopped': '중지됨',
   'chat.backgroundContinue': '백그라운드 작업이 끝나 자동으로 계속: {summary}',
   'chat.backgroundContinueGeneric': '백그라운드 작업이 끝나 자동으로 계속',
+  'chat.backgroundReplyFolded': '백그라운드 작업 종료 후 자동 응답',
   'chat.jumpToLatest': '최신',
   'chat.memorySavedTitle': '{count}개의 메모리 파일을 저장했습니다',
   'chat.memorySavedFromToolsTitle': '{count}개의 메모리 항목을 저장했습니다',
