@@ -553,7 +553,12 @@ type ChatStore = {
     sessionId: string,
     message: Omit<QueuedUserMessage, 'id' | 'createdAt'>,
   ) => string
-  updateQueuedUserMessage: (sessionId: string, messageId: string, content: string) => void
+  updateQueuedUserMessage: (
+    sessionId: string,
+    messageId: string,
+    content: string,
+    attachments?: { attachments: AttachmentRef[]; displayAttachments: AttachmentRef[] },
+  ) => void
   removeQueuedUserMessage: (sessionId: string, messageId: string) => void
   sendQueuedUserMessage: (sessionId: string, messageId: string, options?: { priority?: 'next' }) => void
   clearMessages: (sessionId: string) => void
@@ -4840,7 +4845,7 @@ export const useChatStore = create<ChatStore>((setState, get) => {
     return id
   },
 
-  updateQueuedUserMessage: (sessionId, messageId, content) => {
+  updateQueuedUserMessage: (sessionId, messageId, content, attachments) => {
     const nextContent = content.trim()
     if (!nextContent) return
     set((state) => ({
@@ -4851,6 +4856,12 @@ export const useChatStore = create<ChatStore>((setState, get) => {
                 ...message,
                 content: replaceQueuedMessageDisplayContent(message, nextContent),
                 displayContent: nextContent,
+                ...(attachments
+                  ? {
+                      attachments: attachments.attachments,
+                      displayAttachments: attachments.displayAttachments,
+                    }
+                  : {}),
               }
             : message),
       })),

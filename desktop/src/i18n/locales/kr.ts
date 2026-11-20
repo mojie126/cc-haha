@@ -3324,6 +3324,7 @@ export const kr: Record<TranslationKey, string> = {
   'chat.pendingMessageEdit': '대기 메시지 편집',
   'chat.pendingMessageDelete': '대기 메시지 삭제',
   'chat.pendingMessageEditInput': '대기 메시지 텍스트',
+  'chat.pendingMessageAddAttachment': '첨부 파일 추가',
   'chat.goalEvent.created': '목표 설정됨',
   'chat.goalEvent.replaced': '목표 설정됨',
   'chat.goalEvent.statusTitle': '목표 상태',

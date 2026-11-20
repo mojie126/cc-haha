@@ -15,15 +15,15 @@ import {
 import { GLOBAL_PROMPT_HISTORY_SCOPE, promptHistoryScopeForProject, readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { ArrowUp, CornerDownRight, Cpu, Feather, Gauge, Pencil, Plus, ShieldCheck, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, Cpu, Feather, Gauge, Plus, ShieldCheck, Square } from 'lucide-react'
 import { useDismissable } from '@/hooks/useDismissable'
 import { Button } from '@/components/ui/Button'
-import { IconButton } from '@/components/ui/IconButton'
 import { useTranslation } from '../../i18n'
 import {
   hasPendingAskUserQuestion,
   listPendingPermissions,
   useChatStore,
+  type QueuedUserMessage,
   type RepositoryLaunchDraftState,
 } from '../../stores/chatStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
@@ -96,6 +96,8 @@ import {
 import { useComposerFileDrop } from './useComposerFileDrop'
 import { shouldSubmitOnEnter } from './sendShortcut'
 import { MentionComposer, type MentionComposerHandle } from './MentionComposer'
+import { QueuedPromptCard } from './QueuedPromptCard'
+import { queuedAttachmentEntries, queuedAttachmentEdit, type QueuedAttachmentEntry } from '../../lib/queuedMessageAttachments'
 import {
   composerReferenceToMention,
   findMentionRanges,
@@ -213,6 +215,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
   const [launchTransitioning, setLaunchTransitioning] = useState(false)
   const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<string | null>(null)
   const [editingQueuedMessageText, setEditingQueuedMessageText] = useState('')
+  const [editingQueuedMessageAttachments, setEditingQueuedMessageAttachments] = useState<QueuedAttachmentEntry[]>([])
   const composingRef = useRef(false)
   const composerRef = useRef<MentionComposerHandle>(null)
   const composerContainerRef = useRef<HTMLDivElement>(null)
@@ -1558,23 +1561,32 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     if (activeTabId) removeWorkspaceReference(activeTabId, id)
   }
 
-  const startEditingQueuedMessage = (messageId: string, content: string) => {
-    setEditingQueuedMessageId(messageId)
-    setEditingQueuedMessageText(content)
+  const startEditingQueuedMessage = (message: QueuedUserMessage) => {
+    setEditingQueuedMessageId(message.id)
+    setEditingQueuedMessageText(message.displayContent)
+    setEditingQueuedMessageAttachments(queuedAttachmentEntries(message))
   }
 
   const saveQueuedMessageEdit = () => {
     if (!activeTabId || !editingQueuedMessageId) return
     const nextContent = editingQueuedMessageText.trim()
     if (!nextContent) return
-    updateQueuedUserMessage(activeTabId, editingQueuedMessageId, nextContent)
+    const queued = (sessionState?.queuedUserMessages ?? []).find((message) => message.id === editingQueuedMessageId)
+    updateQueuedUserMessage(
+      activeTabId,
+      editingQueuedMessageId,
+      nextContent,
+      queued ? queuedAttachmentEdit(queued, editingQueuedMessageAttachments) : undefined,
+    )
     setEditingQueuedMessageId(null)
     setEditingQueuedMessageText('')
+    setEditingQueuedMessageAttachments([])
   }
 
   const cancelQueuedMessageEdit = () => {
     setEditingQueuedMessageId(null)
     setEditingQueuedMessageText('')
+    setEditingQueuedMessageAttachments([])
   }
 
   const insertSlashCommand = () => {
@@ -1910,103 +1922,24 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
               data-testid="pending-user-message-list"
               className="flex flex-col gap-1.5 px-1 pb-1 pt-1"
             >
-              {queuedUserMessages.map((message) => {
-                const isEditing = editingQueuedMessageId === message.id
-                return (
-                  <div
-                    key={message.id}
-                    data-testid="pending-user-message"
-                    className={[
-                      'flex min-h-9 min-w-0 items-center gap-2.5 rounded-[var(--radius-md)] py-1 pl-3 pr-1',
-                      // `--color-outline` rather than `--color-border`: a dashed
-                      // line at the lighter weight all but disappears.
-                      'border border-dashed border-[var(--color-outline)]',
-                      'text-[13px] text-[var(--color-text-secondary)]',
-                    ].join(' ')}
-                  >
-                    {/* The handoff labels the row in words rather than with a
-                        glyph; the arrow icon here was a stand-in from before
-                        the string existed. */}
-                    <span className="shrink-0 text-xs text-[var(--color-text-tertiary)]">
-                      {t('chat.pendingMessageQueuedLabel')}
-                    </span>
-                    {isEditing ? (
-                      <>
-                        <input
-                          value={editingQueuedMessageText}
-                          onChange={(event) => setEditingQueuedMessageText(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault()
-                              saveQueuedMessageEdit()
-                            }
-                            if (event.key === 'Escape') {
-                              event.preventDefault()
-                              cancelQueuedMessageEdit()
-                            }
-                          }}
-                          aria-label={t('chat.pendingMessageEditInput')}
-                          className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-border-focus)]"
-                          autoFocus
-                        />
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={saveQueuedMessageEdit}
-                          disabled={!editingQueuedMessageText.trim()}
-                          className="shrink-0"
-                        >
-                          {t('common.save')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={cancelQueuedMessageEdit}
-                          className="shrink-0"
-                        >
-                          {t('common.cancel')}
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="min-w-0 flex-1 truncate font-medium" title={message.displayContent}>
-                          {message.displayContent}
-                        </span>
-                        {/* The accent action of the three, per the handoff. Blocked
-                            while a question is waiting: sending now would race the
-                            prompt the model is blocked on. */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={questionPending}
-                          onClick={() => sendQueuedUserMessage(activeTabId, message.id)}
-                          aria-label={t('chat.pendingMessageGuideNow')}
-                          title={t('chat.pendingMessageGuideNow')}
-                          className="shrink-0"
-                          icon={<CornerDownRight size={14} strokeWidth={1.75} aria-hidden="true" />}
-                        >
-                          {t('chat.pendingMessageGuide')}
-                        </Button>
-                        <IconButton
-                          icon={<Pencil size={14} strokeWidth={1.75} aria-hidden="true" />}
-                          label={t('chat.pendingMessageEdit')}
-                          size="sm"
-                          tone="muted"
-                          onClick={() => startEditingQueuedMessage(message.id, message.displayContent)}
-                        />
-                        <IconButton
-                          icon={<Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />}
-                          label={t('chat.pendingMessageDelete')}
-                          size="sm"
-                          tone="muted"
-                          hoverTone="danger"
-                          onClick={() => removeQueuedUserMessage(activeTabId, message.id)}
-                        />
-                      </>
-                    )}
-                  </div>
-                )
-              })}
+              {queuedUserMessages.map((message) => (
+                <QueuedPromptCard
+                  key={message.id}
+                  message={message}
+                  sessionId={activeTabId ?? undefined}
+                  isEditing={editingQueuedMessageId === message.id}
+                  editingText={editingQueuedMessageText}
+                  editingAttachments={editingQueuedMessageAttachments}
+                  onEditingTextChange={setEditingQueuedMessageText}
+                  onEditingAttachmentsChange={setEditingQueuedMessageAttachments}
+                  onStartEdit={() => startEditingQueuedMessage(message)}
+                  onSave={saveQueuedMessageEdit}
+                  onCancel={cancelQueuedMessageEdit}
+                  onGuide={() => sendQueuedUserMessage(activeTabId, message.id)}
+                  guideDisabled={questionPending}
+                  onDelete={() => removeQueuedUserMessage(activeTabId, message.id)}
+                />
+              ))}
             </div>
           )}
 

@@ -177,9 +177,10 @@ describe('UserMessage bare-URL linkify', () => {
     expect(openPreviewLink).not.toHaveBeenCalled()
   })
 
-  // Prompts are literal text: linkifying must not smuggle in markdown parsing.
-  it('does not render markdown syntax in the prompt', () => {
-    const content = '改一下 **bold** 和 `code`，还有 # 标题 与 [x](y)'
+  // Prompts stay literal text — the visible characters must survive untouched —
+  // while the syntax marks take the same styles the composer gave them.
+  it('styles Markdown syntax in the prompt without rendering it as markup', () => {
+    const content = '改一下 **bold** 和 `code`，还有 # 标题 与 [x](https://example.com/y)'
     const { container } = render(<UserMessage sessionId="s1" content={content} />)
 
     const bubble = bubbleOf(container)
@@ -187,7 +188,43 @@ describe('UserMessage bare-URL linkify', () => {
     expect(bubble.querySelector('strong')).toBeNull()
     expect(bubble.querySelector('code')).toBeNull()
     expect(bubble.querySelector('h1')).toBeNull()
-    expect(bubble.querySelectorAll('a')).toHaveLength(0)
+    // 只有 md 链接成为可点击链接，其余语法只取样式
+    expect([...bubble.querySelectorAll('a')].map((link) => link.textContent)).toEqual([
+      'x',
+      'https://example.com/y',
+    ])
+    expect(bubble.querySelector('.composer-md-strong')?.textContent).toBe('bold')
+    expect(bubble.querySelector('.composer-md-code')?.textContent).toBe('code')
+    const hidden = [...bubble.querySelectorAll('[data-md-hidden="true"]')].map((node) => node.textContent)
+    expect(hidden).toContain('**')
+    expect(hidden).toContain('`')
+  })
+
+  it('opens a Markdown link through the preview-link handler', () => {
+    render(<UserMessage sessionId="s1" content={'[report](https://example.com/report)'} />)
+
+    const label = screen.getByRole('link', { name: 'report' })
+    expect(label.getAttribute('href')).toBe('https://example.com/report')
+    fireEvent.click(label)
+    expect(openPreviewLink).toHaveBeenCalledWith('https://example.com/report', 's1')
+  })
+
+  it('collapses an unordered list marker into a bullet like the composer', () => {
+    const { container } = render(<UserMessage content={'- 第一项\n- 第二项'} />)
+
+    const bubble = bubbleOf(container)
+    // 折叠的 `-` 仍在 DOM 中，圆点只是替身，两者叠起来读作一个列表符号
+    expect(bubble.querySelectorAll('.composer-md-bullet')).toHaveLength(2)
+    expect([...bubble.querySelectorAll('[data-md-hidden="true"]')].map((node) => node.textContent)).toEqual(['-', '-'])
+  })
+
+  it('keeps a fenced code block and its lines apart from prose styling', () => {
+    const content = '```js\nconst x = 1\n```'
+    const { container } = render(<UserMessage content={content} />)
+
+    const bubble = bubbleOf(container)
+    expect(bubble.querySelector('.composer-md-fence')?.textContent).toBe('const x = 1')
+    expect(bubble.textContent).toBe(content)
   })
 
   it('preserves line breaks around a linkified URL', () => {

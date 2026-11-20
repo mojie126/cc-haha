@@ -3322,6 +3322,7 @@ export const jp: Record<TranslationKey, string> = {
   'chat.pendingMessageEdit': 'キュー中のメッセージを編集',
   'chat.pendingMessageDelete': 'キュー中のメッセージを削除',
   'chat.pendingMessageEditInput': 'キュー中のメッセージ本文',
+  'chat.pendingMessageAddAttachment': '添付ファイルを追加',
   'chat.goalEvent.created': 'ゴールを設定しました',
   'chat.goalEvent.replaced': 'ゴールを設定しました',
   'chat.goalEvent.statusTitle': 'ゴールのステータス',

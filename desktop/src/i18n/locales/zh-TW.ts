@@ -3321,6 +3321,7 @@ export const zh: Record<TranslationKey, string> = {
   'chat.pendingMessageEdit': '編輯排隊訊息',
   'chat.pendingMessageDelete': '刪除排隊訊息',
   'chat.pendingMessageEditInput': '排隊訊息文字',
+  'chat.pendingMessageAddAttachment': '新增附件',
   'chat.goalEvent.created': '目標已設定',
   'chat.goalEvent.replaced': '目標已設定',
   'chat.goalEvent.statusTitle': '目標狀態',

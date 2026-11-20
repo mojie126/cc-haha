@@ -7,7 +7,6 @@ import type { UIAttachment } from '../../types/chat'
 import { useTranslation } from '../../i18n'
 import { stripAgentTeamRequest } from '../../lib/agentTeamRequest'
 import { openPreviewLink } from '../../lib/openPreviewLink'
-import { splitTextByUrls } from '../../lib/urlBoundary'
 import { hasCapabilitySentence, parseUserMessageSegments } from '../../lib/userMessageCapabilities'
 import { capabilityKey, useCapabilityCatalogStore } from '../../stores/capabilityCatalogStore'
 import { extractRestoredUserDisplay } from '../../stores/chatStore'
@@ -16,6 +15,7 @@ import { AttachmentGallery } from './AttachmentGallery'
 import { MessageActionBar, type MessageBranchAction, type MessageEditAction } from './MessageActionBar'
 import { UserMessageEditor } from './UserMessageEditor'
 import { useMessageActionMenu } from './useMessageActionMenu'
+import { PromptMarkdownTextView } from './PromptMarkdownTextView'
 import type { UserMessageEditDraft } from './userMessageEdit'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import type { PreviewLinkTarget } from '@/lib/previewLinkRouter'
@@ -90,9 +90,11 @@ export const UserMessage = memo(function UserMessage({
     ? { copyText: hasText ? content : undefined, timestamp }
     : { copyText: hasText ? content : undefined, branchAction, editAction: actionBarEditAction, timestamp })
 
-  // The operator's prompt is literal text, NOT markdown — `**`, `#` and file
-  // paths have to stay exactly as typed. Teammate traffic is rendered separately
-  // below because agent-to-agent messages intentionally use Markdown.
+  // The operator's prompt stays plain text in the DOM and would be lost if the
+  // visible characters were Markdown-rendered; only the syntax marks take the
+  // same styles the composer gives them before sending, so both sides of a
+  // prompt read alike. Teammate traffic is rendered separately below because
+  // agent-to-agent messages intentionally use Markdown.
   const display = useMemo(() => {
     const agentTeam = modelContent ? stripAgentTeamRequest(modelContent).requested : false
     // A live bubble shows the composer's `@Label` projection; the model text
@@ -113,26 +115,8 @@ export const UserMessage = memo(function UserMessage({
     [sessionId],
   )
 
-  const renderText = (text: string, key: number): ReactNode[] =>
-    splitTextByUrls(text).map((segment, index) =>
-      segment.type === 'url' ? (
-        <a
-          key={`${key}-${index}`}
-          href={segment.value}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-[var(--color-text-accent)] underline decoration-[1px] underline-offset-[3px] decoration-[var(--color-text-accent)] [overflow-wrap:anywhere] hover:decoration-[2px]"
-          onClick={(event) => handleLinkClick(segment.value, event)}
-        >
-          {segment.value}
-        </a>
-      ) : (
-        segment.value
-      ),
-    )
-
   const body: ReactNode = display.segments.map((segment, index) => {
-    if (segment.type === 'text') return renderText(segment.text, index)
+    if (segment.type === 'text') return <PromptMarkdownTextView key={index} text={segment.text} sessionId={sessionId} />
     if (segment.type === 'command') {
       return (
         <span key={index} data-user-message-pill="command" className="composer-mention composer-mention--command composer-mention--static">

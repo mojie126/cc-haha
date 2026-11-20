@@ -1286,6 +1286,42 @@ describe('ChatInput file mentions', () => {
     expect(getComposerText()).toBe('half-typed replacement')
   })
 
+  it('renders Markdown syntax in a queued prompt the same way the sent bubble does', () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'assistant-stream', type: 'assistant_text', content: 'working', timestamp: 1 }],
+          chatState: 'streaming',
+          connectionState: 'connected',
+          streamingText: 'still answering',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          streamingResponseChars: 0,
+          elapsedSeconds: 12,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ChatInput compact />)
+
+    setComposerText('改一下 **bold**', 22)
+    fireEvent.keyDown(getComposerElement(), { key: 'Enter' })
+
+    const queued = screen.getByTestId('pending-user-message')
+    expect(queued.textContent).toContain('改一下 **bold**')
+    expect(queued.querySelector('.composer-md-strong')?.textContent).toBe('bold')
+    expect([...queued.querySelectorAll('[data-md-hidden="true"]')].map((node) => node.textContent)).toEqual(['**', '**'])
+  })
+
   it('queues prompts submitted while a turn is running until the user guides them', async () => {
     useChatStore.setState({
       sessions: {
@@ -1490,6 +1526,54 @@ describe('ChatInput file mentions', () => {
     expect(mocks.wsSend).not.toHaveBeenCalledWith(sessionId, expect.objectContaining({
       type: 'user_message',
     }))
+  })
+
+  it('shows a queued prompt attachment and lets the edit remove it', async () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'assistant-stream', type: 'assistant_text', content: 'working', timestamp: 1 }],
+          chatState: 'streaming',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          streamingResponseChars: 0,
+          elapsedSeconds: 12,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+    useChatStore.getState().queueUserMessage(sessionId, {
+      content: 'see the notes',
+      displayContent: 'see the notes',
+      attachments: [{ type: 'file', name: 'notes.md', path: '/repo/notes.md' }],
+      displayAttachments: [{ type: 'file', name: 'notes.md', path: '/repo/notes.md' }],
+    })
+
+    render(<ChatInput compact />)
+
+    const queued = screen.getByTestId('pending-user-message')
+    expect(within(queued).getByText('notes.md')).toBeTruthy()
+
+    fireEvent.click(within(queued).getByRole('button', { name: /Edit queued message/i }))
+    const remove = within(screen.getByTestId('pending-user-message')).getByRole('button', { name: 'Remove notes.md' })
+    fireEvent.click(remove)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(useChatStore.getState().sessions[sessionId]?.queuedUserMessages?.[0]).toMatchObject({
+      displayContent: 'see the notes',
+      displayAttachments: [],
+    })
+    expect(within(screen.getByTestId('pending-user-message')).queryByText('notes.md')).toBeNull()
   })
 
   it('sends a queued prompt as the next tail message when the running turn completes', async () => {

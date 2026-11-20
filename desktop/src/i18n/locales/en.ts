@@ -3321,6 +3321,7 @@ Row 9, all 8 cells: continuing from straight down, turning left through lower-le
   'chat.pendingMessageEdit': 'Edit queued message',
   'chat.pendingMessageDelete': 'Delete queued message',
   'chat.pendingMessageEditInput': 'Queued message text',
+  'chat.pendingMessageAddAttachment': 'Add attachment',
   'chat.goalEvent.created': 'Goal set',
   'chat.goalEvent.replaced': 'Goal set',
   'chat.goalEvent.statusTitle': 'Goal status',
