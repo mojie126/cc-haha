@@ -14,6 +14,7 @@ import {
   prepareSessionWorkspace,
 } from '../services/repositoryLaunchService.js'
 import { conversationService } from '../services/conversationService.js'
+import { resetHistoryContextCacheForTesting } from '../services/sessionHistoryContext.js'
 import * as boundedSessionHistory from '../services/boundedSessionHistory.js'
 import { clearCommandsCache } from '../../commands.js'
 import { parseJSONL } from '../../utils/json.js'
@@ -58,6 +59,9 @@ async function setupTmpConfigDir(): Promise<string> {
 }
 
 async function cleanupTmpDir(): Promise<void> {
+  // 历史可见性索引可能建在本测试的配置目录里，先关掉持着的 sqlite 句柄，
+  // 否则 Windows 删目录撞 EBUSY
+  resetHistoryContextCacheForTesting()
   if (tmpDir) {
     await fs.rm(tmpDir, { recursive: true, force: true })
   }
@@ -3643,6 +3647,36 @@ describe('SessionService', () => {
 
     // File should no longer exist
     expect(fs.access(filePath)).rejects.toThrow()
+  })
+
+  it('should delete the subagent directory along with the session', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const filePath = await writeSessionFile('-tmp-project', sessionId, [makeSnapshotEntry()])
+    const subagentPath = await writeSubagentTranscriptFile('-tmp-project', sessionId, 'sub-1', [
+      makeSnapshotEntry(),
+    ])
+
+    await service.deleteSession(sessionId)
+
+    // 主转录与整个会话目录（含 subagents）一并消失
+    expect(fs.access(filePath)).rejects.toThrow()
+    expect(fs.access(subagentPath)).rejects.toThrow()
+    expect(fs.access(path.dirname(path.dirname(subagentPath)))).rejects.toThrow()
+  })
+
+  it('should remove the history visibility index of the deleted session', async () => {
+    const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    const filePath = await writeSessionFile('-tmp-project', sessionId, [makeSnapshotEntry()])
+    // 索引目录按文件 identity（dev:ino）命名，与 sessionHistoryContext 同构
+    const stat = await fs.stat(filePath, { bigint: true })
+    const identity = `${stat.dev}:${stat.ino}`.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const indexDir = path.join(tmpDir, 'cc-haha', 'history-context', identity)
+    await fs.mkdir(indexDir, { recursive: true })
+    await fs.writeFile(path.join(indexDir, 'context.sqlite'), 'index')
+
+    await service.deleteSession(sessionId)
+
+    expect(fs.access(indexDir)).rejects.toThrow()
   })
 
   it('should throw when deleting non-existent session', async () => {

@@ -141,6 +141,8 @@ export async function startBackgroundIndexesInPriorityOrder(
   if (!options.signal?.aborted) await startSearch()
 }
 
+const HISTORY_INDEX_WARMUP_DELAY_MS = 30_000
+
 const publicAccessServers = new Set<PublicAccessServer>()
 
 let backgroundIndexStartupController: AbortController | undefined
@@ -156,6 +158,13 @@ function beginBackgroundIndexStartup(): void {
   backgroundIndexStartup = operation
   void operation.finally(() => {
     if (backgroundIndexStartup === operation) backgroundIndexStartup = undefined
+    // 本地索引就绪后预热最近会话的历史可见性索引：用户点开会话时免等
+    // 冷扫描（持久化索引下多为增量续扫）。纯优化，失败静默。
+    if (!controller.signal.aborted) {
+      setTimeout(() => {
+        if (!controller.signal.aborted) void sessionService.warmUpRecentHistoryIndexes()
+      }, HISTORY_INDEX_WARMUP_DELAY_MS).unref?.()
+    }
   })
 }
 

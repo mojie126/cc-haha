@@ -531,8 +531,15 @@ export const sessionsApi = {
 
   // The timeline receives one assembled transcript. Ordinary sessions fit in
   // `mode=full`; larger sessions continue within the server's request budgets.
+  // The request may carry the server's cold history-index build (a full scan of
+  // the transcript, tens of seconds on multi-MB sessions), so the transport
+  // timeout is well above the 120s default; the caller's abort signal still
+  // cancels promptly.
   async getFullHistory(sessionId: string, options?: ApiRequestOptions): Promise<SessionHistoryPage> {
-    const newest = await api.get<SessionHistoryPage>(`/api/sessions/${sessionId}/messages?mode=full`, options)
+    const newest = await api.get<SessionHistoryPage>(
+      `/api/sessions/${sessionId}/messages?mode=full`,
+      { timeout: 300_000, ...options },
+    )
     if (!newest.page?.nextCursor) return newest
 
     // Transport budgets are page boundaries, not timeline boundaries. Join raw
@@ -548,7 +555,10 @@ export const sessionsApi = {
       if (seen.has(cursor)) throw new Error('Session history cursor did not advance')
       seen.add(cursor)
       const query: URLSearchParams = new URLSearchParams({ cursor })
-      const older: SessionHistoryPage = await api.get<SessionHistoryPage>(`/api/sessions/${sessionId}/messages?${query}`, options)
+      const older: SessionHistoryPage = await api.get<SessionHistoryPage>(
+        `/api/sessions/${sessionId}/messages?${query}`,
+        { timeout: 300_000, ...options },
+      )
       if (options?.signal?.aborted) throw options.signal.reason ?? new DOMException('Aborted', 'AbortError')
       if (!older.page || older.page.sourceVersion !== newest.page.sourceVersion) {
         throw new Error('Session history changed while loading')

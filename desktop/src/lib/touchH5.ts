@@ -147,6 +147,19 @@ function installVisualViewportFit(win: WindowLike) {
     return !!active && !!win.document.getElementById('root')?.contains(active)
   }
 
+  // 软键盘弹起阶段 WebKit 连续发 resize/scroll（键盘动画、pan 补偿互相触发），
+  // 每个事件都同步并 scrollTo 拉锯会变成肉眼可见的抖动。合并到帧内一次执行，
+  // 且同一帧内的重复事件丢弃。
+  let framePending = false
+  const schedule = () => {
+    if (framePending) return
+    framePending = true
+    win.requestAnimationFrame(() => {
+      framePending = false
+      sync()
+    })
+  }
+
   const sync = () => {
     // In layout pixels: pinch zoom shrinks visualViewport.height by its scale
     // while the screen still shows the same area, which is not a keyboard.
@@ -166,11 +179,11 @@ function installVisualViewportFit(win: WindowLike) {
     }
   }
 
-  viewport.addEventListener('resize', sync)
-  viewport.addEventListener('scroll', sync)
+  viewport.addEventListener('resize', schedule)
+  viewport.addEventListener('scroll', schedule)
   // iOS pans once more when the keyboard animation ends and reports it only
   // as a window scroll.
-  win.addEventListener('scroll', sync)
+  win.addEventListener('scroll', schedule)
   sync()
 }
 

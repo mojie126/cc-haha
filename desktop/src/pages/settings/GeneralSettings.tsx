@@ -49,6 +49,7 @@ import { AUTO_QUESTION_TIMEOUT_OPTIONS } from '../../../../src/shared/autoQuesti
 import { ChatAppearanceSettings } from './ChatAppearanceSettings'
 import { SettingsPageWidthSettings } from './SettingsPageWidthSettings'
 import { DataMigrationSettings } from './DataMigrationSettings'
+import { HistoryIndexMaintenance } from './HistoryIndexMaintenance'
 import { TabBehaviorSettings } from './TabBehaviorSettings'
 import { LeanModeSettings } from './LeanModeSettings'
 import { ReasoningFoldSettings } from './ReasoningFoldSettings'
@@ -1795,6 +1796,8 @@ export function GeneralSettings() {
               disabled={modeActionRunning || appModeRequiresRestart}
               onBusyChange={setMigrationRunning}
             />
+
+            <HistoryIndexMaintenance />
           </SettingsGroup>
         </SettingsSection>
       )}

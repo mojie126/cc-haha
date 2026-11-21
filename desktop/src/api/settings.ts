@@ -2,6 +2,7 @@ import { api } from './client'
 import type {
   OutputStylesResponse,
   PermissionMode,
+  HistoryIndexUsage,
   SessionCleanupResult,
   UserSettings,
 } from '../types/settings'
@@ -78,5 +79,15 @@ export const settingsApi = {
       days,
       dryRun,
     })
+  },
+
+  /** 历史可见性索引的占用统计（持久索引 + Temp 孤儿）。 */
+  getHistoryIndexUsage() {
+    return api.get<HistoryIndexUsage>('/api/settings/history-index-usage')
+  },
+
+  /** 清空历史可见性索引（下次打开会话自动重建，删除是安全的）。 */
+  clearHistoryIndexes() {
+    return api.post<{ removedBytes: number }>('/api/settings/history-index-cleanup')
   },
 }

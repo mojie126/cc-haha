@@ -213,8 +213,12 @@ export function QueuedPromptCard({
           </>
         ) : (
           <>
-            <span className="min-w-0 flex-1 truncate font-medium" title={message.displayContent}>
-              {/* 与已发送气泡同一套 md 呈现，排队时也能看出语法与链接 */}
+            {/* 与输入框中的排版一致：换行原样呈现；单行时是普通段落。
+                truncate 会把多行压成一行省略，与用户写下的排版不符 */}
+            <span
+              className="min-w-0 flex-1 whitespace-pre-wrap break-words font-medium"
+              title={message.displayContent}
+            >
               <PromptMarkdownTextView text={message.displayContent} sessionId={sessionId} />
             </span>
             {/* The accent action of the three, per the handoff. Blocked

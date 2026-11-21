@@ -205,6 +205,92 @@ describe('MessageList session isolation', () => {
     }
   })
 
+  it('acknowledges the completed reply even when a queued message started the next turn', () => {
+    // 场景：会话排了队，回合完成时 marker 设置、排队消息自动发出（新一轮
+    // 开始）。用户点开该会话时已读观察器必须仍能定位上一轮的回复并清未读
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    const observe = vi.fn()
+    let reportIntersection: (visible: boolean) => void = () => { throw new Error('No observer') }
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: (entries: Partial<IntersectionObserverEntry>[]) => void) {
+        reportIntersection = visible => callback([{
+          isIntersecting: visible,
+          intersectionRect: new DOMRect(0, 0, 100, visible ? 30 : 0),
+        }])
+      }
+      observe = observe
+      disconnect() {}
+      takeRecords() { return [] }
+    })
+    const previousUnread = useChatStore.getState().unreadCompletions
+    try {
+      const completed = { id: 'turn-reply', type: 'assistant_text', content: 'Turn finished', timestamp: 2 } as const
+      const messages: UIMessage[] = [
+        { id: 'prompt', type: 'user_text', content: 'Run the checks', timestamp: 1 },
+        completed,
+        // 排队消息自动发出后的新一轮：用户提示词（awaitingReplay）已进流
+        { id: 'queued-send', type: 'user_text', content: 'and then the queued one', timestamp: 3, awaitingReplay: true },
+      ]
+      const marker = createUnreadCompletion(
+        messages.filter(row => row.id !== 'queued-send') as UIMessage[],
+        completed,
+      )
+      const sessionState = makeSessionState(messages)
+      useChatStore.setState({
+        sessions: { 'session-a': { ...sessionState, chatState: 'thinking' } },
+        unreadCompletions: new Map([['session-a', marker]]),
+      })
+      const view = render(<MessageList sessionId="session-a" visible />)
+      // 上一轮的回复仍可解析，观察器建立
+      expect(observe).toHaveBeenCalled()
+      focused.mockReturnValue(true)
+      act(() => reportIntersection(true))
+      // 新一轮在跑不影响清上一轮的未读，角标随之消失
+      expect([...useChatStore.getState().unreadCompletions.keys()]).toEqual([])
+      view.unmount()
+    } finally {
+      useChatStore.setState({ unreadCompletions: previousUnread })
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('collapses the wake-turn tail behind one summary row with the stamp after it', () => {
+    // 回合尾件布局：正文总结 → 折叠的唤醒段（思考块与自动回复）→ 时间信息。
+    // 时间戳从收尾回复内挪到段末尾件之后渲染。
+    const completed = { id: 'wake-reply', type: 'assistant_text', content: 'Background reply', timestamp: 1_000_040_000 } as const
+    const summary = { id: 'summary', type: 'assistant_text', content: 'Turn summary', timestamp: 1_000_010_000 } as const
+    const messages: UIMessage[] = [
+      { id: 'prompt', type: 'user_text', content: 'Do the thing', timestamp: 1_000_000_000 },
+      summary,
+      { id: 'sys-continue', type: 'system', content: '', backgroundContinueTaskIds: ['task-1'], timestamp: 1_000_020_000 },
+      { id: 'wake-think', type: 'thinking', content: 'Considering the result', timestamp: 1_000_030_000 },
+      completed,
+    ]
+    // chatState 用 idle：回合已结束，活动组折叠成摘要行、最后一轮的
+    // 完成信息正常产出
+    const sessionState = makeSessionState(messages)
+    useChatStore.setState({
+      sessions: { 'session-a': { ...sessionState, chatState: 'idle' } },
+      unreadCompletions: new Map(),
+    })
+    try {
+      const view = render(<MessageList sessionId="session-a" visible />)
+
+      // 唤醒回复并入本轮尾件段：时间戳只有一处，从收尾回复内挪到尾件段末
+      const stamps = document.querySelectorAll('[data-turn-completion]')
+      expect(stamps).toHaveLength(1)
+      // 折叠摘要行存在，收起时不渲染尾件内容
+      const summaryRow = screen.getByText('Background activity · 2 items')
+      expect(screen.queryByText('Considering the result')).toBeNull()
+      // 时间信息行渲染在折叠容器之后（段末）
+      const stamp = stamps[0]!
+      expect(summaryRow.compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      view.unmount()
+    } finally {
+      useChatStore.setState({ sessions: {} })
+    }
+  })
+
   // The old recorder can append text → tool → the same text UUID after its
   // message cache is cleared during an in-flight write. Each page has its own
   // UUID and each tool occurs once, matching the real recorder/API replay.

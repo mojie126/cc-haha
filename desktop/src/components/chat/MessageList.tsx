@@ -10,7 +10,7 @@ import { getServerBaseUrl } from '@/lib/desktopRuntime'
 import { useWorkspaceContentStore } from '@/stores/workspaceContentStore'
 import { Component, useRef, useEffect, useMemo, memo, useState, useCallback, useDeferredValue, useLayoutEffect, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { ArrowDown, BookMarked, ChevronDown, ChevronRight, FileStack, LoaderCircle, Settings, Target, Undo2 } from 'lucide-react'
+import { ArrowDown, BookMarked, Brain, ChevronDown, ChevronRight, FileStack, LoaderCircle, Settings, Target, Undo2 } from 'lucide-react'
 import { ApiError } from '../../api/client'
 import { sessionsApi, type SessionRewindMode, type SessionTurnCheckpoint, type WorkspaceChangedFile } from '../../api/sessions'
 import { listPendingPermissions, useChatStore } from '../../stores/chatStore'
@@ -30,6 +30,7 @@ import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { ThinkingBlock } from './ThinkingBlock'
 import { BackgroundReplyFold } from './BackgroundReplyFold'
+import { TurnCompletionStamp } from './TurnCompletionStamp'
 import { ToolCallBlock } from './ToolCallBlock'
 import {
   ToolCallGroup,
@@ -3260,6 +3261,98 @@ export function MessageList({
     () => buildTurnCompletionByMessageId(deferredMessages, { turnActive: chatState !== 'idle' }),
     [deferredMessages, chatState],
   )
+  // 回合尾件布局：收尾回复（带本轮 turnCompletion）之后跟着后台唤醒段的
+  // 思考块与自动回复行。时间戳统一挪到全部尾件之后（回合真正结束的位置），
+  // 尾件本身收进一层可折叠容器，收起时对话总结只剩一行摘要。
+  const turnTailLayout = useMemo(() => {
+    type TurnTailMeta = {
+      /** 尾件折叠组 key（共享给同回合所有尾件），null 表示不属于任何尾件段。 */
+      disclosureKey: string | null
+      /** 本回合尾件总数（组内每项都拿到同一个数，折叠标题显示）。 */
+      tailCount: number
+      /** 尾件段里第一条 item：折叠摘要行只由它渲染。 */
+      firstInGroup: boolean
+      /** 尾件段里最后一条 item：时间戳行渲染在它之后。 */
+      lastInGroup: boolean
+      /** 段末时间信息行显示的完成时刻：取尾件中最后一条带完成信息的消息
+       * （唤醒回复自己的），没有时回退到收尾回复的。 */
+      stamp: TurnCompletion
+    }
+    const meta = new Map<number, TurnTailMeta>()
+    /** 时间戳渲染位置：收尾回复 messageId → 承载时间戳行的尾件 item index（无尾件则不进表） */
+    const stampHost = new Map<string, number>()
+    // 扫描：记录每个收尾回复 item（turnCompletion 命中）的 index 与其后的
+    // 尾件（thinking / wakeReply 消息）区间；工具组之外的任何 item 关闭该段。
+    type Segment = { replyId: string; replyIndex: number; stamp: TurnCompletion; tail: number[] }
+    const segments: Segment[] = []
+    let current: Segment | null = null
+    renderItems.forEach((item, index) => {
+      if (item.kind === 'message' && item.message.type === 'user_text' && !item.message.pending) {
+        current = null
+        return
+      }
+      if (item.kind === 'message' && item.message.type === 'assistant_text') {
+        const stamp = turnCompletionByMessageId.get(item.message.id) ?? null
+        // 完成的收尾回复开启一个尾件段；唤醒回复自己是上一段的尾件
+        if (stamp && !item.wakeReply) {
+          current = { replyId: item.message.id, replyIndex: index, stamp, tail: [] }
+          segments.push(current)
+        } else if (current && item.wakeReply) {
+          current.tail.push(index)
+        } else {
+          current = null
+        }
+        return
+      }
+      // 段内的活动组（唤醒段的思考与工具在组里）也是尾件；后台唤醒的
+      // system 分隔不关段（它隔开总结与唤醒活动）；其余 item 关闭当前段
+      if (current) {
+        const isWakeDivider = item.kind === 'message'
+          && item.message.type === 'system'
+          && item.message.backgroundContinueTaskIds !== undefined
+        if (isWakeDivider) return
+        if (item.kind === 'tool_group') {
+          current.tail.push(index)
+        } else {
+          current = null
+        }
+      }
+    })
+    for (const segment of segments) {
+      const key = getRenderItemKey(renderItems[segment.replyIndex]!)
+      // 尾件中的唤醒回复若自己带完成信息（它有独立的唤醒轮完成时刻），
+      // 段末时间用它；否则回退到收尾回复的
+      const lastTailReply = [...segment.tail]
+        .reverse()
+        .map((tailIndex) => renderItems[tailIndex])
+        .find((tailItem): tailItem is Extract<RenderItem, { kind: 'message' }> =>
+          tailItem?.kind === 'message' && tailItem.message.type === 'assistant_text')
+      const inherited = lastTailReply
+        ? turnCompletionByMessageId.get(lastTailReply.message.id)
+        : undefined
+      const stamp = inherited ?? segment.stamp
+      segment.tail.forEach((tailIndex, position) => {
+        meta.set(tailIndex, {
+          disclosureKey: `turn-tail:${key}`,
+          tailCount: segment.tail.length,
+          firstInGroup: position === 0,
+          lastInGroup: position === segment.tail.length - 1,
+          stamp,
+        })
+      })
+      if (segment.tail.length > 0) {
+        stampHost.set(segment.replyId, segment.tail[segment.tail.length - 1]!)
+      }
+    }
+    return { meta, stampHost }
+  }, [renderItems, turnCompletionByMessageId])
+  const turnTailMetaByIndex = turnTailLayout.meta
+  const turnStampHostByMessageId = turnTailLayout.stampHost
+  // 尾件折叠的统一展开状态：所有尾件 item 读同一份，点击摘要行整体切换。
+  // 尾件是独立的虚拟 item，各自持有 useState 的话点击只重渲染当前实例，
+  // 其余尾件留在旧状态；统一提到这里，切换时全部重渲染保持一致。
+  // 重挂后回到收起态（与 BackgroundReplyFold 的 localExpanded 同一口径）。
+  const [turnTailExpandedKeys, setTurnTailExpandedKeys] = useState<Set<string>>(new Set())
   const latestCompletedTurnId =
     completedTurnTargets.length > 0
       ? completedTurnTargets[completedTurnTargets.length - 1]?.messageId ?? null
@@ -4200,6 +4293,11 @@ export function MessageList({
 
   const renderTranscriptItem = (item: RenderItem, index: number) => {
     const cardsForItem = turnCardsByRenderIndex.get(index) ?? []
+    // 尾件段里有 message（唤醒回复）也有 tool_group（唤醒段的活动组）
+    const tailMeta = turnTailMetaByIndex.get(index)
+    // 时间戳已委托给尾件段末尾渲染的收尾回复，本体不再内嵌时间戳
+    const stampDelegated = item.kind === 'message'
+      && turnStampHostByMessageId.has(item.message.id)
     const messageBody = item.kind === 'message' ? (
       <MessageBlock
         sessionId={resolvedSessionId}
@@ -4222,7 +4320,7 @@ export function MessageList({
         turnOutputEvidence={changedFilesByRenderIndex.get(index) ?? (turnEvidenceUnavailable ? UNKNOWN_TURN_OUTPUT_EVIDENCE : undefined)}
         turnChangeTarget={changedFilesByRenderIndex.get(index)?.turnChangeTarget}
         isTurnOutputOwner={turnOutputOwnerIndexes.has(index)}
-        turnCompletion={turnCompletionByMessageId.get(item.message.id)}
+        turnCompletion={stampDelegated ? undefined : turnCompletionByMessageId.get(item.message.id)}
         supersededAskUserQuestionIds={supersededAskUserQuestionIds}
         decisionsInComposer={decisionsInComposer}
         navigationHighlighted={
@@ -4232,10 +4330,41 @@ export function MessageList({
       />
     ) : null
 
+    // 唤醒段尾件（思考块与后台自动回复行）统一收进折叠容器，时间戳行
+    // 渲染在段末尾件之后——顺序成为：对话总结 → 折叠尾件 → 时间信息
+    const tailContent = tailMeta
+      ? (
+        <TurnTailGroup
+          expanded={turnTailExpandedKeys.has(tailMeta.disclosureKey!)}
+          onToggle={() => {
+            const key = tailMeta.disclosureKey!
+            // 统一状态翻转；所有尾件 item 读同一 state 整体重渲染
+            setTurnTailExpandedKeys(current => {
+              const nextKeys = new Set(current)
+              if (nextKeys.has(key)) nextKeys.delete(key)
+              else nextKeys.add(key)
+              return nextKeys
+            })
+          }}
+          count={tailMeta.tailCount}
+          firstInGroup={tailMeta.firstInGroup}
+          lastInGroup={tailMeta.lastInGroup}
+          stamp={tailMeta.lastInGroup ? tailMeta.stamp : null}
+        >
+          {item.kind === 'message' && item.wakeReply && item.message.type === 'assistant_text'
+            ? <BackgroundReplyFold disclosureKey={getRenderItemKey(item)}>{messageBody}</BackgroundReplyFold>
+            : messageBody}
+        </TurnTailGroup>
+      )
+      : null
+
     return (
       <>
         <RenderItemBoundary>
-          {item.kind === 'tool_group' ? (
+          {tailContent !== null ? (
+            // 唤醒段尾件（活动组与后台自动回复行）优先进入回合折叠容器
+            tailContent
+          ) : item.kind === 'tool_group' ? (
             <ToolCallGroup
               sessionId={resolvedSessionId}
               onOpenAgentRun={onOpenAgentRun}
@@ -4784,3 +4913,62 @@ export const MessageBlock = memo(function MessageBlock({
       )
   }
 })
+
+/**
+ * 回合尾件折叠容器：收尾回复之后的后台唤醒段（思考块与自动回复行）按回合
+ * 收进一层折叠，收起时只显示一行摘要。展开状态记在 disclosureMemory 的
+ * 同一个组 key 上——尾件是独立的虚拟 item，各实例靠它保持一致。
+ * 段末尾件负责渲染本轮的时间信息行（从收尾回复处挪过来的完成时间戳）。
+ */
+function TurnTailGroup({
+  expanded,
+  onToggle,
+  count,
+  firstInGroup,
+  lastInGroup,
+  stamp,
+  children,
+}: {
+  expanded: boolean
+  onToggle: () => void
+  count: number
+  firstInGroup: boolean
+  lastInGroup: boolean
+  stamp: TurnCompletion | null
+  children: ReactNode
+}) {
+  const t = useTranslation()
+
+  return (
+    <div className="min-w-0">
+      {firstInGroup && (
+        <button
+          type="button"
+          data-chat-disclosure="true"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="-mx-2 flex h-7 min-w-[calc(100%+1rem)] items-center gap-2 rounded-[var(--radius-sm)] px-2 text-left text-[13px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] focus:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]"
+        >
+          <Brain size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 truncate">{t('chat.turnTailSummary', { count })}</span>
+          <ChevronRight
+            size={14}
+            strokeWidth={1.75}
+            aria-hidden="true"
+            className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`}
+          />
+        </button>
+      )}
+      {expanded && (
+        <div className="min-w-0">
+          {children}
+        </div>
+      )}
+      {lastInGroup && stamp ? (
+        <div className="mt-1 pl-1">
+          <TurnCompletionStamp completion={stamp} />
+        </div>
+      ) : null}
+    </div>
+  )
+}

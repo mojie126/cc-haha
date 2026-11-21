@@ -1322,6 +1322,33 @@ describe('ChatInput file mentions', () => {
     expect([...queued.querySelectorAll('[data-md-hidden="true"]')].map((node) => node.textContent)).toEqual(['**', '**'])
   })
 
+  it('renders queued prompts with their line breaks instead of truncating to one line', () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          ...useChatStore.getState().sessions[sessionId]!,
+          chatState: 'streaming',
+          queuedUserMessages: [{
+            id: 'queued-multiline',
+            content: '第一行\n第二行',
+            displayContent: '第一行\n第二行',
+            createdAt: Date.now(),
+          }],
+        },
+      },
+    })
+
+    render(<ChatInput compact />)
+
+    const queued = screen.getByTestId('pending-user-message')
+    const body = queued.querySelector('span.whitespace-pre-wrap')
+    expect(body).not.toBeNull()
+    expect(body?.textContent).toBe('第一行\n第二行')
+    // 换行按输入框排版原样呈现：文本节点里保留换行符，不由 CSS 截断
+    expect(body?.className).toContain('whitespace-pre-wrap')
+    expect(body?.className).not.toContain('truncate')
+  })
+
   it('queues prompts submitted while a turn is running until the user guides them', async () => {
     useChatStore.setState({
       sessions: {

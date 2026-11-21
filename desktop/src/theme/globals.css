@@ -2936,6 +2936,15 @@ html[data-touch-h5][data-touch-h5-keyboard] .app-shell-viewport {
   padding-bottom: 0px;
 }
 
+/* 键盘打开时锁住文档滚动：shell 已按 visual viewport 收缩、composer 在键盘
+   上方，WebKit 的 pan（把页面推上去露焦点）只剩副作用——顶部内容被推出
+   layout viewport 之外造成削头，且 pan 与拉回互相拉锯。position fixed 让
+   文档没有可滚动余量，WebKit 无处可 pan，削头与抖动一起消失。 */
+html[data-touch-h5][data-touch-h5-keyboard] body {
+  position: fixed;
+  inset: 0;
+}
+
 /* Agent list rows reveal their edit / delete / override buttons on hover, which
    never fires on a touchscreen — the controls would be unreachable there. */
 .app-shell--mobile [data-agent-row-actions],

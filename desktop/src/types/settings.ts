@@ -203,6 +203,17 @@ export type UserSettings = {
   [key: string]: unknown
 }
 
+export type HistoryIndexUsage = {
+  /** 持久索引目录的总字节数。 */
+  indexBytes: number
+  /** 持久索引的目录个数（每个对应一个会话文件）。 */
+  indexCount: number
+  /** %TEMP% 里旧机制遗留的孤儿目录总字节数。 */
+  legacyTempBytes: number
+  /** %TEMP% 里旧机制遗留的孤儿目录个数。 */
+  legacyTempCount: number
+}
+
 export type SessionCleanupResult = {
   ok: true
   days: number

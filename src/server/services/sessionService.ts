@@ -5,7 +5,7 @@ import { splitSessionReferenceContext } from './sessionReferenceContext.js'
 import { parseSessionCollaborationEnvelope } from '../../utils/sessionCollaborationEnvelope.js'
 import { isShutdownTeamPrompt } from '../../utils/swarm/teamShutdownPrompt.js'
 import { isTeamLeadNotice } from '../../utils/swarm/teamLeadNotice.js'
-import { readHistoryContexts } from './sessionHistoryContext.js'
+import { readHistoryContexts, removeHistoryIndexForFile, warmUpHistoryIndexes } from './sessionHistoryContext.js'
 import { recoverBoundedSessionHistory, type SessionHistoryRecovery } from './sessionHistoryRecovery.js'
 /**
  * Session Service — 会话文件的读写操作封装
@@ -846,6 +846,8 @@ const malformedFileHistoryBefore = Symbol('malformed-file-history-before')
 export function hasMalformedFileHistoryBefore(snapshot: FileHistorySnapshot): boolean {
   return (snapshot as FileHistorySnapshot & { [malformedFileHistoryBefore]?: true })[malformedFileHistoryBefore] === true
 }
+
+let warmAborted = false
 
 export class SessionService {
   private readonly uiFileHistoryReads = new Map<string, Promise<RawEntry[]>>()
@@ -5163,7 +5165,15 @@ export class SessionService {
       throw ApiError.notFound(`Session not found: ${sessionId}`)
     }
 
-    if (found) await fs.unlink(found.filePath)
+    if (found) {
+      const sessionDir = path.join(this.getProjectsDir(), found.projectDir, sessionId)
+      // 历史可见性索引按文件的 dev/ino 命名，必须在 unlink 之前取（文件消失
+      // 后 stat 不到）；先关索引句柄再删目录，Windows 下开着句柄删不掉
+      await removeHistoryIndexForFile(found.filePath).catch(() => {})
+      await fs.unlink(found.filePath)
+      // 子代理转录与其所属会话同生命周期：主转录删除后整目录连带回收
+      await fs.rm(sessionDir, { recursive: true, force: true }).catch(() => {})
+    }
     this.knownSessionKeys.delete(this.memorySessionKey(sessionId))
     this.memoryLaunchInfo.delete(this.memorySessionKey(sessionId))
     this.privateTitles.delete(this.memorySessionKey(sessionId))
@@ -5171,7 +5181,49 @@ export class SessionService {
     this.invalidateSessionListCache()
   }
 
+  /**
+   * 预热最近会话的历史可见性索引：启动后空闲期对最近修改的若干会话文件
+   * 触发索引构建（持久化后为增量续扫），用户点开时免等冷扫描。
+   * 单文件失败不影响其余；整个方法不外抛（预热是纯优化）。
+   */
+  async warmUpRecentHistoryIndexes(limit = 8): Promise<void> {
+    try {
+      const projectsDir = this.getProjectsDir()
+      const candidates: Array<{ filePath: string, mtimeMs: number }> = []
+      const projectDirs = await fs.readdir(projectsDir).catch(() => [])
+      for (const dir of projectDirs) {
+        const dirPath = path.join(projectsDir, dir)
+        const entries = await fs.readdir(dirPath).catch(() => [])
+        for (const entry of entries) {
+          if (!entry.endsWith('.jsonl')) continue
+          const filePath = path.join(dirPath, entry)
+          const info = await fs.stat(filePath).catch(() => null)
+          if (info?.isFile()) candidates.push({ filePath, mtimeMs: info.mtimeMs })
+        }
+      }
+      candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)
+      for (const { filePath } of candidates.slice(0, limit)) {
+        if (warmAborted) break
+        try {
+          const info = await fs.stat(filePath, { bigint: true })
+          await readHistoryContexts({
+            filePath,
+            sourceVersion: `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}`,
+            offsets: [],
+          })
+        } catch {
+          // 单文件预热失败跳过（索引会在首次打开时重建）
+        }
+      }
+    } catch {
+      // 预热失败静默：不影响正常路径
+    }
+  }
+
   async deleteSessions(sessionIds: string[]): Promise<DeleteSessionsResult> {
+    // 批量删除期间中止进行中的预热，避免预热扫描撞上正在删除的文件
+    warmAborted = true
+    setTimeout(() => { warmAborted = false }, 5000).unref?.()
     const successes: string[] = []
     const failures: DeleteSessionFailure[] = []
 

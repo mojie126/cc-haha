@@ -306,9 +306,16 @@ describe('SettingsService', () => {
       .rejects.toThrow('permissions.allow must be an array of strings')
     await expect(svc.updateUserSettings({ permissions: { deny: ['  '] } as never }))
       .rejects.toThrow('permissions.deny contains an empty rule')
+    // 与 CLI 读取过滤同一口径：能解析但官方 schema 判非法的规则（小写工具名）
+    // 拒绝写入，避免「设置了却不生效」；Bash 括号内的通配符是合法写法
+    await expect(svc.updateUserSettings({ permissions: { allow: ['rtk*'] } as never }))
+      .rejects.toThrow('invalid rule "rtk*"')
     // 校验失败的写入不能落盘
     const settings = await svc.getUserSettings()
     expect(settings.permissions).toBeUndefined()
+    // Bash 括号内的通配符是合法写法，正常落盘
+    await svc.updateUserSettings({ permissions: { allow: ['Bash(rtk*)'] } as never })
+    expect(await svc.getUserSettings()).toMatchObject({ permissions: { allow: ['Bash(rtk*)'] } })
   })
 
   it('should write and read the pure white theme setting', async () => {

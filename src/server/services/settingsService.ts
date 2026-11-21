@@ -26,6 +26,7 @@ import { getGlobalConfig } from '../../utils/config.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
 import { permissionRuleValueFromString } from '../../utils/permissions/permissionRuleParser.js'
+import { validatePermissionRule } from '../../utils/settings/permissionValidation.js'
 import type { ModelMapping } from '../types/provider.js'
 
 export const VALID_PERMISSION_MODES = [
@@ -323,10 +324,18 @@ export class SettingsService {
           throw ApiError.badRequest(`permissions.${key} must be an array of strings`)
         }
         for (const rule of rules as string[]) {
-          // 空白串进数组没有意义且会污染规则列表；解析器对畸形括号会兜底成
-          // 工具名，这里只挡「根本不是规则」的输入
+          // 空白串进数组没有意义且会污染规则列表
           if (rule.trim() === '') {
             throw ApiError.badRequest(`permissions.${key} contains an empty rule`)
+          }
+          // 与 CLI 读取侧的 filterInvalidPermissionRules 同一口径：能解析但
+          // 不合法的规则（如小写工具名、错误的通配符位置）会被 CLI 启动时
+          // 静默跳过导致「设置了不生效」，宁可在这里拒绝写入
+          const validity = validatePermissionRule(rule)
+          if (!validity.valid) {
+            throw ApiError.badRequest(
+              `permissions.${key} contains an invalid rule "${rule}": ${validity.error}${validity.suggestion ? ` (${validity.suggestion})` : ''}`,
+            )
           }
           permissionRuleValueFromString(rule)
         }

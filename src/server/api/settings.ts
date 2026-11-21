@@ -22,6 +22,7 @@ import {
 } from '../../constants/outputStyles.js'
 import { getCwd } from '../../utils/cwd.js'
 import { cleanupOldSessionFiles } from '../../utils/cleanup.js'
+import { clearHistoryIndexes, getHistoryIndexUsage } from '../services/historyIndexMaintenance.js'
 
 const settingsService = new SettingsService()
 
@@ -84,6 +85,14 @@ export async function handleSettingsApi(
 
       case 'session-cleanup':
         return await handleSessionCleanup(req)
+
+      case 'history-index-usage':
+        if (method !== 'GET') throw methodNotAllowed(method)
+        return Response.json(await getHistoryIndexUsage())
+
+      case 'history-index-cleanup':
+        if (method !== 'POST') throw methodNotAllowed(method)
+        return Response.json(await clearHistoryIndexes())
 
       case 'cli-launcher':
         if (method !== 'GET') throw methodNotAllowed(method)
