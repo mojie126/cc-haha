@@ -599,11 +599,17 @@ export const sessionsApi = {
   getHistoryPage(sessionId: string, page?: { cursor?: string }, options?: ApiRequestOptions) {
     const query = new URLSearchParams()
     if (page?.cursor) query.set('cursor', page.cursor)
-    return api.get<SessionHistoryPage>(`/api/sessions/${sessionId}/messages${query.size ? `?${query}` : ''}`, options)
+    return api.get<SessionHistoryPage>(
+      `/api/sessions/${sessionId}/messages${query.size ? `?${query}` : ''}`,
+      { timeout: 300_000, ...options },
+    )
   },
 
   getHistoryRecovery(sessionId: string, options?: ApiRequestOptions) {
-    return api.get<SessionHistoryRecovery>(`/api/sessions/${sessionId}/history-recovery`, options)
+    return api.get<SessionHistoryRecovery>(
+      `/api/sessions/${sessionId}/history-recovery`,
+      { timeout: 300_000, ...options },
+    )
   },
 
   getSummary(sessionId: string, options?: ApiRequestOptions) {
@@ -783,7 +789,9 @@ export const sessionsApi = {
   },
 
   getWorkspaceStatus(sessionId: string, signal?: AbortSignal) {
-    return api.get<WorkspaceStatusResult>(buildWorkspacePath(sessionId, 'status'), { signal })
+    // Same cold-pass rationale as getTurnCheckpoints: git status/diff on large
+    // repositories after a restart can exceed the 120s default.
+    return api.get<WorkspaceStatusResult>(buildWorkspacePath(sessionId, 'status'), { signal, timeout: 300_000 })
   },
 
   getWorkspaceTree(sessionId: string, workspacePath = '', signal?: AbortSignal) {
@@ -822,9 +830,12 @@ export const sessionsApi = {
   },
 
   getTurnCheckpoints(sessionId: string, options?: ApiRequestOptions, frozen = false) {
+    // The server diffs every completed turn against its file-history backups
+    // (backup reads + git diffs per turn); on large sessions the first pass
+    // after a restart takes well over the 120s default.
     return api.get<SessionTurnCheckpointsResponse>(
       `/api/sessions/${sessionId}/turn-checkpoints${frozen ? '?frozen=true' : ''}`,
-      options,
+      { timeout: 300_000, ...options },
     )
   },
 
@@ -844,6 +855,7 @@ export const sessionsApi = {
     query.set('path', workspacePath)
     return api.get<TurnCheckpointDiffResult>(
       `/api/sessions/${sessionId}/turn-checkpoints/diff?${query.toString()}`,
+      { timeout: 300_000 },
     )
   },
 
