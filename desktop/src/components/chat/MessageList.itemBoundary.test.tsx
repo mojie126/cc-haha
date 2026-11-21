@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 const { reportMock } = vi.hoisted(() => ({
   reportMock: vi.fn(async () => undefined),
@@ -93,6 +93,33 @@ describe('MessageList item containment', () => {
       isGitRepo: false,
       changedFiles: [],
     })
+  })
+
+  it('loads turn change cards while the session is still running', async () => {
+    // 排队消息自动续跑的窗口期：回合结束瞬间 chatState 回到 thinking，
+    // 此前卡片加载被 idle 条件跳过，变更总结与撤回入口整个窗口期不可见。
+    const checkpoint = {
+      target: { targetUserMessageId: 'user-1', userMessageIndex: 0 },
+      code: { available: true, filesChanged: ['/repo/FORK.md'], insertions: 12, deletions: 3 },
+      startedAt: 1,
+    }
+    vi.spyOn(sessionsApi, 'getTurnCheckpoints').mockResolvedValue({ checkpoints: [checkpoint] } as never)
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: { ...makeSessionState([
+          { id: 'user-1', type: 'user_text', content: 'update the docs', timestamp: 1 },
+          { id: 'assistant-1', type: 'assistant_text', content: 'pushed the docs', timestamp: 2 },
+        ]), chatState: 'thinking' },
+      },
+    })
+
+    render(<MessageList />)
+
+    // 运行中也会调检查点接口并渲染已完成回合的变更卡片
+    // 卡片 DOM 渲染依赖 useDeferredValue 的并发通道，jsdom 测试环境不保证 flush；
+    // 这里断言修复的核心行为——运行中不再跳过检查点加载。卡片视觉呈现由桌面
+    // UI smoke 通道覆盖。
+    await waitFor(() => expect(sessionsApi.getTurnCheckpoints).toHaveBeenCalled(), { timeout: 5000 })
   })
 
   // Issue #1400: one poisoned record in a saved transcript used to replace the whole

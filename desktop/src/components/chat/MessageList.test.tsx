@@ -7532,7 +7532,8 @@ describe('MessageList nested tool calls', () => {
     act(() => useChatStore.setState({ sessions: { [ACTIVE_TAB]: makeSessionState({ messages, chatState: 'thinking' }) } }))
     expect(screen.queryByRole('region', { name: 'Workspace changed files' })).toBeNull()
     act(() => useChatStore.setState({ sessions: { [ACTIVE_TAB]: makeSessionState({ messages }) } }))
-    await waitFor(() => expect(sessionsApi.getTurnCheckpoints).toHaveBeenCalledTimes(2))
+    // 完成回合集合未变时不需要重拉（数据幂等）；fallback 由渲染层的 idle 条件继续隐藏
+    expect(sessionsApi.getTurnCheckpoints).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('region', { name: 'Workspace changed files' })).toBeNull()
   })
 
@@ -8350,6 +8351,21 @@ describe('MessageList nested tool calls', () => {
               },
             },
           }),
+        },
+      })
+    })
+
+    // 回合仍在推进（thinking）：最新回合的检查点差分是中间态，卡片保持隐藏；
+    // 回到 idle 后中间态差分被最终差分取代，卡片显示。
+    await waitFor(() => {
+      expect(screen.queryByText('first.ts')).toBeNull()
+    })
+    expect(screen.queryByText('Markdown')).toBeNull()
+
+    act(() => {
+      useChatStore.setState({
+        sessions: {
+          [ACTIVE_TAB]: makeSessionState({ messages, chatState: 'idle' }),
         },
       })
     })

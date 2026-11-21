@@ -3257,6 +3257,13 @@ export function MessageList({
     () => getCompletedTurnTargets(deferredMessages),
     [deferredMessages],
   )
+  // 完成回合的稳定签名：运行中消息流频繁变化会让 completedTurnTargets 引用每次
+  // 都变，用 id+数量签名做加载 effect 的依赖，避免流式期间反复重拉检查点接口
+  const completedTurnTargetsSignature = useMemo(
+    () => completedTurnTargets.map((target) => target.messageId).join('|') +
+      `#${completedTurnTargets.length}`,
+    [completedTurnTargets],
+  )
   const turnCompletionByMessageId = useMemo(
     () => buildTurnCompletionByMessageId(deferredMessages, { turnActive: chatState !== 'idle' }),
     [deferredMessages, chatState],
@@ -3357,7 +3364,19 @@ export function MessageList({
     completedTurnTargets.length > 0
       ? completedTurnTargets[completedTurnTargets.length - 1]?.messageId ?? null
       : null
-  const visibleTurnChangeCards = hasRunningBackgroundTasks ? EMPTY_TURN_CHANGE_CARDS : turnChangeCards
+  // 卡片是回合结束的总结。检查点接口对「已有部分响应的运行中回合」也返回差分，
+  // 直接渲染会出现「回合没结束就出了总结」（中间态差分还带不完整的撤回警告）。
+  // 运行中只隐藏最后一个回合的卡片（它可能是中间态），更早回合的卡片照常显示——
+  // 排队自动续跑的窗口期里仍能看到上一轮的变更与撤回入口。后台任务写盘中时全部
+  // 隐藏（差分同样是中间态）。
+  const visibleTurnChangeCards = useMemo(() => {
+    if (hasRunningBackgroundTasks) return EMPTY_TURN_CHANGE_CARDS
+    if (chatState === 'idle') return turnChangeCards
+    const lastTargetId = completedTurnTargets[completedTurnTargets.length - 1]?.messageId
+    return lastTargetId
+      ? turnChangeCards.filter((card) => card.target.messageId !== lastTargetId)
+      : turnChangeCards
+  }, [chatState, completedTurnTargets, hasRunningBackgroundTasks, turnChangeCards])
   const turnCardsByRenderIndex = useMemo(
     () => buildTurnCardInsertionMap(renderItems, visibleTurnChangeCards),
     [renderItems, visibleTurnChangeCards],
@@ -3366,6 +3385,15 @@ export function MessageList({
     () => buildChangedFilesByRenderIndex(renderItems, turnChangeCards),
     [renderItems, turnChangeCards],
   )
+  if (process.env.CC_HAHA_DEBUG_CARDS === '1') {
+    // eslint-disable-next-line no-console
+    console.log('[turn-cards-map]', JSON.stringify({
+      cards: visibleTurnChangeCards.length,
+      mapEntries: [...turnCardsByRenderIndex.entries()],
+      renderItemCount: renderItems.length,
+      keys: renderItems.map(getRenderItemKey),
+    }))
+  }
   // No checkpoint is coming for this view; the disk alone has to vouch for outputs.
   // While one is still loading, nothing unproven is shown instead.
   const turnEvidenceUnavailable = isDirectAgentSession || turnChangeLoadError !== null || workspaceChangesFallback !== null
@@ -3703,6 +3731,8 @@ export function MessageList({
       return
     }
 
+    // 后台任务可能正在写文件：此时拉检查点拿到的是中间态差分，渲染层也会隐藏
+    // 卡片，等任务结束后（本依赖触发重跑）再加载完整差分。
     if (hasRunningBackgroundTasks) {
       setTurnChangeLoadError(null)
       setWorkspaceChangesFallback(null)
@@ -3710,13 +3740,10 @@ export function MessageList({
       return
     }
 
-    if (chatState !== 'idle') {
-      setTurnChangeLoadError(null)
-      setWorkspaceChangesFallback(null)
-      setIsLoadingTurnChangeCards(false)
-      return
-    }
 
+    // 排队消息自动续跑导致的运行态不再跳过加载：卡片属于会话结束总结的一部分，
+    // 用户在续跑窗口期也要能看到上一轮的变更与撤回入口。流式期间的重复拉取由
+    // 完成回合签名依赖挡住（签名不变不重跑）。
     let cancelled = false
     const controller = new AbortController()
     setIsLoadingTurnChangeCards(true)
@@ -3767,6 +3794,10 @@ export function MessageList({
               isLatest: target.messageId === latestCompletedTurnId,
             }]
           })
+        if (process.env.CC_HAHA_DEBUG_CARDS === '1') {
+          // eslint-disable-next-line no-console
+          console.log('[turn-cards-set]', JSON.stringify({ count: nextCards.length }))
+        }
         setTurnChangeCards(nextCards)
       })
       .catch((error) => {
@@ -3784,7 +3815,16 @@ export function MessageList({
       cancelled = true
       controller.abort()
     }
-  }, [chatState, completedTurnTargets, hasRunningBackgroundTasks, historyMutationEpoch, isDirectAgentSession, latestCompletedTurnId, resolvedSessionId, checkpointHistoryReady])
+  }, [completedTurnTargetsSignature, hasRunningBackgroundTasks, historyMutationEpoch, isDirectAgentSession, latestCompletedTurnId, resolvedSessionId, checkpointHistoryReady])
+
+  // 新回合开始（排队自动续跑等）时上一轮的 workspace fallback 已过期：立即清掉，
+  // 渲染层由 idle 条件兜住的显示随之消失。不清 turnChangeCards——续跑窗口期内
+  // 上一轮的变更卡片与撤回入口保持可见，这正是运行中加载的意义。
+  useEffect(() => {
+    if (chatState !== 'idle') {
+      setWorkspaceChangesFallback(current => current === null ? current : null)
+    }
+  }, [chatState])
 
   const handleUndoCurrentTurn = useCallback(async (mode: SessionRewindMode = 'both') => {
     if (!resolvedSessionId || !confirmTurnCard || rewindingTurnId || hasRunningBackgroundTasks) return
