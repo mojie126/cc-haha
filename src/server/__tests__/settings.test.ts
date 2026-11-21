@@ -278,6 +278,39 @@ describe('SettingsService', () => {
     expect(settings.model).toBe('claude-opus-4-7')
   })
 
+  it('accepts and persists a valid permissions object, preserving its extra keys', async () => {
+    const svc = new SettingsService()
+    await svc.updateUserSettings({
+      permissions: {
+        allow: ['Bash(git status:*)', 'Read'],
+        deny: ['WebFetch(domain:evil.example)'],
+        ask: [],
+        defaultMode: 'default',
+      },
+    })
+
+    const settings = await svc.getUserSettings()
+    expect(settings.permissions).toMatchObject({
+      allow: ['Bash(git status:*)', 'Read'],
+      deny: ['WebFetch(domain:evil.example)'],
+      ask: [],
+      defaultMode: 'default',
+    })
+  })
+
+  it('rejects permissions payloads that are not objects or contain non-string rules', async () => {
+    const svc = new SettingsService()
+    await expect(svc.updateUserSettings({ permissions: 'allow-all' as never }))
+      .rejects.toThrow('permissions must be an object')
+    await expect(svc.updateUserSettings({ permissions: { allow: [42] } as never }))
+      .rejects.toThrow('permissions.allow must be an array of strings')
+    await expect(svc.updateUserSettings({ permissions: { deny: ['  '] } as never }))
+      .rejects.toThrow('permissions.deny contains an empty rule')
+    // 校验失败的写入不能落盘
+    const settings = await svc.getUserSettings()
+    expect(settings.permissions).toBeUndefined()
+  })
+
   it('should write and read the pure white theme setting', async () => {
     const svc = new SettingsService()
     await svc.updateUserSettings({ theme: 'white' })

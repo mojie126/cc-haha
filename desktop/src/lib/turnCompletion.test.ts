@@ -181,4 +181,36 @@ describe('buildTurnCompletionByMessageId', () => {
 
     expect(completions.size).toBe(0)
   })
+
+  it('marks the closing reply of a background wake turn with a timestamp but no duration', () => {
+    // 唤醒回合没有用户提示词开头：system 消息起轮，回复挂完成时间戳，
+    // 没有起点也就没有耗时的语义
+    const completions = buildTurnCompletionByMessageId([
+      user('u0', 0),
+      assistant('a0', 10 * SECOND),
+      { id: 'sys-continue', type: 'system', content: '', backgroundContinueTaskIds: ['task-1'], timestamp: T0 + 30 * SECOND },
+      assistant('a1', 40 * SECOND),
+    ])
+
+    expect(completions.get('a1')?.completedAt).toBe(T0 + 40 * SECOND)
+    expect(completions.get('a1')?.durationMs).toBeUndefined()
+    // 上一轮（用户提示词开启的）不受影响
+    expect(completions.get('a0')?.completedAt).toBe(T0 + 10 * SECOND)
+  })
+
+  it('does not leak the wake turn into the next user turn boundary', () => {
+    const completions = buildTurnCompletionByMessageId([
+      { id: 'sys-continue', type: 'system', content: '', backgroundContinueTaskIds: ['task-1'], timestamp: T0 },
+      assistant('a1', 20 * SECOND),
+      user('u1', 60 * SECOND),
+      assistant('a2', 90 * SECOND),
+    ])
+
+    // 唤醒轮无耗时；用户轮有完整耗时
+    expect(completions.get('a1')?.durationMs).toBeUndefined()
+    expect(completions.get('a2')).toEqual({
+      completedAt: T0 + 90 * SECOND,
+      durationMs: 30 * SECOND,
+    })
+  })
 })

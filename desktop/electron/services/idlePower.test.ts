@@ -87,7 +87,7 @@ describe('all-idle power completion edge', () => {
     await advanceTime(700)
     expect(f.execute).toHaveBeenCalledWith('lock', expect.any(Function))
   })
-  it('rejects unsupported settings, cancels a reconfiguration, and fails closed if notification or persistence fails', async () => {
+  it('rejects unsupported settings, cancels a reconfiguration, and fails closed if persistence fails', async () => {
     const f = await fixture()
     expect(() => f.service.configure({ action: 'hibernate', scope: 'any', countdownSeconds: 0 })).toThrow()
     f.complete()
@@ -95,17 +95,17 @@ describe('all-idle power completion edge', () => {
     f.service.configure({ action: 'none', scope: 'any', countdownSeconds: 60 })
     await advanceTime(40_000)
     expect(f.dispatch).not.toHaveBeenCalled()
+    // 通知失败不再阻塞派发：系统关闭 Toast 通知时倒计时照常推进
     f.service.configure({ action: 'sleep', scope: 'any', countdownSeconds: 0 })
     await advanceTime(100)
     f.notify.mockReturnValue(false)
     f.complete()
     await advanceTime(700)
-    expect(f.dispatch).not.toHaveBeenCalled()
-    f.notify.mockReturnValue(true)
+    expect(f.dispatch).toHaveBeenCalledTimes(1)
     f.save.mockImplementation(() => { throw new Error('disk full') })
     f.complete()
     await advanceTime(700)
-    expect(f.dispatch).not.toHaveBeenCalled()
+    expect(f.dispatch).toHaveBeenCalledTimes(1)
   })
   it('rechecks after asynchronous platform preparation and refuses new work even at zero countdown', async () => {
     const f = await fixture()

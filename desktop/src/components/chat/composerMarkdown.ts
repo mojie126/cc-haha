@@ -11,6 +11,7 @@ import { Node as PMNode } from 'prosemirror-model'
 import { Plugin, PluginKey } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { mentionToken, type ComposerMention } from '../../lib/composerMentions'
+import { startsMarkdownFence } from '../../lib/markdownFence'
 import { AT_MENTION_NODE } from './composerEditor'
 
 export type ComposerMarkdownKind =
@@ -181,7 +182,7 @@ function scanLine(line: string, fence: FenceState): { tokens: ComposerMarkdownTo
   }
 
   const opening = FENCE_OPEN.exec(line)
-  if (opening) {
+  if (opening && startsMarkdownFence(opening[1]!, opening[2] ?? '')) {
     // 开围栏整行（含语言标签）都是语法，围栏内的代码行才用代码样式
     tokens.push({ kind: 'marker', start: 0, end: line.length })
     return { tokens, fence: { char: opening[1]![0]!, length: opening[1]!.length } }

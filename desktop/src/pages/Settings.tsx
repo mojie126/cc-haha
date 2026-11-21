@@ -16,6 +16,7 @@ import {
   Puzzle,
   QrCode,
   Server,
+  ShieldCheck,
   SlidersHorizontal,
   SquareTerminal,
   type LucideIcon,
@@ -42,6 +43,7 @@ import { TerminalSettings } from './TerminalSettings'
 import { DiagnosticsSettings } from './DiagnosticsSettings'
 import { ActivitySettings } from './ActivitySettings'
 import { MemorySettings } from './MemorySettings'
+import { PermissionRulesSettings } from './settings/PermissionRulesSettings'
 import { PetSettings } from '../features/pets/PetSettings'
 import { useUIStore, type SettingsTab } from '../stores/uiStore'
 import { AgentManager } from '../components/settings/AgentManager'
@@ -60,6 +62,7 @@ type SettingsNavEntry = { tab: SettingsTab; icon: LucideIcon; label: Translation
 const SETTINGS_NAV: SettingsNavEntry[] = [
   { tab: 'providers', icon: Server, label: 'settings.tab.providers' },
   { tab: 'general', icon: SlidersHorizontal, label: 'settings.tab.general' },
+  { tab: 'permissions', icon: ShieldCheck, label: 'settings.tab.permissions' },
   { tab: 'voice', icon: Mic, label: 'settings.tab.voice' },
   { tab: 'h5Access', icon: QrCode, label: 'settings.tab.h5Access' },
   { tab: 'adapters', icon: MessageSquare, label: 'settings.tab.adapters' },
@@ -324,6 +327,7 @@ export function DesktopSettings() {
             {activeTab === 'providers' && <ProviderSettings />}
             {activeTab === 'activity' && <ActivitySettings />}
             {activeTab === 'general' && <GeneralSettings />}
+            {activeTab === 'permissions' && <PermissionRulesSettings />}
             {activeTab === 'voice' && <VoiceInputSettings />}
             {activeTab === 'h5Access' && <H5AccessSettings />}
             {activeTab === 'adapters' && <AdapterSettings />}

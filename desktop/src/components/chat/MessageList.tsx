@@ -3409,9 +3409,12 @@ export function MessageList({
   )
   useEffect(() => {
     if (!unreadReplyId || !unreadCompletion || !resolvedSessionId || typeof IntersectionObserver === 'undefined') return
-    const reply = Array.from(scrollContentRef.current?.querySelectorAll<HTMLElement>('[data-chat-render-item-key]') ?? [])
+    const row = Array.from(scrollContentRef.current?.querySelectorAll<HTMLElement>('[data-chat-render-item-key]') ?? [])
       .find(element => element.dataset.chatRenderItemKey === unreadReplyId)
-      ?.querySelector('[data-chat-selectable-message="assistant"]')
+    // 锚在行上而不是消息体：后台唤醒回合的回复默认折叠，消息体（含
+    // data-chat-selectable-message）不渲染，锚它会导致已读观察永不建立、
+    // 角标不清。行级元素在折叠与展开两种形态下都在视口判定上等价
+    const reply = row?.querySelector('[data-chat-selectable-message="assistant"]') ?? row
     if (!reply) return
 
     // Hidden tabs and the trajectory view keep their transcripts mounted. Only

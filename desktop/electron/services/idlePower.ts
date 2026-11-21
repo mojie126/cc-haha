@@ -46,7 +46,7 @@ type Options = {
   /** The platform calls beforeExecute after capability checks, immediately before dispatch. */
   execute(action: IdlePowerAction, beforeExecute: () => Promise<void>): Promise<void>
   save(value: { settings: IdlePowerSettings, lastAction: IdlePowerRecord | null }): void
-  notifyCountdown(countdown: NonNullable<IdlePowerState['countdown']>, seconds: number, cancel: (notice?: Exclude<IdlePowerNotice, null>) => void): boolean
+  notifyCountdown(countdown: NonNullable<IdlePowerState['countdown']>, seconds: number, cancel: (notice?: Exclude<IdlePowerNotice, null>) => void): void
   notifyNotice(notice: Exclude<IdlePowerNotice, null>): void
   onChange(state: IdlePowerState): void
   getIdleSeconds(): number
@@ -236,9 +236,11 @@ export class IdlePowerService {
       this.countdownInput = { at: Date.now(), idle: this.options.getIdleSeconds(), pointer: this.options.getPointerPosition?.() }
       this.emit()
       if (!Number.isFinite(this.countdownInput.idle) || this.countdownInput.idle < 0) { this.cancel('unavailable'); return }
-      if (!this.options.notifyCountdown(countdown, seconds, notice => {
+      // 通知发送失败（例如系统关闭了 Toast 通知）不阻塞派发，倒计时照常推进，
+      // 用户可在应用内状态卡片上取消
+      this.options.notifyCountdown(countdown, seconds, notice => {
         if (this.state.countdown?.id === countdown.id) this.cancel(notice)
-      })) { this.cancel('unavailable'); return }
+      })
       if (seconds === 0 && this.state.countdown) await this.execute(generation, snapshot)
     } catch {
       if (generation !== this.generation || !this.running) return

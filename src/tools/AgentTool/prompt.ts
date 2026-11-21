@@ -74,8 +74,16 @@ export async function getPrompt(
   // 而不是超额调起后由 reserveSubagentSlot 运行时拒绝，让多余的一个失败
   const maxConcurrentSubagents = getMaxConcurrentSubagentsUncached()
   const concurrencyLimitSection = maxConcurrentSubagents != null
-    ? `\n\nHARD LIMIT: the user allows at most ${maxConcurrentSubagents} subagent${maxConcurrentSubagents === 1 ? '' : 's'} running at the same time. A launch beyond this limit fails immediately, so never launch more than ${maxConcurrentSubagents} agents concurrently and never launch extra agents expecting them to fail — if every slot is busy, wait for a running agent to finish first.`
+    ? `\n\nHARD LIMIT: the user allows at most ${maxConcurrentSubagents} subagent${maxConcurrentSubagents === 1 ? '' : 's'} running at the same time. A launch beyond this limit fails immediately, so never launch more than ${maxConcurrentSubagents} agents concurrently and never launch extra agents expecting them to fail — if every slot is busy, wait for a running agent to finish first. This limit overrides every other instruction to launch agents in parallel, including the parallelism notes in this description.`
     : ''
+
+  // 有上限时并行措辞必须写明名额，避免与 HARD LIMIT 相互矛盾，
+  // 让模型倾向"尽可能并发"而不是先核对剩余名额
+  const forkParallelInstruction = maxConcurrentSubagents == null
+    ? 'launch parallel forks in one message'
+    : maxConcurrentSubagents === 1
+      ? 'launch one fork at a time and wait for its notification before the next'
+      : `launch up to ${maxConcurrentSubagents} parallel forks in one message without exceeding the HARD LIMIT`
 
   // Filter agents by allowed types when Agent(x,y) restricts which agents can be spawned
   const effectiveAgents = allowedAgentTypes
@@ -97,7 +105,7 @@ Use foreground execution when you need the result before proceeding. Set run_in_
 ## When to fork
 
 Fork yourself (omit \`subagent_type\`) when the intermediate tool output isn't worth keeping in your context. The criterion is qualitative \u2014 "will I need this output again" \u2014 not task size.
-- **Research**: fork open-ended questions. If research can be broken into independent questions, launch parallel forks in one message. A fork beats a fresh subagent for this \u2014 it inherits context and shares your cache.
+- **Research**: fork open-ended questions. If research can be broken into independent questions, ${forkParallelInstruction}. A fork beats a fresh subagent for this \u2014 it inherits context and shares your cache.
 - **Implementation**: prefer to fork implementation work that requires more than a couple of edits. Do research before jumping to implementation.
 
 Forks are cheap because they share your prompt cache. Don't set \`model\` on a fork \u2014 a different model can't reuse the parent's cache. Pass a short \`name\` (one or two words, lowercase) so the user can see the fork in the teams panel and steer it mid-run.
@@ -258,8 +266,11 @@ When NOT to use the ${AGENT_TOOL_NAME} tool:
   // the existing per-call getSubscriptionType() check.
   const concurrencyNote =
     !listViaAttachment && getSubscriptionType() !== 'pro'
-      ? `
-- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses`
+      ? maxConcurrentSubagents == null
+        ? `\n- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses`
+        : maxConcurrentSubagents === 1
+          ? `\n- Launch one agent at a time and wait for it to finish before the next, because the HARD LIMIT allows a single running subagent`
+          : `\n- Launch independent agents concurrently to maximize performance — up to ${maxConcurrentSubagents} Agent calls in a single message, never beyond the HARD LIMIT`
       : ''
 
   // Non-coordinator gets the full prompt with all sections
@@ -282,7 +293,7 @@ Usage notes:
 - The agent's outputs should generally be trusted
 - Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.)${forkEnabled ? '' : ", since it is not aware of the user's intent"}
 - If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
-- If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple ${AGENT_TOOL_NAME} tool use content blocks. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.
+- If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple ${AGENT_TOOL_NAME} tool use content blocks${maxConcurrentSubagents == null ? '' : maxConcurrentSubagents === 1 ? ', issuing one Agent call at a time and waiting for it to finish before the next' : `, issuing at most ${maxConcurrentSubagents} Agent calls at a time and never beyond the HARD LIMIT`}. For example, if you need to launch both a build-validator agent and a test-runner agent in parallel, send a single message with both tool calls.
 - You can optionally set \`isolation: "worktree"\` to run the agent in a temporary git worktree, giving it an isolated copy of the repository. The worktree is automatically cleaned up if the agent makes no changes; if changes are made, the worktree path and branch are returned in the result. Outside a git repository the agent runs in the workspace directory instead of failing.${
     process.env.USER_TYPE === 'ant'
       ? `\n- You can set \`isolation: "remote"\` to run the agent in a remote CCR environment. This is always a background task; you'll be notified when it completes. Use for long-running tasks that need a fresh sandbox.`

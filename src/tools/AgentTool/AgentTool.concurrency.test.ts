@@ -607,6 +607,15 @@ describe('concurrency limit disclosure in the tool prompt', () => {
     expect(prompt).toContain('never launch extra agents expecting them to fail')
   })
 
+  test.each([1, 2])('cap of %s overrides the unlimited parallelism guidance', async limit => {
+    setLimit(limit)
+    resetSettingsCache()
+    const prompt = await getPrompt([GENERAL_PURPOSE_AGENT])
+    expect(prompt).toContain('overrides every other instruction to launch agents in parallel')
+    expect(prompt).not.toContain('Launch multiple agents concurrently whenever possible')
+    expect(prompt).toContain(limit === 1 ? 'issuing one Agent call at a time' : 'issuing at most 2 Agent calls at a time')
+  })
+
   test.each(['standard', 'lean'] as const)('%s profile discloses the configured limit', async profile => {
     const profileSpy = spyOn(await import('../../utils/agentProfile.js'), 'getAgentProfile').mockReturnValue(profile)
     try {
@@ -624,5 +633,33 @@ describe('concurrency limit disclosure in the tool prompt', () => {
     const prompt = await getPrompt([GENERAL_PURPOSE_AGENT])
     expect(prompt).not.toContain('HARD LIMIT')
     expect(prompt).not.toContain('never launch more than')
+    expect(prompt).toContain('tool use content blocks.')
+  })
+
+  test('suppresses the attachment parallelism note while a cap is configured', async () => {
+    const attachments = await import('../../utils/attachments.js')
+    const auth = await import('../../utils/auth.js')
+    const subscriptionSpy = spyOn(auth, 'getSubscriptionType').mockReturnValue('max')
+    const previous = process.env.CLAUDE_CODE_AGENT_LIST_IN_MESSAGES
+    process.env.CLAUDE_CODE_AGENT_LIST_IN_MESSAGES = 'true'
+    try {
+      context.options.tools = [AgentTool] as never
+      setLimit(1)
+      resetSettingsCache()
+      expect(attachments.getAgentListingDeltaAttachment(context, [])[0]).toMatchObject({
+        type: 'agent_listing_delta',
+        showConcurrencyNote: false,
+      })
+      setLimit(null)
+      resetSettingsCache()
+      expect(attachments.getAgentListingDeltaAttachment(context, [])[0]).toMatchObject({
+        type: 'agent_listing_delta',
+        showConcurrencyNote: true,
+      })
+    } finally {
+      subscriptionSpy.mockRestore()
+      if (previous === undefined) delete process.env.CLAUDE_CODE_AGENT_LIST_IN_MESSAGES
+      else process.env.CLAUDE_CODE_AGENT_LIST_IN_MESSAGES = previous
+    }
   })
 })

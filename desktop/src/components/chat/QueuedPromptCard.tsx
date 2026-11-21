@@ -5,7 +5,7 @@
  * 文本行加上下方的附件区，编辑态复用附件托盘的移除与添加能力
  */
 import { useCallback, useRef } from 'react'
-import { CornerDownRight, Paperclip, Pencil, Trash2 } from 'lucide-react'
+import { CornerDownRight, Paperclip, Pencil, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { useTranslation } from '../../i18n'
@@ -76,6 +76,8 @@ type Props = {
   onGuide: () => void
   guideDisabled: boolean
   onDelete: () => void
+  /** 取消排队：文本与附件回填到输入框重新编辑，排队行移除 */
+  onRecall: () => void
 }
 
 export function QueuedPromptCard({
@@ -92,6 +94,7 @@ export function QueuedPromptCard({
   onGuide,
   guideDisabled,
   onDelete,
+  onRecall,
 }: Props) {
   const t = useTranslation()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -235,6 +238,13 @@ export function QueuedPromptCard({
               size="sm"
               tone="muted"
               onClick={onStartEdit}
+            />
+            <IconButton
+              icon={<Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />}
+              label={t('chat.pendingMessageRecall')}
+              size="sm"
+              tone="muted"
+              onClick={onRecall}
             />
             <IconButton
               icon={<Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />}

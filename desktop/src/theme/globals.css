@@ -768,6 +768,9 @@
   --cc-s2: #F5F5F3;
   --cc-bd: #E9E8E5;
   --cc-bd2: #D9D7D3;
+  /* 行内代码与围栏底色，落在用户气泡（--cc-s1）上要可辨 */
+  --cc-code: #DBD7CE;
+  --cc-fence: #CECABF;
   /* Control boundary — clears WCAG 1.4.11's 3:1 on the card lining. */
   --cc-bd-strong: #8C8984;
   /* Tab strip. Trough stays --cc-s0, so these two carry the shape. */
@@ -854,6 +857,8 @@
   --cc-s2: #F7F4EC;
   --cc-bd: #E7E0CF;
   --cc-bd2: #D5C9B0;
+  --cc-code: #D7CCB3;
+  --cc-fence: #CBBEA0;
   /* Control boundary — clears WCAG 1.4.11's 3:1 on the card lining. */
   --cc-bd-strong: #938A76;
   /* Tab strip. Trough stays --cc-s0, so these two carry the shape. */
@@ -938,6 +943,8 @@
   --cc-s2: #F1EBDA;
   --cc-bd: #DED2B8;
   --cc-bd2: #C8B897;
+  --cc-code: #CFBF9A;
+  --cc-fence: #C2B189;
   /* Control boundary — clears WCAG 1.4.11's 3:1 on the card lining. */
   --cc-bd-strong: #908369;
   /* Tab strip. Trough stays --cc-s0, so these two carry the shape. */
@@ -1022,6 +1029,8 @@
   --cc-s2: #F0F4F0;
   --cc-bd: #DCE5DE;
   --cc-bd2: #C6D4C9;
+  --cc-code: #C2D0C1;
+  --cc-fence: #B4C5B7;
   /* Control boundary — clears WCAG 1.4.11's 3:1 on the card lining. */
   --cc-bd-strong: #818D84;
   /* Tab strip. Trough stays --cc-s0, so these two carry the shape. */
@@ -1106,6 +1115,8 @@
   --cc-s2: #252119;
   --cc-bd: #383226;
   --cc-bd2: #4C4433;
+  --cc-code: #403A2B;
+  --cc-fence: #4B4332;
   /* Control boundary — clears WCAG 1.4.11's 3:1 on the card lining. */
   --cc-bd-strong: #756D5C;
   /* Tab strip. Trough stays --cc-s0, so these two carry the shape. Both go
@@ -1194,6 +1205,8 @@
   --cc-s2: #20242D;
   --cc-bd: #2F3441;
   --cc-bd2: #434A5B;
+  --cc-code: #3B4459;
+  --cc-fence: #49546B;
   /* Control boundary — clears WCAG 1.4.11's 3:1 on the card lining. */
   --cc-bd-strong: #6A707E;
   /* Tab strip. Trough stays --cc-s0, so these two carry the shape. Both go
@@ -1280,6 +1293,8 @@
   --cc-s2: #252525;
   --cc-bd: #383838;
   --cc-bd2: #4C4C4C;
+  --cc-code: #404040;
+  --cc-fence: #4D4D4D;
   --cc-bd-strong: #777777;
   --cc-tab-edge: #353535;
   --cc-tab-sep: #2D2D2D;
@@ -1382,6 +1397,11 @@
   --color-surface-selected: var(--cc-s1);
   --color-surface-info: var(--cc-s0);
   --color-surface-user-msg: var(--cc-s1);
+  /* 行内代码与围栏的底色。surface 梯度在深浅主题方向相反，
+     不能拿来当代码背景；这两个 token 在每个主题单独定值，
+     与用户气泡（--cc-s1）保持 ≥1.25 的对比度，正文文字在其上 ≥4.5 */
+  --color-surface-code: var(--cc-code);
+  --color-surface-fence: var(--cc-fence);
 
   /* Borders */
   --color-outline: var(--cc-bd2);
@@ -1996,10 +2016,19 @@ body > :not(#root, [role="tooltip"]) * {
   text-decoration: line-through;
 }
 
-.composer-md-code,
+.composer-md-code {
+  font-family: var(--font-mono);
+  background: var(--color-surface-code);
+  border-radius: var(--radius-xs);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 3px;
+}
+
+/* 围栏代码块比行内代码再深一档，两处代码样式在气泡里可区分 */
 .composer-md-fence {
   font-family: var(--font-mono);
-  background: var(--color-surface-container);
+  background: var(--color-surface-fence);
   border-radius: var(--radius-xs);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;

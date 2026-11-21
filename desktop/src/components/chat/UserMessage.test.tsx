@@ -227,6 +227,19 @@ describe('UserMessage bare-URL linkify', () => {
     expect(bubble.textContent).toBe(content)
   })
 
+  it('folds triple backticks closed on one line instead of opening a fence', () => {
+    const content = '报错如下\n```模型 qwen 不可用```'
+    const { container } = render(<UserMessage content={content} />)
+
+    const bubble = bubbleOf(container)
+    expect(bubble.querySelector('.composer-md-fence')).toBeNull()
+    expect(bubble.querySelector('.composer-md-code')?.textContent).toBe('模型 qwen 不可用')
+    // 三个反引号仍是折叠的标记，气泡里只留下代码内容
+    const hidden = [...bubble.querySelectorAll('[data-md-hidden="true"]')].map((node) => node.textContent)
+    expect(hidden).toEqual(['```', '```'])
+    expect(bubble.textContent).toBe(content)
+  })
+
   it('preserves line breaks around a linkified URL', () => {
     const content = '第一行\n打开 http://localhost:3000\n第三行'
     const { container } = render(<UserMessage sessionId="s1" content={content} />)

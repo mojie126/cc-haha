@@ -9,6 +9,7 @@ import {
 } from './filePathBoundary'
 import { isGeneratedArtifactFile, isOutputResourceFile, isShellProducedDeliverable } from './fileCapabilities'
 import { classifyPreviewLink } from './previewLinkRouter'
+import { startsMarkdownFence } from './markdownFence'
 
 export type AssistantOutputTargetKind =
   | 'local-html'
@@ -854,10 +855,11 @@ function extractFencedCodeBlocks(content: string): FencedCodeBlock[] {
 
   for (const line of lines) {
     const trimmed = line.trimStart()
+    const fence = /^(`{3,}|~{3,})([^\n]*)/.exec(trimmed)
 
-    if (!active && (trimmed.startsWith('```') || trimmed.startsWith('~~~'))) {
+    if (!active && fence && startsMarkdownFence(fence[1]!, fence[2] ?? '')) {
       active = {
-        marker: trimmed.startsWith('```') ? '```' : '~~~',
+        marker: fence[1]!.startsWith('`') ? '```' : '~~~',
         start: offset,
         contentStart: offset + line.length,
       }

@@ -198,8 +198,10 @@ export function ConversationNavigator({
                 aria-current={isActive ? 'location' : undefined}
                 aria-describedby={previewItemId === item.id ? 'conversation-navigation-preview' : undefined}
                 onMouseEnter={(event) => openPreview(item.id, event.currentTarget)}
-                onMouseLeave={(event) => {
-                  if (document.activeElement !== event.currentTarget) setPreviewItemId(null)
+                onMouseLeave={() => {
+                  // 预览跟随悬停，移开就关；焦点是否还在按钮上只影响
+                  // focus 链路（onBlur 负责关），不能挡住 hover 链路的关闭
+                  setPreviewItemId((current) => current === item.id ? null : current)
                 }}
                 onFocus={(event) => {
                   setFocusIndex(itemIndex)
@@ -209,7 +211,12 @@ export function ConversationNavigator({
                   setFocusIndex(null)
                   setPreviewItemId(null)
                 }}
-                onClick={() => onNavigate(item)}
+                onClick={(event) => {
+                  // 导航即离开预览：点击后弹窗立刻收起，不等鼠标移开
+                  event.currentTarget.blur()
+                  setPreviewItemId(null)
+                  onNavigate(item)
+                }}
                 className={`group flex h-3 items-center rounded-[var(--radius-sm)] focus-visible:outline-none ${modeStyles.button}`}
               >
                 <span

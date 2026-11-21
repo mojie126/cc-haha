@@ -62,7 +62,7 @@ import {
   isValidImagePaste,
 } from 'src/types/textInputTypes.js'
 import { randomUUID, type UUID } from 'crypto'
-import { getSettings_DEPRECATED } from './settings/settings.js'
+import { getMaxConcurrentSubagentsUncached, getSettings_DEPRECATED } from './settings/settings.js'
 import { getSnippetForTwoFileDiff } from 'src/tools/FileEditTool/utils.js'
 import type {
   ContentBlockParam,
@@ -1707,7 +1707,9 @@ export function getAgentListingDeltaAttachment(
       addedLines: added.map(formatAgentLine),
       removedTypes: removed,
       isInitial: announced.size === 0,
-      showConcurrencyNote: getSubscriptionType() !== 'pro',
+      // 已配置并发上限时由工具描述的 HARD LIMIT 约束并行额度，
+      // 附件不再追加无上限的并发鼓励，避免两处措辞互相矛盾
+      showConcurrencyNote: getSubscriptionType() !== 'pro' && getMaxConcurrentSubagentsUncached() == null,
     },
   ]
 }

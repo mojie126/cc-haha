@@ -87,6 +87,18 @@ export function getSessionModifiedTime(session: SessionListItem): number {
   return Number.isFinite(timestamp) ? timestamp : 0
 }
 
+function effectiveModifiedTime(
+  session: SessionListItem,
+  frozenModifiedAtById?: ReadonlyMap<string, string>,
+): number {
+  const frozen = frozenModifiedAtById?.get(session.id)
+  if (frozen != null) {
+    const timestamp = new Date(frozen).getTime()
+    return Number.isFinite(timestamp) ? timestamp : 0
+  }
+  return getSessionModifiedTime(session)
+}
+
 function startOfLocalDay(timestamp: number): number {
   const date = new Date(timestamp)
   date.setHours(0, 0, 0, 0)
@@ -121,6 +133,7 @@ export function buildSidebarTaskGroups(
   sessions: SessionListItem[],
   runningSessionIds: ReadonlySet<string>,
   now: number,
+  frozenModifiedAtById?: ReadonlyMap<string, string>,
 ): SidebarTaskGroup[] {
   const running: SessionListItem[] = []
   const buckets = new Map<SidebarTaskGroupId, SessionListItem[]>()
@@ -130,14 +143,14 @@ export function buildSidebarTaskGroups(
       running.push(session)
       continue
     }
-    const groupId = resolveTimeGroupId(getSessionModifiedTime(session), now)
+    const groupId = resolveTimeGroupId(effectiveModifiedTime(session, frozenModifiedAtById), now)
     const items = buckets.get(groupId)
     if (items) items.push(session)
     else buckets.set(groupId, [session])
   }
 
   const newestFirst = (a: SessionListItem, b: SessionListItem) =>
-    getSessionModifiedTime(b) - getSessionModifiedTime(a)
+    effectiveModifiedTime(b, frozenModifiedAtById) - effectiveModifiedTime(a, frozenModifiedAtById)
 
   const groups: SidebarTaskGroup[] = []
   if (running.length > 0) {

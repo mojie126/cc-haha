@@ -43,12 +43,14 @@ export async function createIdlePowerHost(options: {
     execute: (action, beforeExecute) => (options.executeAction ?? executePowerAction)(action, { beforeExecute }),
     save: value => writeIdlePowerPreferences(options.app, value),
     onChange: options.onChange,
-    notifyCountdown: (countdown, seconds, cancel) => sendDesktopNotification({
-      NotificationClass: options.NotificationClass,
-      options: { title: 'cc-haha', body: translate('power.countdown', { action: actionName(countdown.action), seconds }) },
-      onAction: () => cancel(),
-      onLifecycle: event => { if (event === 'failed') cancel('unavailable') },
-    }),
+    notifyCountdown: (countdown, seconds, cancel) => {
+      // 通知失败不阻塞派发（系统关闭 Toast 通知时倒计时照常推进），仅取消点击仍生效
+      sendDesktopNotification({
+        NotificationClass: options.NotificationClass,
+        options: { title: 'cc-haha', body: translate('power.countdown', { action: actionName(countdown.action), seconds }) },
+        onAction: () => cancel(),
+      })
+    },
     notifyNotice: notice => {
       sendDesktopNotification({ NotificationClass: options.NotificationClass,
         options: { title: 'cc-haha', body: translate(`power.cancelled.${notice}`) }, onAction: () => {} })

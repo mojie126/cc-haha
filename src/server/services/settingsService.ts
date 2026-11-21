@@ -25,6 +25,7 @@ import { addFileGlobRuleToGitignore } from '../../utils/git/gitignore.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { getProcessEnvWithTerminalShellEnvironment } from '../../utils/terminalShellEnvironment.js'
+import { permissionRuleValueFromString } from '../../utils/permissions/permissionRuleParser.js'
 import type { ModelMapping } from '../types/provider.js'
 
 export const VALID_PERMISSION_MODES = [
@@ -307,6 +308,29 @@ export class SettingsService {
     }
     if (Object.hasOwn(settings, 'respectGitignore') && typeof settings.respectGitignore !== 'boolean') {
       throw ApiError.badRequest('respectGitignore must be a boolean')
+    }
+    if (Object.hasOwn(settings, 'permissions')) {
+      const value = settings.permissions
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw ApiError.badRequest('permissions must be an object')
+      }
+      // allow/deny/ask 必须是字符串数组且逐条可解析：一条坏规则会让整个
+      // permissions 数组在 CLI 启动时校验失败，宁可在这里拒绝写入
+      for (const key of ['allow', 'deny', 'ask'] as const) {
+        const rules = (value as Record<string, unknown>)[key]
+        if (rules === undefined) continue
+        if (!Array.isArray(rules) || rules.some(rule => typeof rule !== 'string')) {
+          throw ApiError.badRequest(`permissions.${key} must be an array of strings`)
+        }
+        for (const rule of rules as string[]) {
+          // 空白串进数组没有意义且会污染规则列表；解析器对畸形括号会兜底成
+          // 工具名，这里只挡「根本不是规则」的输入
+          if (rule.trim() === '') {
+            throw ApiError.badRequest(`permissions.${key} contains an empty rule`)
+          }
+          permissionRuleValueFromString(rule)
+        }
+      }
     }
     const filePath = this.getUserSettingsPath()
     await this.withWriteLock(filePath, async () => {

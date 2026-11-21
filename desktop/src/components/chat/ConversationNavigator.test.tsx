@@ -291,8 +291,42 @@ describe('ConversationNavigator', () => {
 
     fireEvent.click(marker)
     expect(onNavigate).toHaveBeenCalledWith(item)
+    // 导航即离开预览：点击后弹窗立刻收起，焦点仍留在按钮上也不残留
+    expect(screen.queryByTestId('conversation-navigation-preview')).toBeNull()
+    expect(markerVisualWidth(marker)).toBe(14)
 
     fireEvent.blur(marker)
     expect(markerVisualWidth(marker)).toBe(14)
+  })
+
+  it('closes the preview when the pointer leaves even if the marker keeps focus', () => {
+    const item = {
+      id: 'user-1',
+      renderItemKey: 'user-1',
+      renderIndex: 0,
+      turnNumber: 1,
+      preview: 'Inspect the virtual transcript',
+      attachmentCount: 0,
+    }
+    render(
+      <ConversationNavigator
+        mode="full"
+        items={[item]}
+        activeItemId="user-1"
+        onNavigate={vi.fn()}
+      />,
+    )
+
+    const marker = screen.getByRole('button', { name: /Turn 1 of 1/ })
+    fireEvent.focus(marker)
+    expect(screen.getByTestId('conversation-navigation-preview')).toBeTruthy()
+
+    // 点击后焦点留在按钮上（浏览器默认聚焦），此前鼠标移开因「焦点还在」
+    // 被挡住不关，预览残留；现在移开无条件关闭
+    fireEvent.click(marker)
+    fireEvent.mouseEnter(marker)
+    expect(screen.getByTestId('conversation-navigation-preview')).toBeTruthy()
+    fireEvent.mouseLeave(marker)
+    expect(screen.queryByTestId('conversation-navigation-preview')).toBeNull()
   })
 })

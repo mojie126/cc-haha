@@ -867,6 +867,8 @@ async function classifyYoloActionXml(
             stage: 'fast',
             stage1RequestId,
             stage1MsgId,
+            // 解析失败按 unavailable 处理，交互会话回退手动批准
+            unavailable: true,
           }
         }
         // stage1Block === true
@@ -944,6 +946,9 @@ async function classifyYoloActionXml(
         stage2DurationMs,
         stage2RequestId,
         stage2MsgId,
+        // 两阶段都解析失败多半是模型输出形态漂移（偶发），按 unavailable
+        // 处理让交互会话回退手动批准
+        unavailable: true,
       }
     }
 
@@ -1231,6 +1236,22 @@ export async function classifyYoloAction(
         level: 'warn',
       })
       logAutoModeOutcome('parse_failure', model, { failureKind: 'no_tool_use' })
+      // API 返回 200 但没有 tool_use 块，常见于网关或第三方供应商不支持
+      // tool_choice 强制工具调用：把原始响应写入会话级转储便于定位供应商问题
+      const errorDumpPath = (await dumpErrorPrompts(
+        systemPrompt,
+        userPrompt,
+        `no tool use block: stop_reason=${result.stop_reason ?? 'unknown'}, content_types=[${result.content.map(block => block.type).join(',')}]`,
+        {
+          mainLoopTokens,
+          classifierChars,
+          classifierTokensEst,
+          transcriptEntries: transcriptEntries.length,
+          messages: messages.length,
+          action: actionCompact,
+          model,
+        },
+      )) ?? undefined
       return {
         shouldBlock: true,
         reason: 'Classifier returned no tool use block - blocking for safety',
@@ -1240,6 +1261,11 @@ export async function classifyYoloAction(
         promptLengths,
         stage1RequestId,
         stage1MsgId,
+        errorDumpPath,
+        // 200 但没有工具块多为供应商偶发不遵循 tool_choice（网关转换、上游
+        // 忙碌时降级），不是确定性的安全结论：标记 unavailable 让调用方在
+        // 交互会话回退手动批准，而不是把偶发故障落成一次硬拦截
+        unavailable: true,
       }
     }
 
@@ -1264,6 +1290,9 @@ export async function classifyYoloAction(
         promptLengths,
         stage1RequestId,
         stage1MsgId,
+        // schema 不合同样是模型输出的偶发问题（漏字段、截断），按 unavailable
+        // 处理让交互会话回退手动批准，不落成硬拦截
+        unavailable: true,
       }
     }
 

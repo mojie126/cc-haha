@@ -1464,6 +1464,27 @@ describe('ChatInput file mentions', () => {
       expect(screen.getByRole('button', { name: /Guide now/i })).toHaveProperty('disabled', false)
     })
 
+    it('recalls a queued message back into the composer with attachments and removes the row', async () => {
+      useChatStore.getState().queueUserMessage(sessionId, {
+        content: 'queued to be recalled',
+        displayContent: 'queued to be recalled',
+        attachments: [{ type: 'image', name: 'shot.png', mimeType: 'image/png', data: 'data:image/png;base64,xxx' }],
+      })
+
+      render(<ChatInput compact />)
+
+      expect(screen.getByTestId('pending-user-message')).toBeInTheDocument()
+      expect(getComposerText()).toBe('')
+
+      fireEvent.click(screen.getByRole('button', { name: /Cancel queue and restore to the composer/i }))
+
+      // 排队行移除，文本与附件回到输入框
+      await waitFor(() => expect(screen.queryByTestId('pending-user-message')).not.toBeInTheDocument())
+      expect(useChatStore.getState().sessions[sessionId]?.queuedUserMessages ?? []).toEqual([])
+      await waitFor(() => expect(getComposerText()).toBe('queued to be recalled'))
+      expect(screen.getByAltText('shot.png')).toBeInTheDocument()
+    })
+
     it('unlocks once the question is answered or stopped', () => {
       setQuestionPending(true)
 

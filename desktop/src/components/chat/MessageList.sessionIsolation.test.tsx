@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom'
 import { MessageList } from '@/components/chat/MessageList'
 import { sessionsApi } from '@/api/sessions'
 import { mapHistoryMessagesToUiMessages, useChatStore, type PerSessionState } from '@/stores/chatStore'
@@ -150,6 +151,53 @@ describe('MessageList session isolation', () => {
       expect([...useChatStore.getState().unreadCompletions.keys()]).toEqual(['session-a', 'session-b'])
       act(() => reportIntersection(true))
       expect([...useChatStore.getState().unreadCompletions.keys()]).toEqual(['session-b'])
+      view.unmount()
+    } finally {
+      useChatStore.setState({ unreadCompletions: previousUnread })
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('acknowledges a folded background wake reply so the badge clears without expanding it', () => {
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    const observe = vi.fn()
+    let reportIntersection: (visible: boolean) => void = () => { throw new Error('No observer') }
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: (entries: Partial<IntersectionObserverEntry>[]) => void) {
+        reportIntersection = visible => callback([{
+          isIntersecting: visible,
+          intersectionRect: new DOMRect(0, 0, 100, visible ? 30 : 0),
+        }])
+      }
+      observe = observe
+      disconnect() {}
+      takeRecords() { return [] }
+    })
+    const previousUnread = useChatStore.getState().unreadCompletions
+    try {
+      // 后台任务唤醒回合：system 消息（backgroundContinueTaskIds）之后、
+      // 下一个用户提示词之前的助手回答被折叠，消息体不渲染
+      const completed = { id: 'wake-reply', type: 'assistant_text', content: 'Background reply', timestamp: 2 } as const
+      const messages: UIMessage[] = [
+        { id: 'sys-continue', type: 'system', content: '', backgroundContinueTaskIds: ['task-1'], timestamp: 1 },
+        completed,
+      ]
+      const marker = createUnreadCompletion(messages, completed)
+      useChatStore.setState({
+        sessions: { 'session-a': makeSessionState(messages) },
+        unreadCompletions: new Map([['session-a', marker]]),
+      })
+      const view = render(<MessageList sessionId="session-a" visible />)
+      // 折叠行存在，消息体（data-chat-selectable-message）不在 DOM 里
+      expect(screen.getByText('Automatic reply after a background task ended')).toBeInTheDocument()
+      expect(document.querySelector('[data-chat-selectable-message="assistant"]')).toBeNull()
+      // 观察器仍然建立，锚在行级元素上
+      expect(observe).toHaveBeenCalled()
+      expect(observe.mock.lastCall?.[0]).not.toBeNull()
+      focused.mockReturnValue(true)
+      act(() => reportIntersection(true))
+      // 折叠态下进入视口即清未读，角标随之消失
+      expect([...useChatStore.getState().unreadCompletions.keys()]).toEqual([])
       view.unmount()
     } finally {
       useChatStore.setState({ unreadCompletions: previousUnread })

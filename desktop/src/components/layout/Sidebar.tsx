@@ -292,9 +292,38 @@ export function Sidebar({
   // Open archive tabs keep their metadata in the store, outside the default list.
   const filteredSessions = useMemo(() => sessions.filter((session) => !session.archived), [sessions])
 
+  const runningSessionIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const tab of tabs) {
+      if (tab.type === 'session' && tab.status === 'running') ids.add(tab.sessionId)
+    }
+    for (const sessionId of runningChatSessionIds) ids.add(sessionId)
+    return ids
+  }, [runningChatSessionIds, tabs])
+  // 停在权限请求上的会话在 `runningSessionIds` 里也算「没结束」，但它不是在
+  // 干活而是在等人。两个视图都要把这两种状态分开显示。
+  // 判定看挂起的请求记录而不是 `chatState`：`status` / `session_state` 消息会在
+  // 卡片还开着的时候把 chatState 改掉，按它判定会在有卡的会话上熄灯。tab 栏与
+  // 这里共用同一个 `sessionNeedsAttention`，不要各写各的。
+  const attentionSessionIds = useMemo(() => new Set(attentionSessionIdList), [attentionSessionIdList])
+
+  // 进行中的会话排序时冻结 modifiedAt，避免实时活动触发重排；显示仍用实时 session 数据。
+  // 会话结束（退出 running）后不再冻结，按最新 modifiedAt 参与排序。
+  const frozenRunningModifiedAtRef = useRef<Map<string, string>>(new Map())
+  const frozenSortModifiedAt = useMemo(() => {
+    const prev = frozenRunningModifiedAtRef.current
+    const next = new Map<string, string>()
+    for (const session of filteredSessions) {
+      if (!runningSessionIds.has(session.id)) continue
+      next.set(session.id, prev.get(session.id) ?? session.modifiedAt)
+    }
+    frozenRunningModifiedAtRef.current = next
+    return next
+  }, [filteredSessions, runningSessionIds])
+
   const projectGroups = useMemo(
-    () => groupByProject(filteredSessions, projectSortBy, resolveProjectDisplayName, projectArchivedTotals),
-    [filteredSessions, projectDisplayNameRevision, projectSortBy, projectArchivedTotals],
+    () => groupByProject(filteredSessions, projectSortBy, resolveProjectDisplayName, projectArchivedTotals, frozenSortModifiedAt),
+    [filteredSessions, frozenSortModifiedAt, projectArchivedTotals, projectDisplayNameRevision, projectSortBy],
   )
   // A project the user opened is kept even after its last session is deleted:
   // the folder is still a place they work, and "new session here" should not
@@ -385,20 +414,6 @@ export function Sidebar({
     () => new Map(sessions.map((session) => [session.id, session])),
     [sessions],
   )
-  const runningSessionIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const tab of tabs) {
-      if (tab.type === 'session' && tab.status === 'running') ids.add(tab.sessionId)
-    }
-    for (const sessionId of runningChatSessionIds) ids.add(sessionId)
-    return ids
-  }, [runningChatSessionIds, tabs])
-  // 停在权限请求上的会话在 `runningSessionIds` 里也算「没结束」，但它不是在
-  // 干活而是在等人。两个视图都要把这两种状态分开显示。
-  // 判定看挂起的请求记录而不是 `chatState`：`status` / `session_state` 消息会在
-  // 卡片还开着的时候把 chatState 改掉，按它判定会在有卡的会话上熄灯。tab 栏与
-  // 这里共用同一个 `sessionNeedsAttention`，不要各写各的。
-  const attentionSessionIds = useMemo(() => new Set(attentionSessionIdList), [attentionSessionIdList])
   // Row times ("10m ago") and the task view's day buckets read the clock. They
   // used to refresh as a side effect of re-rendering on every streamed token;
   // a minute tick keeps them current without that.
@@ -415,8 +430,8 @@ export function Sidebar({
       : filteredSessions.filter((session) => !hiddenProjectKeys.has(getSessionProjectKey(session)))
     // `clockMinute` only schedules the regrouping; the buckets read the clock now.
     void clockMinute
-    return buildSidebarTaskGroups(visibleSessions, runningSessionIds, Date.now())
-  }, [clockMinute, filteredSessions, hiddenProjectKeys, isTaskView, runningSessionIds])
+    return buildSidebarTaskGroups(visibleSessions, runningSessionIds, Date.now(), frozenSortModifiedAt)
+  }, [clockMinute, filteredSessions, frozenSortModifiedAt, hiddenProjectKeys, isTaskView, runningSessionIds])
   const workspaceLabelFor = useCallback(
     (session: SessionListItem) => getSessionWorkspaceLabel(session, resolveProjectDisplayName),
     // 改过的项目名要跟着变；与 projectGroups 同一个 revision 依赖。
@@ -2185,6 +2200,7 @@ function groupByProject(
   sortBy: SidebarProjectSortBy,
   displayNameForProject: (projectKey: string) => string | null,
   archivedTotals: Record<string, number>,
+  frozenModifiedAtById?: ReadonlyMap<string, string>,
 ): ProjectGroup[] {
   const groupsByKey = new Map<string, SessionListItem[]>()
   for (const session of sessions) {
@@ -2198,7 +2214,7 @@ function groupByProject(
   }
 
   const groups = [...groupsByKey.entries()].map(([key, items]) => {
-    const sortedSessions = [...items].sort((a, b) => compareSessionsByTimestamp(a, b, sortBy))
+    const sortedSessions = [...items].sort((a, b) => compareSessionsByTimestamp(a, b, sortBy, frozenModifiedAtById))
     const newest = sortedSessions[0]
     const projectRoot = newest?.projectRoot || newest?.workDir || key
     return {
@@ -2288,11 +2304,23 @@ function compareSessionsByTimestamp(
   a: SessionListItem | undefined,
   b: SessionListItem | undefined,
   sortBy: SidebarProjectSortBy,
+  frozenModifiedAtById?: ReadonlyMap<string, string>,
 ): number {
-  return getSessionTimestamp(b, sortBy) - getSessionTimestamp(a, sortBy)
+  return getSessionTimestamp(b, sortBy, frozenModifiedAtById) - getSessionTimestamp(a, sortBy, frozenModifiedAtById)
 }
 
-function getSessionTimestamp(session: SessionListItem | undefined, sortBy: SidebarProjectSortBy): number {
+function getSessionTimestamp(
+  session: SessionListItem | undefined,
+  sortBy: SidebarProjectSortBy,
+  frozenModifiedAtById?: ReadonlyMap<string, string>,
+): number {
+  if (sortBy === 'updatedAt' && session) {
+    const frozen = frozenModifiedAtById?.get(session.id)
+    if (frozen != null) {
+      const ts = new Date(frozen).getTime()
+      return Number.isFinite(ts) ? ts : 0
+    }
+  }
   const value = sortBy === 'createdAt' ? session?.createdAt : session?.modifiedAt
   const timestamp = new Date(value ?? 0).getTime()
   return Number.isFinite(timestamp) ? timestamp : 0

@@ -179,12 +179,39 @@ function Invoke-Bun {
   }
 }
 
+function Get-LockfileHash {
+  param([string]$Directory)
+  # 单独捕获输出，不走 Invoke-Bun（那里把输出直接打到 host，拿不到返回值）
+  Push-Location $Directory
+  try {
+    $output = & bun pm hash
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($output)) { return $null }
+    return ([string]$output).Trim()
+  } finally {
+    Pop-Location
+  }
+}
+
+# 依赖更新后清理旧版本缓存：bun install 只保证 node_modules 与 lockfile 一致，
+# 被升级淘汰的旧版本 tarball 仍留在 bun 全局缓存里越积越多。安装前后各取一次
+# lockfile 哈希，变化（本轮发生了依赖更新）则按年龄清理陈旧缓存条目；不整清
+# （cache rm 会连正在使用的包一起删掉，拖慢下一次安装）。清理失败只告警。
 function Ensure-Dependencies {
   param([string]$Directory)
   $modules = Join-Path $Directory 'node_modules'
   if (-not $Install -and (Test-Path -LiteralPath $modules)) { return }
-  Write-Step "Installing dependencies in $(Split-Path -Leaf $Directory)..."
+  $label = Split-Path -Leaf $Directory
+  $hashBefore = Get-LockfileHash -Directory $Directory
+  Write-Step "Installing dependencies in $label..."
   Invoke-Bun -WorkingDirectory $Directory -Arguments @('install')
+  $hashAfter = Get-LockfileHash -Directory $Directory
+  if ($hashBefore -and $hashAfter -and $hashBefore -ne $hashAfter) {
+    Write-Step "Dependency update detected in $label (lockfile hash changed), pruning stale cache entries..."
+    & bun pm cache prune --max-age 7
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "[build-desktop] bun pm cache prune failed (exit $LASTEXITCODE), continuing."
+    }
+  }
 }
 
 Assert-Command 'bun'

@@ -139,6 +139,13 @@ describe('scanComposerMarkdownLine', () => {
     expect(scanned[2]!.map((token) => token.kind)).toEqual(['fence'])
     expect(scanned[3]).toEqual([{ kind: 'marker', start: 0, end: 3 }])
   })
+
+  it('treats triple backticks closed on the same line as inline code, not a fence', () => {
+    const scanned = scanComposerMarkdown(['报错如下', '```模型 qwen 不可用```', '下一行'])
+    // 同一行开闭的三反引号是行内代码，既不开启围栏，也不影响后续行
+    expect(scanned[1]!.map((token) => token.kind)).toEqual(['marker', 'marker', 'code'])
+    expect(scanned[2]).toEqual([])
+  })
 })
 
 describe('buildComposerMarkdownDecorations', () => {

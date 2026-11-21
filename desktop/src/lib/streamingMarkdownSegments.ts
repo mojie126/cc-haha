@@ -16,6 +16,8 @@
  * shows one paragraph as two while the block streams, which next to a
  * paragraph margin is invisible, and the finished block is rendered whole again.
  */
+
+import { startsMarkdownFence } from './markdownFence'
 export type StreamingMarkdownSegments = {
   settled: readonly string[]
   live: string
@@ -110,7 +112,7 @@ export function splitStreamingMarkdown(
       const marker = fenceMatch[1]!
       const suffix = line.slice(fenceMatch[0].length)
       if (fence === null) {
-        if (marker[0] === '~' || !suffix.includes('`')) fence = marker
+        if (startsMarkdownFence(marker, suffix)) fence = marker
       } else if (fence[0] === marker[0] && marker.length >= fence.length && suffix.trim() === '') {
         fence = null
       }

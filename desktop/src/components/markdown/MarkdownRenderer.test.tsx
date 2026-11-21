@@ -255,6 +255,16 @@ describe('MarkdownRenderer', () => {
     expect(screen.getByTestId('code-viewer')).toHaveTextContent('$$\\int_0^1 x^2 dx$$')
   })
 
+  it('keeps math rendering after triple backticks closed on one line', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'```模型不可用```\n\n后面 $a^2$'} />,
+    )
+
+    // 同一行开闭的三反引号是行内代码，不能把后续数学一起关进围栏
+    expect(container.querySelector('code')?.textContent).toBe('模型不可用')
+    expect(container.querySelector('.katex')).toBeInTheDocument()
+  })
+
   it('wraps markdown tables for horizontal overflow handling', () => {
     const { container } = render(
       <MarkdownRenderer

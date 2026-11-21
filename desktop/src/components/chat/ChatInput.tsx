@@ -311,6 +311,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     updateQueuedUserMessage,
     removeQueuedUserMessage,
     sendQueuedUserMessage,
+    queueComposerPrefill,
     setPreparingTurn,
     dismissPromptSuggestion,
   } = useChatStore(useShallow((s) => ({
@@ -322,6 +323,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     updateQueuedUserMessage: s.updateQueuedUserMessage,
     removeQueuedUserMessage: s.removeQueuedUserMessage,
     sendQueuedUserMessage: s.sendQueuedUserMessage,
+    queueComposerPrefill: s.queueComposerPrefill,
     setPreparingTurn: s.setPreparingTurn,
     dismissPromptSuggestion: s.dismissPromptSuggestion,
   })))
@@ -1576,6 +1578,23 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     setEditingQueuedMessageAttachments([])
   }
 
+  // 取消排队：文本与附件回填到输入框重新编辑（用户显式动作，与草稿恢复
+  // 的「不回填已发送内容」边界无关），排队行移除
+  const recallQueuedMessage = (sessionId: string, message: QueuedUserMessage) => {
+    if (editingQueuedMessageId === message.id) cancelQueuedMessageEdit()
+    queueComposerPrefill(sessionId, {
+      text: message.displayContent,
+      // AttachmentRef 的 name 可缺省，UIAttachment 必填，缺名时以路径或类型兜底
+      attachments: (message.displayAttachments ?? message.attachments ?? []).map(
+        attachment => ({ ...attachment, name: attachment.name || attachment.path || attachment.type }),
+      ),
+      sessionReferences: message.sessionReferences,
+      mode: 'replace',
+    })
+    removeQueuedUserMessage(sessionId, message.id)
+    requestAnimationFrame(() => composerRef.current?.focus())
+  }
+
   const insertSlashCommand = () => {
     if (isMemberSession) return
     const cursorPos = composerRef.current?.getSelectionOffsets().start ?? input.length
@@ -1925,6 +1944,7 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   onGuide={() => sendQueuedUserMessage(activeTabId, message.id)}
                   guideDisabled={questionPending}
                   onDelete={() => removeQueuedUserMessage(activeTabId, message.id)}
+                  onRecall={() => recallQueuedMessage(activeTabId, message)}
                 />
               ))}
             </div>

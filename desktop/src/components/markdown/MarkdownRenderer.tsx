@@ -23,6 +23,7 @@ import {
 import { useFileLinkVerification } from '@/hooks/useFileLinkVerification'
 import { classifyPreviewLink, type PreviewLinkTarget } from '@/lib/previewLinkRouter'
 import { isSafeMarkdownImageSource, normalizeMarkdownImageDestination } from '@/lib/markdownImages'
+import { startsMarkdownFence } from '@/lib/markdownFence'
 import { CodeViewer } from '../chat/CodeViewer'
 import { MermaidRenderer } from '../chat/MermaidRenderer'
 import { copyTextToClipboard } from '@/lib/clipboard'
@@ -84,7 +85,7 @@ type MarkdownPart = HtmlPart | CodePart
 const MERMAID_LANGUAGE = 'mermaid'
 const PLAINTEXT_LANGUAGES = new Set(['', 'text', 'plaintext', 'plain'])
 const MERMAID_DIAGRAM_START = /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|requirementDiagram|quadrantChart|xychart-beta|sankey-beta|block-beta|packet-beta|architecture|kanban)\b/i
-const CODE_FENCE_START = /^ {0,3}(`{3,}|~{3,})/
+const CODE_FENCE_START = /^ {0,3}(`{3,}|~{3,})([^\n]*)/
 const MATH_RENDER_CACHE_LIMIT = 200
 const mathRenderCache = new Map<string, string>()
 const MARKDOWN_SANITIZE_CONFIG = {
@@ -301,7 +302,7 @@ function extractMath(content: string): { markdown: string; mathBlocks: MathBlock
 
   for (const line of lines) {
     const fenceMatch = CODE_FENCE_START.exec(line)
-    if (fenceMatch) {
+    if (fenceMatch && startsMarkdownFence(fenceMatch[1]!, fenceMatch[2] ?? '')) {
       const marker = fenceMatch[1]!.charAt(0)
       if (!inFence) {
         flushPendingMarkdown()

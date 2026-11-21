@@ -246,4 +246,20 @@ describe('getEffectiveModelContextWindow with a persisted provider limit', () =>
 
     expect(contextModule.getEffectiveModelContextWindow('custom-200k')).toBe(200_000)
   })
+
+  test('an explicit [1m] suffix ignores a provider-reported limit below 1M', () => {
+    // 模拟中转网关在 prompt-too-long 报错里给出一个远小于 1M 的数字（例如
+    // 剩余额度或输入+输出反推值），被 parsePromptTooLongTokenCounts 当作
+    // limitTokens 学到，写入持久化缓存。模型无显式配置，仅带 [1m] 后缀
+    const model = 'deepseek-v4.1-flash[1m]'
+    expect(contextModule.getEffectiveModelContextWindow(model)).toBe(1_000_000)
+
+    contextModule.rememberProviderContextLimit(model, 57_705)
+    // 显式 [1m] 后缀优先于 provider 报告的小于 1M 的上限
+    expect(contextModule.getEffectiveModelContextWindow(model)).toBe(1_000_000)
+
+    // 持久化之后的新进程同样不被压制
+    contextModule.resetProviderReportedContextLimitsForTesting({ keepPersisted: true })
+    expect(contextModule.getEffectiveModelContextWindow(model)).toBe(1_000_000)
+  })
 })

@@ -88,7 +88,7 @@ describe('native idle-power integration with mocked OS and notification boundary
     expect(restarted.getState().lastAction?.result).toBe('accepted')
     expect(f.dispatch).toHaveBeenCalledTimes(1)
   })
-  it('cancels a failed notification and native keyboard event, and stops on renderer replacement', async () => {
+  it('keeps the countdown running when the notification fails, and stops on renderer replacement', async () => {
     const f = await fixture()
     const contents = new EventEmitter()
     installIdlePowerLifecycle(contents as unknown as WebContents, () => f.service)
@@ -96,8 +96,11 @@ describe('native idle-power integration with mocked OS and notification boundary
     await advanceTime(0)
     f.complete()
     await advanceTime(6000)
+    // 系统通知被禁用等场景触发 failed 事件，倒计时不被取消，到期照常派发
     f.notifications[0]!.emit('failed')
-    expect(f.service.getState().notice).toBe('unavailable')
+    await advanceTime(31_000)
+    expect(f.service.getState().notice).not.toBe('unavailable')
+    expect(f.dispatch).toHaveBeenCalledTimes(1)
     f.complete()
     await advanceTime(6000)
     contents.emit('before-input-event', {}, { type: 'keyDown' })
@@ -106,6 +109,6 @@ describe('native idle-power integration with mocked OS and notification boundary
     await advanceTime(6000)
     contents.emit('render-process-gone')
     await advanceTime(60_000)
-    expect(f.dispatch).not.toHaveBeenCalled()
+    expect(f.dispatch).toHaveBeenCalledTimes(1)
   })
 })

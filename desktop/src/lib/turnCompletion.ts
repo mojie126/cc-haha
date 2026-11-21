@@ -32,6 +32,15 @@ function isTurnStart(message: UIMessage): boolean {
 }
 
 /**
+ * 后台任务结果唤醒的回合没有用户提示词开头（system 消息带
+ * backgroundContinueTaskIds 起轮），也是一轮独立工作：不开新轮的话这轮的
+ * 回复会被并进上一轮，收尾回复拿不到完成时间戳。
+ */
+function isBackgroundWakeTurnStart(message: UIMessage): boolean {
+  return message.type === 'system' && message.backgroundContinueTaskIds !== undefined
+}
+
+/**
  * 这两种是挂在回合尾巴上的附加卡片，不是回合本身的进展：任务小结由下一次
  * 发送时补写，后台任务是脱离主回合跑的。它们跟在最终回复后面不妨碍这一轮
  * 已经答完。
@@ -63,6 +72,18 @@ export function buildTurnCompletionByMessageId(
       current = {
         startedAt,
         completedAt: startedAt,
+        lastAssistantTextId: null,
+        hasWorkAfterLastReply: false,
+      }
+      turns.push(current)
+      continue
+    }
+    // 后台唤醒回合：system 消息本身不是内容，回填时刻等于回复时间戳，
+    // 没有起点也就没有耗时的语义；completedAt 留给后续消息推进。
+    if (isBackgroundWakeTurnStart(message)) {
+      current = {
+        startedAt: Number.NaN,
+        completedAt: Number.NaN,
         lastAssistantTextId: null,
         hasWorkAfterLastReply: false,
       }

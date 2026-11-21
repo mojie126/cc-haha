@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import css from './globals.css?raw'
 
+// Windows checkout（autocrlf）会把工作区文件变成 CRLF，块头匹配按 LF 处理，
+// 读取前统一换行符，保证测试在任意 checkout 配置下可运行
+const stylesheet = css.replace(/\r\n/g, '\n')
+
 /**
  * Contrast guard for the status palette.
  *
@@ -47,16 +51,16 @@ function blockBody(selector: string): string {
   const bodies: string[] = []
   let cursor = 0
   for (;;) {
-    const start = css.indexOf(`${selector} {`, cursor)
+    const start = stylesheet.indexOf(`${selector} {`, cursor)
     if (start < 0) break
-    const open = css.indexOf('{', start)
+    const open = stylesheet.indexOf('{', start)
     let depth = 0
-    for (let i = open; i < css.length; i += 1) {
-      if (css[i] === '{') depth += 1
-      if (css[i] === '}') {
+    for (let i = open; i < stylesheet.length; i += 1) {
+      if (stylesheet[i] === '{') depth += 1
+      if (stylesheet[i] === '}') {
         depth -= 1
         if (depth === 0) {
-          bodies.push(css.slice(open + 1, i))
+          bodies.push(stylesheet.slice(open + 1, i))
           cursor = i
           break
         }
@@ -273,6 +277,30 @@ describe('control boundary contrast', () => {
           Number(contrast(border, fill).toFixed(2)),
           `${theme}: --color-border-strong on ${fillToken}`,
         ).toBeGreaterThanOrEqual(AA_CONTROL_BOUNDARY)
+      }
+    })
+  }
+})
+
+describe('inline code and fence ground contrast', () => {
+  // 代码底色原来是 surface 梯度，深色主题下与用户气泡只差 1.04–1.08，
+  // 肉眼不可辨。这两个 token 按主题定值，必须始终与气泡底色拉开距离。
+  const VISIBLE_GROUND = 1.25
+
+  for (const [theme, selectors] of Object.entries(THEME_BLOCKS)) {
+    it(`keeps code and fence grounds visible on the user bubble in ${theme}`, () => {
+      const bubble = parseColor(resolve('--color-surface-user-msg', selectors))
+      const text = parseColor(resolve('--color-text-primary', selectors))
+      for (const groundToken of ['--color-surface-code', '--color-surface-fence'] as const) {
+        const fill = parseColor(resolve(groundToken, selectors))
+        expect(
+          Number(contrast(fill, bubble).toFixed(2)),
+          `${theme}: ${groundToken} vs user bubble`,
+        ).toBeGreaterThanOrEqual(VISIBLE_GROUND)
+        expect(
+          Number(contrast(text, fill).toFixed(2)),
+          `${theme}: --color-text-primary on ${groundToken}`,
+        ).toBeGreaterThanOrEqual(AA_SMALL_TEXT)
       }
     })
   }

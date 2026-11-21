@@ -247,6 +247,7 @@ export type SettingsTab =
   | 'providers'
   | 'activity'
   | 'general'
+  | 'permissions'
   | 'voice'
   | 'h5Access'
   | 'adapters'

@@ -198,6 +198,8 @@ export type UserSettings = {
   maxOutputTokensEscalationMode?: 'auto' | 'enabled' | 'disabled'
   /** Non-persisted read hint naming General settings hydrated from cc-haha/settings.json fallback. */
   ccHahaFallbackKeys?: Array<'effort' | 'language'>
+  /** 权限规则对象（allow/deny/ask 数组与 defaultMode 等扩展键），来自 settings.json 原样透传 */
+  permissions?: Record<string, unknown>
   [key: string]: unknown
 }
 

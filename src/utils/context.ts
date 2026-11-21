@@ -235,6 +235,13 @@ export function getEffectiveModelContextWindow(
     readProviderEnvForModel(model, 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'),
     isModelWindowKnownForAutoCompact(model),
   )
+  // An explicit [1m] suffix is the user's own declaration of the window: a
+  // provider-reported limit below 1M is the relay's transient answer (a
+  // remaining-budget figure or an input+output back-calculation), not the
+  // model's real cap, and must not pin the session to it.
+  if (has1mContext(model) && window === 1_000_000) {
+    return window
+  }
   const reported = getProviderReportedContextLimit(model)
   return reported === undefined ? window : Math.min(window, reported)
 }

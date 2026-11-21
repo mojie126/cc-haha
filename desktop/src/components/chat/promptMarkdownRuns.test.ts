@@ -45,6 +45,15 @@ describe('promptMarkdownRuns', () => {
     expect(runs).toContainEqual({ type: 'text', text: 'const x = 1', classes: ['composer-md-fence'], hidden: false })
   })
 
+  it('keeps triple backticks closed on one line as inline code', () => {
+    const text = '报错如下\n```模型 qwen 不可用```\n下一行'
+    const runs = promptMarkdownRuns(text)
+    // 三个反引号按行内代码折叠，内容与后续行都不进入围栏样式
+    expect(runs.flatMap((run) => run.type === 'text' && run.hidden ? [run.text] : [])).toEqual(['```', '```'])
+    expect(runs).toContainEqual({ type: 'text', text: '模型 qwen 不可用', classes: ['composer-md-code'], hidden: false })
+    expect(visibleText(text)).toBe('报错如下\n模型 qwen 不可用\n下一行')
+  })
+
   it('keeps a bare URL a single clickable run', () => {
     const runs = promptMarkdownRuns('看 http://localhost:3000 这里')
     expect(runs).toEqual([
