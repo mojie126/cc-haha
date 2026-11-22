@@ -85,14 +85,20 @@ function request(sessionId: string, path: string): CacheEntry {
 /**
  * The stats already known for these paths, or `undefined` when any is not.
  * Lets a remounted message render its final state on the first paint.
+ *
+ * `allowStale` answers from the last settled value even past the TTL, so a
+ * switch back to a tab does not hide output cards while the refresh runs.
  */
 export function peekWorkspaceFileStats(
   sessionId: string,
   paths: string[],
+  options: { allowStale?: boolean } = {},
 ): Map<string, WorkspaceFileStat | null> | undefined {
   const known = new Map<string, WorkspaceFileStat | null>()
   for (const path of paths) {
-    const entry = freshEntry(sessionId, path)
+    const entry = options.allowStale
+      ? cache.get(cacheKey(sessionId, path))
+      : freshEntry(sessionId, path)
     if (!entry || entry.value === undefined) return undefined
     known.set(path, entry.value)
   }

@@ -274,7 +274,7 @@ export function DiagnosticsSettings() {
           not fit a 22px KPI number in a fifth of the pane. */}
       <SettingsGroup className="mt-6">
         <SettingsBlock>
-          <dl className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-x-4 gap-y-3 py-0.5">
+          <dl className="grid grid-cols-[repeat(auto-fill,minmax(156px,1fr))] gap-x-6 gap-y-3 py-0.5">
             <Metric label={t('settings.diagnostics.totalSize')} value={status ? formatBytes(status.totalBytes) : '-'} />
             <Metric label={t('settings.diagnostics.completeEvents')} value={status ? t('settings.diagnostics.completeEventsValue', { count: status.eventCount }) : '-'} />
             <Metric label={t('settings.diagnostics.visibleEvents')} value={t('settings.diagnostics.visibleEventsValue', { count: events.length })} />
@@ -497,7 +497,7 @@ function LocalIndexPanel({
       <SettingsGroup>
         {status ? (
           <SettingsBlock>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-x-4 gap-y-3 py-0.5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(156px,1fr))] gap-x-6 gap-y-3 py-0.5">
               <IndexMetric
                 label={t('settings.diagnostics.localIndex.state')}
                 value={(
@@ -553,7 +553,7 @@ function IndexMetric({ label, value, mono = false }: { label: string; value: Rea
     <div className="min-w-0">
       <div className="text-xs text-[var(--color-text-tertiary)]">{label}</div>
       <div
-        className={`mt-0.5 break-words font-medium tabular-nums text-[var(--color-text-primary)] ${
+        className={`mt-0.5 whitespace-nowrap font-medium tabular-nums text-[var(--color-text-primary)] ${
           mono ? 'font-mono text-xs' : 'text-[13px]'
         }`}
       >
@@ -573,7 +573,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <dt className="truncate text-xs text-[var(--color-text-tertiary)]">{label}</dt>
-      <dd className="mt-0.5 break-words text-sm font-semibold leading-snug tabular-nums text-[var(--color-text-primary)]">{value}</dd>
+      <dd className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-[var(--color-text-primary)]">{value}</dd>
     </div>
   )
 }

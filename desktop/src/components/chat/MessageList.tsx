@@ -165,6 +165,41 @@ type TurnChangeCardModel = {
 
 const EMPTY_TURN_CHANGE_CARDS: TurnChangeCardModel[] = []
 
+/**
+ * 切换标签或重新打开会话时，检查点接口不必等新一轮请求返回才显示卡片
+ *
+ * 缓存按会话保存，命中条件为历史纪元与完成回合签名一致；命中时先渲染旧卡片，
+ * 新结果返回后再替换，未命中则等接口返回。最多保留最近若干个会话，避免长期
+ * 打开大量会话时无界增长
+ */
+type CachedTurnChangeCards = {
+  epoch: number
+  targetsKey: string
+  cards: TurnChangeCardModel[]
+}
+
+const MAX_CACHED_TURN_CARD_SESSIONS = 16
+const turnChangeCardCache = new Map<string, CachedTurnChangeCards>()
+
+function turnTargetsKey(targets: readonly { transcriptMessageId?: string; messageId: string }[]): string {
+  return targets.map((target) => target.transcriptMessageId ?? target.messageId).join('|')
+}
+
+function rememberTurnChangeCards(
+  sessionId: string,
+  epoch: number,
+  targets: readonly { transcriptMessageId?: string; messageId: string }[],
+  cards: TurnChangeCardModel[],
+): void {
+  turnChangeCardCache.delete(sessionId)
+  turnChangeCardCache.set(sessionId, { epoch, targetsKey: turnTargetsKey(targets), cards })
+  while (turnChangeCardCache.size > MAX_CACHED_TURN_CARD_SESSIONS) {
+    const oldest = turnChangeCardCache.keys().next()
+    if (oldest.done) break
+    turnChangeCardCache.delete(oldest.value)
+  }
+}
+
 type ChatMessageRole = 'user' | 'assistant'
 
 type ChatSelectionState = {
@@ -1339,6 +1374,26 @@ export function getUnansweredTurnTargets(
 export function getLatestCompletedTurnTarget(messages: UIMessage[]): RewindTurnTarget | null {
   const completedTurns = getCompletedTurnTargets(messages)
   return completedTurns.length > 0 ? completedTurns[completedTurns.length - 1] ?? null : null
+}
+
+function rebindTurnChangeCards(cards: TurnChangeCardModel[], messages: UIMessage[]): TurnChangeCardModel[] {
+  if (cards.length === 0) return cards
+  const recordedRows = new Map<string, string>()
+  const liveRows = new Set<string>()
+  for (const message of messages) {
+    if (message.type !== 'user_text' || message.pending) continue
+    recordedRows.set(message.transcriptMessageId ?? message.id, message.id)
+    if (!message.transcriptMessageId) liveRows.add(message.id)
+  }
+  // 重连可能用落盘 ID 替换本地行；保留原绑定或按落盘 ID 重挂，不用序号或文案猜测。
+  const rebound = cards.flatMap((card) => {
+    const originalId = card.target.messageId
+    const messageId = recordedRows.get(card.checkpoint.target.targetUserMessageId) ??
+      (liveRows.has(originalId) ? originalId : undefined)
+    if (messageId === undefined) return []
+    return messageId === originalId ? [card] : [{ ...card, target: { ...card.target, messageId } }]
+  })
+  return rebound.length === cards.length && rebound.every((card, index) => card === cards[index]) ? cards : rebound
 }
 
 function buildTurnCardInsertionMap(
@@ -2678,31 +2733,12 @@ export function MessageList({
     streamingToolInput,
   })
   const t = useTranslation()
-  // Keep disclosure choices across virtualized row remounts and later turns.
+  // 展开状态按会话和落盘检查点保存，不随消息行 ID 变化。
   const [expandedChangeCards, setExpandedChangeCards] = useState<Record<string, boolean>>({})
-  const [turnChangeCards, setTurnChangeCards] = useState<TurnChangeCardModel[]>([])
-  // Read the latest history on open without invalidating every image row while
-  // the active response streams.
-  const getConversationImages = useCallback(() => resolvedSessionId ? resolveConversationImages(
-    useChatStore.getState().sessions[resolvedSessionId]?.messages ?? EMPTY_MESSAGES,
-    {
-      sessionId: resolvedSessionId,
-      baseUrl: getServerBaseUrl(),
-      workDir: useWorkspaceContentStore.getState().statusBySession[resolvedSessionId]?.workDir,
-      imageLabel: t('assistantOutputs.kind.image'),
-      changedFilesByTurnId: new Map(turnChangeCards.map((card) => [card.target.messageId, card.checkpoint.code.filesChanged])),
-    },
-  ) : [], [resolvedSessionId, t, turnChangeCards])
-  const [turnChangeLoadError, setTurnChangeLoadError] = useState<string | null>(null)
-  const [workspaceChangesFallback, setWorkspaceChangesFallback] = useState<{
-    sessionId: string
-    files: WorkspaceChangedFile[] | null
-  } | null>(null)
   const [turnActionErrors, setTurnActionErrors] = useState<Record<string, string>>({})
-  const [isLoadingTurnChangeCards, setIsLoadingTurnChangeCards] = useState(false)
   const [branchingMessageId, setBranchingMessageId] = useState<string | null>(null)
   const [rewindingTurnId, setRewindingTurnId] = useState<string | null>(null)
-  const [turnUndoConfirmTargetId, setTurnUndoConfirmTargetId] = useState<string | null>(null)
+  const [turnUndoConfirmTarget, setTurnUndoConfirmTarget] = useState<{ sessionId: string; checkpointId: string } | null>(null)
   const [isAwayFromLatest, setIsAwayFromLatest] = useState(false)
   const [virtualViewport, setVirtualViewport] = useState<VirtualViewport>({
     scrollTop: SCROLL_BOTTOM_SENTINEL,
@@ -3257,13 +3293,6 @@ export function MessageList({
     () => getCompletedTurnTargets(deferredMessages),
     [deferredMessages],
   )
-  // 完成回合的稳定签名：运行中消息流频繁变化会让 completedTurnTargets 引用每次
-  // 都变，用 id+数量签名做加载 effect 的依赖，避免流式期间反复重拉检查点接口
-  const completedTurnTargetsSignature = useMemo(
-    () => completedTurnTargets.map((target) => target.messageId).join('|') +
-      `#${completedTurnTargets.length}`,
-    [completedTurnTargets],
-  )
   const turnCompletionByMessageId = useMemo(
     () => buildTurnCompletionByMessageId(deferredMessages, { turnActive: chatState !== 'idle' }),
     [deferredMessages, chatState],
@@ -3360,10 +3389,58 @@ export function MessageList({
   // 其余尾件留在旧状态；统一提到这里，切换时全部重渲染保持一致。
   // 重挂后回到收起态（与 BackgroundReplyFold 的 localExpanded 同一口径）。
   const [turnTailExpandedKeys, setTurnTailExpandedKeys] = useState<Set<string>>(new Set())
-  const latestCompletedTurnId =
-    completedTurnTargets.length > 0
-      ? completedTurnTargets[completedTurnTargets.length - 1]?.messageId ?? null
+  const waitingForReconnect = sessionState?.connectionState === 'reconnecting' || sessionState?.awaitingReconnectSync === true
+  // 本 fork 在运行中仍允许加载检查点：隐藏最新回合卡片即可避免中间态总结，
+  // 排队自动续跑的窗口期里更早回合的卡片仍可见。后台任务写盘、重连与等待停止
+  // 期间暂停查询，保留上一份已取结果。
+  const turnCheckpointQueryPaused = !checkpointHistoryReady || isDirectAgentSession ||
+    hasRunningBackgroundTasks || waitingForReconnect || sessionState?.awaitingStopIdle === true
+  const historyWindowed = sessionState?.historyWindowed === true
+  const turnTargetsCurrent = deferredMessages === messages
+  const currentTargetsKey = useMemo(() => turnTargetsKey(getCompletedTurnTargets(messages)), [messages])
+  const checkpointRequest = useMemo(() => {
+    if (!resolvedSessionId || turnCheckpointQueryPaused || !turnTargetsCurrent || completedTurnTargets.length === 0) return null
+    return { sessionId: resolvedSessionId, historyMutationEpoch, historyWindowed, targets: completedTurnTargets }
+  }, [completedTurnTargets, historyMutationEpoch, historyWindowed, resolvedSessionId, turnCheckpointQueryPaused, turnTargetsCurrent])
+  const [checkpointResult, setCheckpointResult] = useState<({ request: NonNullable<typeof checkpointRequest> } & (
+    | { kind: 'ready'; cards: TurnChangeCardModel[] }
+    | { kind: 'over-budget'; files: WorkspaceChangedFile[] | null }
+    | { kind: 'error'; message: string }
+  )) | null>(null)
+  // 上次结果可以继续阅读；只有当前请求的结果才可以用于撤销。
+  const currentCheckpointResult = checkpointResult?.request === checkpointRequest ? checkpointResult : null
+  const turnUndoBlocked = currentCheckpointResult?.kind !== 'ready'
+  const turnChangeLoadError = currentCheckpointResult?.kind === 'error' ? currentCheckpointResult.message : null
+  const workspaceChangesFallback = currentCheckpointResult?.kind === 'over-budget' ? currentCheckpointResult : null
+  // 断线会重置 historyHydrated，但不会清空正在显示的行；沿用这些行的只读卡片。
+  const canRetainTurnCards = !isDirectAgentSession && (!turnTargetsCurrent || completedTurnTargets.length > 0)
+  const turnChangeCards = useMemo(() => {
+    const liveCards = checkpointResult?.kind === 'ready' && checkpointResult.request.sessionId === resolvedSessionId
+      ? checkpointResult.cards
       : null
+    const cached = liveCards === null ? turnChangeCardCache.get(resolvedSessionId ?? '') : undefined
+    const cachedCards = cached && cached.epoch === historyMutationEpoch && cached.targetsKey === currentTargetsKey
+      ? cached.cards
+      : null
+    const cards = liveCards ?? cachedCards
+    if (!canRetainTurnCards || cards === null) {
+      return EMPTY_TURN_CHANGE_CARDS
+    }
+    // 断线会替换消息行 ID，但保留的回合仍可阅读；按落盘检查点重挂旧卡片。
+    return liveCards !== null && turnTargetsCurrent && checkpointResult?.request.targets === completedTurnTargets
+      ? liveCards
+      : rebindTurnChangeCards(cards, messages)
+  }, [canRetainTurnCards, checkpointResult, completedTurnTargets, currentTargetsKey, historyMutationEpoch, messages, resolvedSessionId, turnTargetsCurrent])
+  const getConversationImages = useCallback(() => resolvedSessionId ? resolveConversationImages(
+    useChatStore.getState().sessions[resolvedSessionId]?.messages ?? EMPTY_MESSAGES,
+    {
+      sessionId: resolvedSessionId,
+      baseUrl: getServerBaseUrl(),
+      workDir: useWorkspaceContentStore.getState().statusBySession[resolvedSessionId]?.workDir,
+      imageLabel: t('assistantOutputs.kind.image'),
+      changedFilesByTurnId: new Map(turnChangeCards.map((card) => [card.target.messageId, card.checkpoint.code.filesChanged])),
+    },
+  ) : [], [resolvedSessionId, t, turnChangeCards])
   // 卡片是回合结束的总结。检查点接口对「已有部分响应的运行中回合」也返回差分，
   // 直接渲染会出现「回合没结束就出了总结」（中间态差分还带不完整的撤回警告）。
   // 运行中只隐藏最后一个回合的卡片（它可能是中间态），更早回合的卡片照常显示——
@@ -3385,15 +3462,6 @@ export function MessageList({
     () => buildChangedFilesByRenderIndex(renderItems, turnChangeCards),
     [renderItems, turnChangeCards],
   )
-  if (process.env.CC_HAHA_DEBUG_CARDS === '1') {
-    // eslint-disable-next-line no-console
-    console.log('[turn-cards-map]', JSON.stringify({
-      cards: visibleTurnChangeCards.length,
-      mapEntries: [...turnCardsByRenderIndex.entries()],
-      renderItemCount: renderItems.length,
-      keys: renderItems.map(getRenderItemKey),
-    }))
-  }
   // No checkpoint is coming for this view; the disk alone has to vouch for outputs.
   // While one is still loading, nothing unproven is shown instead.
   const turnEvidenceUnavailable = isDirectAgentSession || turnChangeLoadError !== null || workspaceChangesFallback !== null
@@ -3442,6 +3510,38 @@ export function MessageList({
   useLayoutEffect(() => {
     committedGroupKeys.current = { sessionId: resolvedSessionId, byTool: groupMountKeys.byTool }
   }, [groupMountKeys, resolvedSessionId])
+  const committedChangeCardRows = useRef<{
+    sessionId: typeof resolvedSessionId
+    hosts: Map<string, { itemKey: string; mountKey: string }>
+  }>({ sessionId: resolvedSessionId, hosts: new Map() })
+  const changeCardMounts = useMemo(() => {
+    const hosts = new Map<string, { itemKey: string; mountKey: string }>()
+    const aliases = new Map<string, string>()
+    if (turnCardsByRenderIndex.size === 0) return { hosts, aliases }
+    const previous = committedChangeCardRows.current
+    const used = new Set([...renderItemKeys, ...groupMountKeys.keys.values()])
+    for (const [index, cards] of turnCardsByRenderIndex) {
+      const item = renderItems[index]!
+      if (item.kind !== 'message' || item.message.type !== 'assistant_text') continue
+      const card = cards.find(card => card.checkpoint.code.available)
+      if (!card) continue
+      const checkpointId = card.checkpoint.target.targetUserMessageId
+      const itemKey = renderItemKeys[index]!
+      const prior = previous.sessionId === resolvedSessionId ? previous.hosts.get(checkpointId) : undefined
+      // 旧答复行已经被替换时，让同一检查点的卡片留在原 DOM，保住浏览器的滚动锚点。
+      const retained = prior && (prior.itemKey === itemKey || !used.has(prior.itemKey)) && !used.has(prior.mountKey)
+      const mountKey = retained ? prior.mountKey : itemKey
+      if (retained) {
+        used.add(mountKey)
+        aliases.set(itemKey, mountKey)
+      }
+      hosts.set(checkpointId, { itemKey, mountKey })
+    }
+    return { hosts, aliases }
+  }, [groupMountKeys, renderItemKeys, renderItems, resolvedSessionId, turnCardsByRenderIndex])
+  useLayoutEffect(() => {
+    committedChangeCardRows.current = { sessionId: resolvedSessionId, hosts: changeCardMounts.hosts }
+  }, [changeCardMounts, resolvedSessionId])
   const renderItemMetrics = useMemo(
     () => renderItems.map((item, index) => {
       const key = renderItemKeys[index]!
@@ -3675,9 +3775,14 @@ export function MessageList({
             ? 'px-7 py-4'
             : 'px-6 py-4'
   const confirmTurnCard = useMemo(
-    () => visibleTurnChangeCards.find((card) => card.target.messageId === turnUndoConfirmTargetId) ?? null,
-    [turnUndoConfirmTargetId, visibleTurnChangeCards],
+    () => turnUndoConfirmTarget?.sessionId === resolvedSessionId
+      ? turnChangeCards.find((card) => card.checkpoint.target.targetUserMessageId === turnUndoConfirmTarget?.checkpointId) ?? null
+      : null,
+    [resolvedSessionId, turnUndoConfirmTarget, turnChangeCards],
   )
+  useEffect(() => {
+    if (turnUndoConfirmTarget && !confirmTurnCard) setTurnUndoConfirmTarget(null)
+  }, [confirmTurnCard, turnUndoConfirmTarget])
   // Undo is not reversible, so the dialog — not just the card — has to say which
   // changes it will leave behind when the checkpoint could not cover them all.
   const confirmUnverifiedSources = confirmTurnCard?.checkpoint.unverifiedChangeSources ?? []
@@ -3723,106 +3828,72 @@ export function MessageList({
   }, [renderItemKeys, virtualItemHeights, virtualItemMetricCache])
 
   useEffect(() => {
-    if (!resolvedSessionId || !checkpointHistoryReady || completedTurnTargets.length === 0 || isDirectAgentSession) {
-      setTurnChangeCards([])
-      setTurnChangeLoadError(null)
-      setWorkspaceChangesFallback(null)
-      setIsLoadingTurnChangeCards(false)
+    if (!canRetainTurnCards) {
+      setCheckpointResult(null)
       return
     }
+    if (!checkpointRequest) return
 
-    // 后台任务可能正在写文件：此时拉检查点拿到的是中间态差分，渲染层也会隐藏
-    // 卡片，等任务结束后（本依赖触发重跑）再加载完整差分。
-    if (hasRunningBackgroundTasks) {
-      setTurnChangeLoadError(null)
-      setWorkspaceChangesFallback(null)
-      setIsLoadingTurnChangeCards(false)
-      return
-    }
-
-
-    // 排队消息自动续跑导致的运行态不再跳过加载：卡片属于会话结束总结的一部分，
-    // 用户在续跑窗口期也要能看到上一轮的变更与撤回入口。流式期间的重复拉取由
-    // 完成回合签名依赖挡住（签名不变不重跑）。
-    let cancelled = false
+    const { sessionId, targets, historyWindowed } = checkpointRequest
     const controller = new AbortController()
-    setIsLoadingTurnChangeCards(true)
-    setTurnChangeLoadError(null)
-    setWorkspaceChangesFallback(null)
-
-    // Keep the bounded workspace evidence even if full turn previews exceed
-    // their budget. These files describe the current workspace, not a turn.
+    // 全量检查点超限时，有界的工作区状态仍可作为当前文件列表，但不归属任何回合。
     Promise.allSettled([
-      sessionsApi.getTurnCheckpoints(resolvedSessionId, { signal: controller.signal }),
-      sessionsApi.getWorkspaceStatus(resolvedSessionId, controller.signal),
+      sessionsApi.getTurnCheckpoints(sessionId, { signal: controller.signal }),
+      sessionsApi.getWorkspaceStatus(sessionId, controller.signal),
     ])
-      .then(([checkpointResult, workspaceResult]) => {
-        if (cancelled) return
-        const workspaceStatus = workspaceResult.status === 'fulfilled' ? workspaceResult.value : null
-        if (checkpointResult.status === 'rejected') {
-          setTurnChangeCards([])
-          if (isCheckpointPreviewBudgetError(checkpointResult.reason)) {
+      .then(([checkpointResponse, workspaceResponse]) => {
+        if (controller.signal.aborted) return
+        const workspaceStatus = workspaceResponse.status === 'fulfilled' ? workspaceResponse.value : null
+        if (checkpointResponse.status === 'rejected') {
+          if (isCheckpointPreviewBudgetError(checkpointResponse.reason)) {
             const files = workspaceStatus?.state === 'ok' &&
               Array.isArray(workspaceStatus.changedFiles) &&
               workspaceStatus.changedFiles.every((file) => typeof file?.path === 'string' && file.path.trim().length > 0)
               ? workspaceStatus.changedFiles
               : null
-            setWorkspaceChangesFallback({ sessionId: resolvedSessionId, files })
+            turnChangeCardCache.delete(sessionId)
+            setCheckpointResult({ request: checkpointRequest, kind: 'over-budget', files })
           } else {
-            setTurnChangeLoadError(getApiErrorMessage(checkpointResult.reason))
+            turnChangeCardCache.delete(sessionId)
+            setCheckpointResult({ request: checkpointRequest, kind: 'error', message: getApiErrorMessage(checkpointResponse.reason) })
           }
           return
         }
-        const targetByMessageId = new Map(
-          completedTurnTargets.map((target) => [target.messageId, target] as const),
-        )
-        const targetByUserMessageIndex = new Map(
-          completedTurnTargets.map((target) => [target.userMessageIndex, target] as const),
-        )
-
-        const nextCards = normalizeTurnCheckpoints(checkpointResult.value).flatMap((checkpoint) => {
-            const target =
-              targetByMessageId.get(checkpoint.target.targetUserMessageId) ??
-              (sessionState?.historyWindowed ? undefined : targetByUserMessageIndex.get(checkpoint.target.userMessageIndex))
-            if (!target) {
-              return []
-            }
-            return [{
-              target,
-              checkpoint,
-              workDir: checkpoint.workDir ?? workspaceStatus?.workDir ?? null,
-              isLatest: target.messageId === latestCompletedTurnId,
-            }]
-          })
-        if (process.env.CC_HAHA_DEBUG_CARDS === '1') {
-          // eslint-disable-next-line no-console
-          console.log('[turn-cards-set]', JSON.stringify({ count: nextCards.length }))
-        }
-        setTurnChangeCards(nextCards)
+        const targetsById = new Map(targets.map((target) => [target.transcriptMessageId ?? target.messageId, target]))
+        const liveTargetsByIndex = new Map(targets
+          .filter((target) => !target.transcriptMessageId)
+          .map((target) => [target.userMessageIndex, target]))
+        const cards = normalizeTurnCheckpoints(checkpointResponse.value).flatMap((checkpoint) => {
+          const target = targetsById.get(checkpoint.target.targetUserMessageId) ??
+            (historyWindowed ? undefined : liveTargetsByIndex.get(checkpoint.target.userMessageIndex))
+          if (!target) return []
+          return [{
+            target,
+            checkpoint,
+            workDir: checkpoint.workDir ?? workspaceStatus?.workDir ?? null,
+            isLatest: target === targets.at(-1),
+          }]
+        })
+        rememberTurnChangeCards(sessionId, historyMutationEpoch, targets, cards)
+        setCheckpointResult({ request: checkpointRequest, kind: 'ready', cards })
       })
       .catch((error) => {
-        if (cancelled) return
-        setTurnChangeCards([])
-        setTurnChangeLoadError(getApiErrorMessage(error))
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingTurnChangeCards(false)
-        }
+        if (controller.signal.aborted) return
+        turnChangeCardCache.delete(sessionId)
+        setCheckpointResult({ request: checkpointRequest, kind: 'error', message: getApiErrorMessage(error) })
       })
 
     return () => {
-      cancelled = true
       controller.abort()
     }
-  }, [completedTurnTargetsSignature, hasRunningBackgroundTasks, historyMutationEpoch, isDirectAgentSession, latestCompletedTurnId, resolvedSessionId, checkpointHistoryReady])
+  }, [canRetainTurnCards, checkpointRequest])
 
   // 新回合开始（排队自动续跑等）时上一轮的 workspace fallback 已过期：立即清掉，
   // 渲染层由 idle 条件兜住的显示随之消失。不清 turnChangeCards——续跑窗口期内
   // 上一轮的变更卡片与撤回入口保持可见，这正是运行中加载的意义。
   useEffect(() => {
     if (chatState !== 'idle') {
-      setWorkspaceChangesFallback(current => current === null ? current : null)
+      setCheckpointResult(current => current?.kind === 'over-budget' ? null : current)
     }
   }, [chatState])
 
@@ -3851,25 +3922,25 @@ export function MessageList({
       })
       addToast(describeRewindResult(result, mode, t))
 
-      setTurnUndoConfirmTargetId(null)
+      setTurnUndoConfirmTarget(null)
     } catch (error) {
       setTurnActionErrors((current) => ({
         ...current,
         [target.messageId]: getApiErrorMessage(error),
       }))
-      setTurnUndoConfirmTargetId(null)
+      setTurnUndoConfirmTarget(null)
     } finally {
       setRewindingTurnId(null)
     }
   }, [
     addToast,
     confirmTurnCard,
-    hasRunningBackgroundTasks,
     queueComposerPrefill,
     reloadHistory,
     resolvedSessionId,
     rewindingTurnId,
     t,
+    turnUndoBlocked,
   ])
 
   // Rolling the conversation back never depends on the checkpoint, so it stays
@@ -3878,13 +3949,14 @@ export function MessageList({
   const confirmActions: ActionDialogAction[] = [
     {
       label: t('common.cancel'),
-      onClick: () => setTurnUndoConfirmTargetId(null),
+      onClick: () => setTurnUndoConfirmTarget(null),
       variant: 'secondary',
     },
     {
       label: t('chat.turnChangesUndoConversationOnly'),
       onClick: () => { void handleUndoCurrentTurn('conversation') },
       variant: confirmCanRestoreCode ? 'secondary' : 'danger',
+      disabled: turnUndoBlocked,
       loading: Boolean(rewindingTurnId),
     },
     ...(confirmCanRestoreCode
@@ -3894,6 +3966,7 @@ export function MessageList({
             : t('chat.turnChangesHistoricalConfirmUndo'),
           onClick: () => { void handleUndoCurrentTurn('both') },
           variant: 'danger' as const,
+          disabled: turnUndoBlocked,
           loading: Boolean(rewindingTurnId),
         }]
       : []),
@@ -3948,15 +4021,15 @@ export function MessageList({
     () => getUnansweredTurnTargets(deferredMessages),
     [deferredMessages],
   )
-  const checkpointPreviewOverBudget = workspaceChangesFallback !== null &&
-    workspaceChangesFallback.sessionId === resolvedSessionId
+  const checkpointPreviewOverBudget = workspaceChangesFallback !== null
   // Past the preview budget the server lists no checkpoints at all, but one
   // rewind still resolves a prompt by its transcript id, so those prompts stay
   // editable. This mode tells the user file undo is unavailable, so the edit
   // rolls back the conversation only.
   const completedEditCards = useMemo<EditableTurnCard[]>(
-    () => checkpointPreviewOverBudget
-      ? completedTurnTargets.flatMap((target) => target.transcriptMessageId
+    () => {
+      if (!checkpointPreviewOverBudget) return turnUndoBlocked ? EMPTY_TURN_CHANGE_CARDS : turnChangeCards
+      return completedTurnTargets.flatMap((target) => target.transcriptMessageId
         ? [{
             target: { messageId: target.messageId, expectedContent: target.expectedContent },
             checkpoint: {
@@ -3965,8 +4038,8 @@ export function MessageList({
             conversationOnly: true,
           }]
         : [])
-      : visibleTurnChangeCards,
-    [checkpointPreviewOverBudget, completedTurnTargets, visibleTurnChangeCards],
+    },
+    [checkpointPreviewOverBudget, completedTurnTargets, turnChangeCards, turnUndoBlocked],
   )
   // A prompt stopped before any reply has no checkpoint but nothing to restore
   // either, so it rewinds the conversation only. One the CLI never
@@ -3998,7 +4071,7 @@ export function MessageList({
     : hasRunningBackgroundTasks
       ? t('chat.editMessageWaitForBackgroundTasks')
       : null
-  const editPendingReason = !checkpointHistoryReady || isLoadingTurnChangeCards
+  const editPendingReason = !currentCheckpointResult
     ? t('chat.editMessageCheckingCheckpoints')
     : turnChangeLoadError !== null
       ? t('chat.editMessageCheckpointsUnavailable')
@@ -4011,7 +4084,7 @@ export function MessageList({
     completedMessageIds: completedTurnMessageIds,
     blockedReason: editBlockedReason,
     pendingReason: editPendingReason,
-    disabled: isDirectAgentSession || isSideChatSession || Boolean(turnUndoConfirmTargetId),
+    disabled: isDirectAgentSession || isSideChatSession || Boolean(confirmTurnCard),
     rewindingTurnId,
     setRewindingTurnId,
     t,
@@ -4468,20 +4541,23 @@ export function MessageList({
 
 
         {resolvedSessionId && cardsForItem.map((card) => {
+          const checkpointId = card.checkpoint.target.targetUserMessageId
+          const disclosureKey = JSON.stringify([resolvedSessionId, checkpointId])
           const error = turnActionErrors[card.target.messageId] ?? null
           const openUndoDialog = () => {
-            setTurnUndoConfirmTargetId(card.target.messageId)
+            if (!turnUndoBlocked) setTurnUndoConfirmTarget({ sessionId: resolvedSessionId, checkpointId })
           }
           if (!card.checkpoint.code.available) {
             return (
               <div
-                key={`conversation-rewind-${card.target.messageId}`}
+                key={`conversation-rewind-${checkpointId}`}
                 className="mt-1 flex flex-wrap items-center gap-2 px-1"
               >
                 <Button
                   variant="ghost"
                   size="sm"
                   loading={rewindingTurnId === card.target.messageId}
+                  disabled={turnUndoBlocked}
                   onClick={openUndoDialog}
                   icon={<Undo2 size={13} strokeWidth={2} aria-hidden="true" />}
                 >
@@ -4497,17 +4573,18 @@ export function MessageList({
           }
           return (
             <CurrentTurnChangeCard
-              key={`turn-change-${card.target.messageId}`}
+              key={`turn-change-${checkpointId}`}
               sessionId={resolvedSessionId}
-              expanded={expandedChangeCards[`${resolvedSessionId}:${card.target.messageId}`] ?? false}
+              expanded={expandedChangeCards[disclosureKey] ?? false}
               onExpandedChange={(expanded) => setExpandedChangeCards((current) => ({
                 ...current,
-                [`${resolvedSessionId}:${card.target.messageId}`]: expanded,
+                [disclosureKey]: expanded,
               }))}
               checkpoint={card.checkpoint}
               workDir={card.workDir}
               error={error}
               isUndoing={rewindingTurnId === card.target.messageId}
+              undoDisabled={turnUndoBlocked}
               isLatest={card.isLatest}
               onUndo={openUndoDialog}
             />
@@ -4580,7 +4657,7 @@ export function MessageList({
 
           {virtualTranscriptWindow.items.map(({ item, index }) => {
             const itemKey = getRenderItemKey(item)
-            const mountKey = groupMountKeys.keys.get(itemKey) ?? itemKey
+            const mountKey = changeCardMounts.aliases.get(itemKey) ?? groupMountKeys.keys.get(itemKey) ?? itemKey
             const content = renderTranscriptItem(item, index)
             const railPosition = turnRailPositions[index] ?? 'none'
             // The prompt editor opens its slash and @ menus upward, past the
@@ -4642,17 +4719,17 @@ export function MessageList({
             </div>
           )}
 
-          {!isLoadingTurnChangeCards && visibleTurnChangeCards.length === 0 && turnChangeLoadError && (
+          {turnChangeLoadError && (
             <div className="mx-auto mb-5 w-full max-w-[var(--chat-content-max-width)] rounded-[var(--radius-md)] bg-[var(--color-error-container)] px-3.5 py-2.5 text-xs text-[var(--color-on-error-container)]">
               {turnChangeLoadError}
             </div>
           )}
 
-          {!isLoadingTurnChangeCards && chatState === 'idle' && !hasRunningBackgroundTasks &&
-            workspaceChangesFallback?.sessionId === resolvedSessionId ? (
+          {chatState === 'idle' && !hasRunningBackgroundTasks &&
+            workspaceChangesFallback ? (
               <WorkspaceChangesFallback
-                key={workspaceChangesFallback.sessionId}
-                sessionId={workspaceChangesFallback.sessionId}
+                key={workspaceChangesFallback.request.sessionId}
+                sessionId={workspaceChangesFallback.request.sessionId}
                 files={workspaceChangesFallback.files}
               />
             ) : null}
@@ -4693,7 +4770,7 @@ export function MessageList({
         open={Boolean(confirmTurnCard)}
         onClose={() => {
           if (!rewindingTurnId) {
-            setTurnUndoConfirmTargetId(null)
+            setTurnUndoConfirmTarget(null)
           }
         }}
         title={confirmTurnCard?.isLatest

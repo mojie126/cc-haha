@@ -7537,6 +7537,51 @@ describe('MessageList nested tool calls', () => {
     expect(screen.queryByRole('region', { name: 'Workspace changed files' })).toBeNull()
   })
 
+  it('shows cached turn change cards immediately when switching back to a session', async () => {
+    const messagesA: UIMessage[] = [
+      { id: 'user-a', type: 'user_text', content: 'Change a file', timestamp: 1 },
+      { id: 'assistant-a', type: 'assistant_text', content: 'Changed a.ts', timestamp: 2 },
+    ]
+    const messagesB: UIMessage[] = [
+      { id: 'user-b', type: 'user_text', content: 'Say hello', timestamp: 3 },
+      { id: 'assistant-b', type: 'assistant_text', content: 'Hello', timestamp: 4 },
+    ]
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({ messages: messagesA }),
+        'session-b': makeSessionState({ messages: messagesB }),
+      },
+    })
+    vi.spyOn(sessionsApi, 'getTurnCheckpoints').mockImplementation(async (sessionId) => (
+      sessionId === ACTIVE_TAB
+        ? {
+            checkpoints: [{
+              target: { targetUserMessageId: 'user-a', userMessageIndex: 0, userMessageCount: 1 },
+              code: { available: true, filesChanged: ['a.ts'], insertions: 1, deletions: 0 },
+            }],
+          }
+        : { checkpoints: [] }
+    ))
+    const { rerender } = render(<MessageList sessionId={ACTIVE_TAB} />)
+    expect(await screen.findByRole('region', { name: 'Turn changed files' })).toBeTruthy()
+
+    rerender(<MessageList sessionId="session-b" />)
+    await waitFor(() => expect(sessionsApi.getTurnCheckpoints).toHaveBeenCalledWith('session-b', expect.anything()))
+    expect(screen.queryByRole('region', { name: 'Turn changed files' })).toBeNull()
+
+    // 切回已加载过的会话时，缓存卡片先出现，不必等检查点接口再次返回。
+    let resolveRefresh!: (value: Awaited<ReturnType<typeof sessionsApi.getTurnCheckpoints>>) => void
+    vi.mocked(sessionsApi.getTurnCheckpoints).mockReturnValue(new Promise((resolve) => {
+      resolveRefresh = resolve
+    }))
+    rerender(<MessageList sessionId={ACTIVE_TAB} />)
+    expect(screen.getByRole('region', { name: 'Turn changed files' })).toBeTruthy()
+
+    await act(async () => {
+      resolveRefresh({ checkpoints: [] })
+    })
+  })
+
   it('renders multiple historical turn change cards across three turns', async () => {
     vi.spyOn(sessionsApi, 'getTurnCheckpoints').mockResolvedValue({
       checkpoints: [
@@ -8888,7 +8933,10 @@ describe('MessageList nested tool calls', () => {
       expect(messages.some((message) => message.type === 'error')).toBe(false)
     })
     expect(screen.getByRole('link', { name: 'src/kept.ts' }).getAttribute('data-file-path')).toBe('src/kept.ts')
-    expect(screen.queryByText('kept.ts')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open src/kept.ts in workspace' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Roll back conversation' })).toBeNull()
+    const retainedCard = screen.getByRole('region', { name: 'Turn changed files' })
+    expect(within(retainedCard).getByRole<HTMLButtonElement>('button', { name: 'Rewind to before this turn' }).disabled).toBe(true)
     await act(async () => {
       resolveCheckpointReload({
         checkpoints: [
@@ -8908,8 +8956,8 @@ describe('MessageList nested tool calls', () => {
         ],
       })
     })
-    await expandChangedFileCards()
-    expect(await screen.findByText('kept.ts')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open src/kept.ts in workspace' })).toBeTruthy()
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Undo current turn changes' }).disabled).toBe(false)
     expect(useChatStore.getState().sessions[ACTIVE_TAB]?.composerPrefill).toMatchObject({
       text: 'continue',
     })

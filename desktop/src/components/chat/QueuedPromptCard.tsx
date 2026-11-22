@@ -160,19 +160,21 @@ export function QueuedPromptCard({
         'text-[13px] text-[var(--color-text-secondary)]',
       ].join(' ')}
     >
-      <div className="flex min-h-7 min-w-0 items-center gap-2.5">
+      <div className={`flex min-h-7 min-w-0 gap-2.5 ${isEditing ? 'items-start' : 'items-center'}`}>
         {/* The handoff labels the row in words rather than with a glyph; the
             arrow icon here was a stand-in from before the string existed. */}
-        <span className="shrink-0 text-xs text-[var(--color-text-tertiary)]">
+        <span className={`shrink-0 text-xs text-[var(--color-text-tertiary)] ${isEditing ? 'pt-2' : ''}`}>
           {t('chat.pendingMessageQueuedLabel')}
         </span>
         {isEditing ? (
           <>
-            <input
+            <textarea
               value={editingText}
+              rows={Math.min(6, Math.max(2, editingText.split('\n').length))}
               onChange={(event) => onEditingTextChange(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') {
+                // Enter saves as before; Shift+Enter keeps the newline the user typed.
+                if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
                   onSave()
                 }
@@ -182,7 +184,7 @@ export function QueuedPromptCard({
                 }
               }}
               aria-label={t('chat.pendingMessageEditInput')}
-              className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text-primary)] outline-none focus:border-[var(--color-border-focus)]"
+              className="min-w-0 flex-1 resize-y rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs leading-5 text-[var(--color-text-primary)] outline-none focus:border-[var(--color-border-focus)]"
               autoFocus
             />
             <IconButton

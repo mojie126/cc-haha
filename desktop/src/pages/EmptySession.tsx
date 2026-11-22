@@ -91,6 +91,7 @@ import { AgentTeamChip } from '@/components/chat/AgentTeamChip'
 import { ComputerUseEnableDialog } from '@/components/computer-use/ComputerUseEnableDialog'
 import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDialog'
 import { withAgentTeamRequest } from '@/lib/agentTeamRequest'
+import { executeFastSlashCommand } from '@/lib/fastModeCommand'
 import { recordRecentSkills } from '@/lib/recentSkills'
 import { promptExistsInAnyHistory, promptHistoryScopeForProject, readPromptHistory, recordPromptHistory } from '@/lib/promptHistory'
 import {
@@ -848,6 +849,21 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
       setSlashMenuOpen(false)
       setFileSearchOpen(false)
       setPlusMenuOpen(false)
+      return
+    }
+
+    if (slashUiAction?.type === 'fast') {
+      recordPromptHistory(input, promptHistoryScope)
+      setInput('')
+      setMentions([])
+      setSlashMenuOpen(false)
+      setFileSearchOpen(false)
+      setPlusMenuOpen(false)
+      await executeFastSlashCommand({
+        mode: slashUiAction.mode,
+        runtimeKey: DRAFT_RUNTIME_SELECTION_KEY,
+        t,
+      })
       return
     }
 

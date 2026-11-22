@@ -286,6 +286,9 @@ export class SettingsService {
     if (Object.hasOwn(settings, 'leanModeEnabled') && typeof settings.leanModeEnabled !== 'boolean') {
       throw ApiError.badRequest('leanModeEnabled must be a boolean')
     }
+    if (Object.hasOwn(settings, 'includeCyberRiskInstruction') && typeof settings.includeCyberRiskInstruction !== 'boolean') {
+      throw ApiError.badRequest('includeCyberRiskInstruction must be a boolean')
+    }
     if (Object.hasOwn(settings, 'reasoningFoldEnabled') && typeof settings.reasoningFoldEnabled !== 'boolean') {
       throw ApiError.badRequest('reasoningFoldEnabled must be a boolean')
     }
@@ -305,6 +308,12 @@ export class SettingsService {
       const value = settings.maxOutputTokensEscalationMode
       if (value !== 'auto' && value !== 'enabled' && value !== 'disabled') {
         throw ApiError.badRequest('maxOutputTokensEscalationMode must be auto, enabled, or disabled')
+      }
+    }
+    if (Object.hasOwn(settings, 'fastMode')) {
+      const value = settings.fastMode
+      if (value !== undefined && value !== null && typeof value !== 'boolean') {
+        throw ApiError.badRequest('fastMode must be a boolean or null')
       }
     }
     if (Object.hasOwn(settings, 'respectGitignore') && typeof settings.respectGitignore !== 'boolean') {
@@ -352,6 +361,13 @@ export class SettingsService {
         (settings.language === undefined || settings.language === null)
       ) {
         delete merged.language
+      }
+
+      if (
+        Object.hasOwn(settings, 'fastMode') &&
+        (settings.fastMode === undefined || settings.fastMode === null)
+      ) {
+        delete merged.fastMode
       }
 
       const hasEffort = Object.hasOwn(settings, 'effort')

@@ -165,13 +165,17 @@ To work in parallel, ask: “Create two independent sessions: one to review the 
 
 | Tool | Purpose |
 |---|---|
-| `ListSessions` | Find existing sessions |
+| `ListSessions` | Find existing sessions and read their `state`; sessions without recorded collaboration state show `idle` |
 | `ReadSession` | Read conversation content in pages |
 | `CreateSession` | Create an independent session and assign work |
-| `SendSessionMessage` | Send a message to another session |
-| `WaitSessions` | Wait for task status changes |
+| `SendSessionMessage` | Send a message to another session and return delivery `status` plus the target's `targetState` |
+| `WaitSessions` | Wait for session or message-delivery status changes |
 
-New sessions appear in the session list and can be opened for direct follow-up. The collaboration panel shows members and messages, with links to each conversation. Queued, accepted, and consumed messages represent delivery stages, not successful task completion.
+A completed session can start a background turn from a new cross-session message as long as it is not paused and a worker slot is free; opening the session window is not required. Stopped sessions are not woken by peer messages; new messages stay queued. Opening the session alone does not resume it. To drain the queue, send a new user message in the target session.
+
+`queued` means the message is still queued, and `accepted` means the runtime has admitted it; neither means the recipient has read it. When the target is not paused, the receipt's `revision` can usually be passed as `WaitSessions`' `afterRevision` to check whether delivery reaches `consumed` (the message entered the recipient's conversation turn). This still is not task completion. The collaboration panel also shows messages and member state, and can open the corresponding session.
+
+If all three worker slots in a group are occupied, the sender holds one, and a message to a `completed` session is still `queued`, finish the sender's current turn first to release a slot. Repeated `WaitSessions` calls do not release a slot, even without a `capacity_blocked` notice.
 
 Each collaboration group runs up to three worker sessions at a time; additional workers wait in the queue. The coordinating session does not count toward those three slots. Manual messages to queued workers follow the same limit: when all slots are occupied, the app asks you to retry later and keeps the original assignment queued. New workers in Git projects use separate worktrees. Outside Git, they use the specified directory, so simultaneous edits to the same file still need coordination. Include necessary background in each task prompt: new workers do not automatically inherit the coordinator’s full history.
 

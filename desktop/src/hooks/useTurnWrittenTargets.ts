@@ -37,14 +37,17 @@ export function useTurnWrittenTargets(
   const key = sessionId && paths.length > 0 ? `${sessionId}${PATH_SEPARATOR}${paths.join(PATH_SEPARATOR)}` : ''
   const [fetched, setFetched] = useState<Stats | null>(null)
   // A remount answers from what is already known, so the card does not blink.
+  // Past the TTL the last settled answer still paints first, then refreshes.
   const known = useMemo(() => {
-    const byPath = key && sessionId ? peekWorkspaceFileStats(sessionId, paths) : undefined
-    return byPath ? { key, byPath } : null
+    if (!key || !sessionId) return null
+    const fresh = peekWorkspaceFileStats(sessionId, paths)
+    const byPath = fresh ?? peekWorkspaceFileStats(sessionId, paths, { allowStale: true })
+    return byPath ? { key, byPath, fresh: fresh !== undefined } : null
   }, [key, paths, sessionId])
   const stats = fetched?.key === key ? fetched : known
 
   useEffect(() => {
-    if (!key || !sessionId || known) return
+    if (!key || !sessionId || known?.fresh) return
     let current = true
     void statWorkspacePaths(sessionId, paths).then((byPath) => {
       if (current) setFetched({ key, byPath })

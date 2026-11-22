@@ -163,12 +163,15 @@ export type UserSettings = {
   modelContext?: string
   effort?: EffortLevel
   alwaysThinkingEnabled?: boolean
+  /** Claude fast mode (persisted in ~/.claude/settings.json as fastMode; null clears it). */
+  fastMode?: boolean | null
   /** 推理折叠：回合中展开正文、结束折叠为总结行；关闭回到始终折叠的旧模式。 */
   reasoningFoldEnabled?: boolean
   workflowKeywordTriggerEnabled?: boolean
   /** Desktop composer next-prompt suggestions; absent means off (opt-in, costs tokens). */
   nextPromptSuggestionsEnabled?: boolean
   leanModeEnabled?: boolean
+  includeCyberRiskInstruction?: boolean
   agentTeamsEnabled?: boolean
   /** 同一会话的普通前台/后台 SubAgent 并发上限，缺省或 null 表示不限。 */
   maxConcurrentSubagents?: number | null

@@ -1561,12 +1561,15 @@ describe('ChatInput file mentions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Edit queued message/i }))
     const editInput = screen.getByLabelText('Queued message text')
+    // 排队消息编辑使用多行文本域，Shift+Enter 的换行要能保存
+    expect(editInput.tagName).toBe('TEXTAREA')
     fireEvent.change(editInput, {
-      target: { value: 'edited queued draft' },
+      target: { value: 'edited queued draft\nsecond line' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(screen.getByTestId('pending-user-message')).toHaveTextContent('edited queued draft')
+    expect(screen.getByTestId('pending-user-message')).toHaveTextContent('second line')
 
     fireEvent.click(screen.getByRole('button', { name: /Delete queued message/i }))
 

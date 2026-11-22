@@ -100,6 +100,25 @@ describe('useTurnWrittenTargets', () => {
     expect(outside.result.current).toEqual([])
   })
 
+  it('keeps a settled shell-written file visible when remounted after the cache TTL', async () => {
+    onDisk({ 'out/report.docx': TURN_STARTED + 30_000 })
+    const targets = outputs('计划见 plan.md，报告已生成：out/report.docx')
+    const first = renderHook(() => useTurnWrittenTargets('s1', targets, TURN_STARTED))
+    await waitFor(() => expect(hrefs(first.result.current)).toEqual(['plan.md', 'out/report.docx']))
+    first.unmount()
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_000)
+    try {
+      const second = renderHook(() => useTurnWrittenTargets('s1', targets, TURN_STARTED))
+      // 过期缓存先画出来，再后台刷新，切回标签时卡片不闪
+      expect(hrefs(second.result.current)).toEqual(['plan.md', 'out/report.docx'])
+      await waitFor(() => expect(statWorkspaceFiles).toHaveBeenCalledTimes(2))
+      expect(hrefs(second.result.current)).toEqual(['plan.md', 'out/report.docx'])
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
   it('asks the disk nothing when the checkpoint already accounts for every file', () => {
     const targets = outputs('计划见 plan.md，预览 http://localhost:5173/')
 
