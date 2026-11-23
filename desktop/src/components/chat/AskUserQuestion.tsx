@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, ClipboardEvent, MouseEvent as ReactMouseEvent } from 'react'
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react'
 import {
   listPendingPermissions,
   useChatStore,
@@ -23,6 +23,7 @@ import {
   type ComposerAttachment,
 } from '../../lib/composerAttachments'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
+import type { ComposerMention } from '../../lib/composerMentions'
 import { openPreviewLink } from '../../lib/openPreviewLink'
 import type { PreviewLinkTarget } from '../../lib/previewLinkRouter'
 import { formatBytes } from '../../lib/formatBytes'
@@ -30,6 +31,7 @@ import { checkUserMessageBudget } from '../../lib/userMessageBudget'
 import type { AttachmentRef, ClientMessage } from '../../types/chat'
 import { AttachmentGallery, type AttachmentPreview } from './AttachmentGallery'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
+import { MentionComposer } from './MentionComposer'
 import { PendingDecisionMarker } from './PendingDecisionMarker'
 import { useComposerFileDrop } from './useComposerFileDrop'
 import {
@@ -71,6 +73,8 @@ type Props = {
 const IMAGE_ATTACHED_LABEL = '(Image attached)'
 const ATTACHED_IMAGES_NOTE_PREFIX = 'Attached images: '
 const ACCEPTED_IMAGE_INPUT = 'image/png,image/jpeg,image/gif,image/webp'
+/** The answer editor carries no mentions; the composer only draws Markdown. */
+const NO_MENTIONS: ComposerMention[] = []
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -621,12 +625,14 @@ export function AskUserQuestion({
     })
   }
 
-  const handlePaste = (qIndex: number, event: ClipboardEvent<HTMLTextAreaElement>) => {
-    if (submitted || !canAttachImages || !event.clipboardData) return
+  /** Editor-side paste: the composer delegates here before inserting text. */
+  const handleComposerPaste = (event: ClipboardEvent): boolean => {
+    if (submitted || !canAttachImages || !event.clipboardData) return false
     const imageFiles = getDataTransferFiles(event.clipboardData).filter(isSupportedImageFile)
-    if (imageFiles.length === 0) return
+    if (imageFiles.length === 0) return false
     event.preventDefault()
-    appendImageFiles(qIndex, imageFiles)
+    appendImageFiles(safeActiveTab, imageFiles)
+    return true
   }
 
   const openImagePicker = () => {
@@ -1030,7 +1036,7 @@ export function AskUserQuestion({
             {...dragHandlers}
           >
             <div className="mb-1 flex items-center justify-between gap-2 px-1">
-              <label htmlFor={textareaId} className="text-xs text-[var(--color-text-tertiary)]">
+              <label htmlFor={`${textareaId}-editor`} className="text-xs text-[var(--color-text-tertiary)]">
                 {t(hasActiveSelection ? 'question.additionalResponse' : 'question.customResponse')}
               </label>
               {canAttachImages && (
@@ -1068,24 +1074,26 @@ export function AskUserQuestion({
                   />
                 </div>
               )}
-              <textarea
-                id={textareaId}
+              <MentionComposer
                 value={freeTexts[safeActiveTab] ?? ''}
-                onChange={(e) => handleFreeTextChange(safeActiveTab, e.target.value)}
-                onPaste={(e) => handlePaste(safeActiveTab, e)}
+                mentions={NO_MENTIONS}
+                onChange={(text) => handleFreeTextChange(safeActiveTab, text)}
+                onPaste={handleComposerPaste}
                 onCompositionStart={() => { composingRef.current = true }}
                 onCompositionEnd={() => { composingRef.current = false }}
-                onKeyDown={(e) => {
-                  if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && allAnswered) {
-                    e.preventDefault()
+                onKeyDown={(event) => {
+                  if (composingRef.current || event.isComposing || event.keyCode === 229) return false
+                  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && allAnswered) {
+                    event.preventDefault()
                     handleSubmit()
+                    return true
                   }
+                  return false
                 }}
                 placeholder={t('question.typePlaceholder')}
-                rows={3}
-                wrap="soft"
-                className="max-h-48 min-h-[72px] w-full resize-y bg-transparent px-3 py-2.5 text-[13px] leading-relaxed text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none"
+                className="w-full"
+                editorClassName="min-h-[72px] max-h-48 overflow-y-auto px-3 py-2.5 text-[13px] leading-relaxed text-[var(--color-text-primary)]"
+                aria={{ id: `${textareaId}-editor`, 'aria-label': t(hasActiveSelection ? 'question.additionalResponse' : 'question.customResponse') }}
               />
             </div>
           </div>

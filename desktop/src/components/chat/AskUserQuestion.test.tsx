@@ -27,6 +27,7 @@ vi.mock('../../api/sessions', () => ({
 }))
 
 import { AskUserQuestion } from './AskUserQuestion'
+import { getComposerElement, getComposerText, setComposerText } from './composerTestUtils'
 import { getDesktopHost } from '../../lib/desktopHost'
 import { useChatStore, type PerSessionState } from '../../stores/chatStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -36,6 +37,24 @@ import { useUIStore } from '../../stores/uiStore'
 import { teamMemberSessionId } from '../../types/team'
 
 const ACTIVE_TAB = 'active-tab'
+
+/** The answer box is the same ProseMirror composer as the chat input. */
+function answerEditor(): HTMLElement {
+  return getComposerElement()
+}
+
+/** Paste clipboard data at the answer editor, as the browser would. */
+function pasteIntoAnswer(clipboardData: Record<string, unknown>): void {
+  // ProseMirror's own paste handler runs whenever ours declines the event, and
+  // it reads text through `getData`; a stub without it throws in jsdom.
+  fireEvent.paste(answerEditor(), {
+    clipboardData: { types: ['Files'], getData: () => '', ...clipboardData },
+  })
+}
+
+const SINGLE_INPUT_FOR_MARKDOWN = {
+  questions: [{ question: 'Which approach should we use?', options: [{ label: 'Option 1' }] }],
+}
 
 function patchSession(patch: Partial<PerSessionState>) {
   useChatStore.setState((state) => ({
@@ -190,7 +209,7 @@ describe('AskUserQuestion', () => {
       toolUseId="tool-1"
       input={{ question: 'Ship it?', options: [{ label: 'Yes' }, { label: 'No' }] }}
     />)
-    fireEvent.focus(screen.getByPlaceholderText(/type/i))
+    fireEvent.focus(answerEditor())
     expect(sendMock.mock.calls.filter(([, message]) => message.type === 'ask_user_question_activity'))
       .toHaveLength(0)
   })
@@ -514,27 +533,21 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-      target: { value: 'transient-q1' },
-    })
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-      target: { value: '' },
-    })
+    setComposerText('transient-q1')
+    setComposerText('')
     fireEvent.click(screen.getByRole('button', { name: /^A1$/ }))
     // Picking a single-select option now advances on its own, so come back to
     // Q1 before carrying on with the per-tab isolation assertions below.
     fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-      target: { value: 'custom-q1' },
-    })
+    setComposerText('custom-q1')
     fireEvent.click(screen.getByRole('button', { name: /Q2$/ }))
 
-    expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value).toBe('')
+    expect(getComposerText()).toBe('')
 
     fireEvent.click(screen.getByRole('button', { name: /^A2$/ }))
     fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
 
-    expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value).toBe('custom-q1')
+    expect(getComposerText()).toBe('custom-q1')
 
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
@@ -573,9 +586,7 @@ describe('AskUserQuestion', () => {
       expect(optionOne.getAttribute('aria-pressed')).toBe('true')
       expect(screen.getByText('Add extra details or images (optional):')).toBeTruthy()
 
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'Also keep backwards compatibility with v1.' },
-      })
+      setComposerText('Also keep backwards compatibility with v1.')
 
       expect(optionOne.getAttribute('aria-pressed')).toBe('true')
 
@@ -609,13 +620,12 @@ describe('AskUserQuestion', () => {
       }
       render(<AskUserQuestion toolUseId="tool-1" input={twoQuestions} />)
 
-      const textarea = screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement
-      fireEvent.change(textarea, { target: { value: 'extra detail for Q1' } })
+      setComposerText('extra detail for Q1')
       fireEvent.click(screen.getByRole('button', { name: /^A1$/ }))
 
       // Typing notes before picking keeps the user on Q1 with both preserved.
       expect(screen.getByText('First?')).toBeTruthy()
-      expect(textarea.value).toBe('extra detail for Q1')
+      expect(getComposerText()).toBe('extra detail for Q1')
       expect(screen.getByRole('button', { name: /^A1$/ }).getAttribute('aria-pressed')).toBe('true')
     })
 
@@ -641,18 +651,15 @@ describe('AskUserQuestion', () => {
 
     it('attaches pasted images, allows removing them, persists across unmount, and submits them', async () => {
       const first = render(<AskUserQuestion toolUseId="tool-1" input={SINGLE_INPUT} />)
-      const textarea = screen.getByPlaceholderText('Type your answer...')
       const pngFile = new File(['png-bytes'], 'paste-shot.png', { type: 'image/png' })
       const txtFile = new File(['ignore-me'], 'notes.txt', { type: 'text/plain' })
 
-      fireEvent.paste(textarea, {
-        clipboardData: {
-          files: [pngFile, txtFile],
-          items: [
-            { kind: 'file', getAsFile: () => pngFile },
-            { kind: 'file', getAsFile: () => txtFile },
-          ],
-        },
+      pasteIntoAnswer({
+        files: [pngFile, txtFile],
+        items: [
+          { kind: 'file', getAsFile: () => pngFile },
+          { kind: 'file', getAsFile: () => txtFile },
+        ],
       })
 
       await waitFor(() => {
@@ -670,9 +677,7 @@ describe('AskUserQuestion', () => {
       expect(screen.getByAltText('paste-shot.png')).toBeTruthy()
 
       fireEvent.click(screen.getByRole('button', { name: /^Option 2$/ }))
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'See screenshot' },
-      })
+      setComposerText('See screenshot')
       fireEvent.click(screen.getByRole('button', { name: /^submit$/i }))
 
       expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
@@ -737,9 +742,7 @@ describe('AskUserQuestion', () => {
       const img = new File(['img-bytes'], 'reference.png', { type: 'image/png' })
 
       fireEvent.click(screen.getByRole('button', { name: /^Option 1$/ }))
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'Can we combine Option 1 with this layout?' },
-      })
+      setComposerText('Can we combine Option 1 with this layout?')
       fireEvent.change(fileInput, { target: { files: [img] } })
 
       await waitFor(() => {
@@ -774,9 +777,7 @@ describe('AskUserQuestion', () => {
     it('carries custom response text alone when clicking Chat about this without picking an option', () => {
       render(<AskUserQuestion toolUseId="tool-1" input={SINGLE_INPUT} />)
 
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'Explain the trade-offs between Option 1 and Option 2 first.' },
-      })
+      setComposerText('Explain the trade-offs between Option 1 and Option 2 first.')
       fireEvent.click(screen.getByRole('button', { name: /chat about this/i }))
 
       expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
@@ -816,9 +817,7 @@ describe('AskUserQuestion', () => {
       const img = new File(['img-bytes'], 'expired-ref.png', { type: 'image/png' })
 
       fireEvent.click(screen.getByRole('button', { name: /^Option 1$/ }))
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'Follow this mockup' },
-      })
+      setComposerText('Follow this mockup')
       fireEvent.change(fileInput, { target: { files: [img] } })
 
       await waitFor(() => {
@@ -868,7 +867,7 @@ describe('AskUserQuestion', () => {
 
       try {
         render(<AskUserQuestion toolUseId="tool-1" input={SINGLE_INPUT} />)
-        const dropZone = screen.getByPlaceholderText('Type your answer...').parentElement?.parentElement as HTMLElement
+        const dropZone = answerEditor().parentElement?.parentElement?.parentElement as HTMLElement
         expect(dropZone).toBeTruthy()
 
         // Non-image DOM drop must still be prevented so the webview does not navigate away.
@@ -936,7 +935,7 @@ describe('AskUserQuestion', () => {
       expect(sendMock.mock.calls.filter(([, message]) => message.type === 'permission_response')).toHaveLength(0)
       expect(useUIStore.getState().toasts.some((toast) => toast.type === 'error')).toBe(true)
       expect(screen.getByRole('button', { name: /^submit$/i })).toBeTruthy()
-      expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value).toBe('Keep draft')
+      expect(getComposerText()).toBe('Keep draft')
     })
 
     it('persists in-flight image submission across unmount and reopens when ATTACHMENT_PROCESSING_FAILED restores the permission', async () => {
@@ -947,9 +946,7 @@ describe('AskUserQuestion', () => {
       await waitFor(() => {
         expect(screen.getByAltText('inflight.png')).toBeTruthy()
       })
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'Keep on retry' },
-      })
+      setComposerText('Keep on retry')
       fireEvent.click(screen.getByRole('button', { name: /^submit$/i }))
 
       // While waiting for server materialization, unmounting and remounting must not flash an expired form.
@@ -969,7 +966,7 @@ describe('AskUserQuestion', () => {
       })
 
       expect(screen.getByRole('button', { name: /^submit$/i })).toBeTruthy()
-      expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value).toBe('Keep on retry')
+      expect(getComposerText()).toBe('Keep on retry')
       expect(screen.getByAltText('inflight.png')).toBeTruthy()
     })
 
@@ -1019,18 +1016,15 @@ describe('AskUserQuestion', () => {
 
         expect(screen.queryByRole('button', { name: /attach image/i })).toBeNull()
 
-        const textarea = screen.getByPlaceholderText('Type your answer...')
         const pngFile = new File(['png-bytes'], 'blocked.png', { type: 'image/png' })
-        fireEvent.paste(textarea, {
-          clipboardData: {
-            files: [pngFile],
-            items: [{ kind: 'file', getAsFile: () => pngFile }],
-          },
+        pasteIntoAnswer({
+          files: [pngFile],
+          items: [{ kind: 'file', getAsFile: () => pngFile }],
         })
         expect(screen.queryByAltText('blocked.png')).toBeNull()
 
         fireEvent.click(screen.getByRole('button', { name: /^Option 1$/ }))
-        fireEvent.change(textarea, { target: { value: 'Use the dark palette' } })
+        setComposerText('Use the dark palette')
         fireEvent.click(screen.getByRole('button', { name: /send as new message/i }))
 
         expect(sendMemberMessage).toHaveBeenCalledWith(
@@ -1067,7 +1061,7 @@ describe('AskUserQuestion', () => {
       // Switch to Q2: option + note + image
       fireEvent.click(screen.getByRole('button', { name: /Q2$/ }))
       fireEvent.click(screen.getByRole('button', { name: /^A2$/ }))
-      fireEvent.change(screen.getByPlaceholderText('输入你的回答...'), { target: { value: '保持居中' } })
+      setComposerText('保持居中')
       fireEvent.change(fileInput, { target: { files: [new File(['q2'], 'q2-ref.png', { type: 'image/png' })] } })
       await waitFor(() => {
         expect(screen.getByAltText('q2-ref.png')).toBeTruthy()
@@ -1117,17 +1111,18 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    const textarea = screen.getByPlaceholderText('Type your answer...')
-    expect(textarea.tagName).toBe('TEXTAREA')
-    expect(textarea.getAttribute('rows')).toBe('3')
+    // The answer box is the chat composer, so a draft keeps its Markdown syntax
+    // while the projection stays exactly as typed.
+    const editor = answerEditor()
+    expect(editor.getAttribute('contenteditable')).toBe('true')
+    expect(editor.getAttribute('aria-placeholder')).toBe('Type your answer...')
 
-    fireEvent.change(textarea, {
-      target: { value: 'First restored context line\nSecond restored context line' },
-    })
-    fireEvent.keyDown(textarea, { key: 'Enter' })
+    setComposerText('First restored context line\nSecond restored context line')
+    expect(getComposerText()).toBe('First restored context line\nSecond restored context line')
+    fireEvent.keyDown(editor, { key: 'Enter' })
     expect(sendMock.mock.calls.filter(([, message]) => message.type === 'permission_response')).toHaveLength(0)
 
-    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true })
 
     expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, {
       type: 'permission_response',
@@ -1145,6 +1140,22 @@ describe('AskUserQuestion', () => {
         },
       },
     })
+  })
+
+  // 提问卡的自由输入框曾是纯 textarea，Markdown 只能当字面量看。输入框统一换成
+  // 聊天输入框的 ProseMirror 编辑器后，语法标记要跟着光标实时着色，而投影与提交
+  // 的仍是原样文本
+  it('keeps Markdown syntax as typed while decorating it live in the answer box', () => {
+    render(<AskUserQuestion toolUseId="tool-1" input={SINGLE_INPUT_FOR_MARKDOWN} />)
+
+    setComposerText('Use **bold** and `code`')
+
+    const editor = answerEditor()
+    expect(getComposerText()).toBe('Use **bold** and `code`')
+    expect(editor.querySelector('.composer-md-strong')).toBeTruthy()
+    expect(editor.querySelector('.composer-md-code')).toBeTruthy()
+    // 光标所在行的标记保持可见，否则用户无法编辑边界
+    expect(editor.querySelectorAll('.composer-md-marker[data-md-hidden="true"]').length).toBe(0)
   })
 
   it('renders aborted permission results as terminal instead of asking again', () => {
@@ -1196,10 +1207,7 @@ describe('AskUserQuestion', () => {
     }
 
     const nextButton = () => screen.getByRole('button', { name: /next/i })
-    const typeCustomAnswer = (value: string) => fireEvent.change(
-      screen.getByPlaceholderText('Type your answer...'),
-      { target: { value } },
-    )
+    const typeCustomAnswer = (value: string) => setComposerText(value)
 
     it('is not rendered for a single-question prompt', () => {
       render(
@@ -1594,9 +1602,7 @@ describe('AskUserQuestion', () => {
       const first = render(<AskUserQuestion toolUseId="tool-1" input={TWO_QUESTIONS} />)
 
       fireEvent.click(screen.getByRole('button', { name: /^A1$/ }))
-      fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
-        target: { value: 'custom q2' },
-      })
+      setComposerText('custom q2')
       first.unmount()
 
       render(<AskUserQuestion toolUseId="tool-1" input={TWO_QUESTIONS} />)
@@ -1604,8 +1610,7 @@ describe('AskUserQuestion', () => {
       // The single-select pick advanced to Q2 before the unmount; both the tab
       // and the answer have to come back.
       expect(screen.getByText('Second question?')).toBeTruthy()
-      expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value)
-        .toBe('custom q2')
+      expect(getComposerText()).toBe('custom q2')
       fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
       expect(screen.getByRole('button', { name: /^A1$/ }).getAttribute('aria-pressed')).toBe('true')
     })
