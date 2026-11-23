@@ -20,6 +20,7 @@ import {
   GOOGLE_ADC_QUOTA_PROJECT_TRIGGER,
   KIMI_USAGE_LIMIT_MESSAGE,
   KIMI_USAGE_LIMIT_TRIGGER,
+  MOCK_ASK_WITH_IMAGE,
   PROMPT_TOO_LONG_TRIGGER,
   RELAY_OVERFLOW_TRIGGER,
   UPSTREAM_ERROR_MESSAGE,
@@ -62,6 +63,10 @@ export const MOCK_ONLY_SCENARIOS: readonly MockAgentScenario[] = [
   {
     id: 'mock-denied-tool-reaches-model',
     title: 'A denied tool call reaches the model as an error result',
+  },
+  {
+    id: 'mock-question-image-answer-reaches-model',
+    title: 'An image attached to a question answer reaches the model as an image block',
   },
   {
     id: 'mock-interrupt-closes-upstream',
@@ -958,6 +963,56 @@ export function createMockOnlyRunners(
         const results = toolResultsSentUpstream(requests, upstreamStart)
         if (!results.some((block) => block.is_error === true)) {
           throw new Error(`the denial never reached the model as an error tool_result; saw ${JSON.stringify(results)}`)
+        }
+      } finally {
+        socket.close()
+      }
+    },
+
+    async 'mock-question-image-answer-reaches-model'(ctx) {
+      const socket = await ctx.openSocket(await ctx.createSession())
+      try {
+        ctx.pinRuntime(socket)
+        const start = socket.messages.length
+        const upstreamStart = requests.length
+        socket.send({ type: 'user_message', content: `${MOCK_ASK_WITH_IMAGE}: ask me what the attached image shows.` })
+        const question = await socket.waitFor(
+          (m) => m.type === 'permission_request' && m.toolName === 'AskUserQuestion',
+          ctx.stepTimeoutMs, 'pending AskUserQuestion', start,
+        )
+        // The desktop sends the whole question input back plus the answers;
+        // the CLI uses `updatedInput` as the tool's input verbatim.
+        socket.send({
+          type: 'permission_response', requestId: question.requestId, allowed: true, rule: 'agent-flow-mock',
+          updatedInput: {
+            questions: [{
+              question: 'What is in the image?', header: 'Image', multiSelect: false,
+              options: [{ label: 'A square', description: 'The fixture is one blue square' }, { label: 'A circle', description: 'The fixture is round' }],
+            }],
+            answers: { 'What is in the image?': '(Image attached)' },
+          },
+          attachments: [{
+            type: 'image', name: 'fixture-answer.png', mimeType: 'image/png',
+            data: `data:image/png;base64,${MOCK_IMAGE_PNG_BASE64}`,
+          }],
+        })
+        await socket.waitFor((m) => m.type === 'message_complete', ctx.stepTimeoutMs, 'answer turn completes', start)
+
+        // The question card's image has to arrive as a real image block on the
+        // turn that carries the tool result. A text-only attachment note means
+        // the response schema dropped `contentBlocks` somewhere along the way.
+        const attachmentTurn = requests.slice(upstreamStart).find((request) => {
+          const last = request.body.messages?.[request.body.messages.length - 1]
+          if (last?.role !== 'user' || !Array.isArray(last.content)) return false
+          const blocks = last.content as Array<{ type?: string }>
+          return blocks.some((block) => block.type === 'tool_result') && blocks.some((block) => block.type === 'image')
+        })
+        if (!attachmentTurn) {
+          const seen = requests.slice(upstreamStart).map((request) => {
+            const last = request.body.messages?.[request.body.messages.length - 1]
+            return Array.isArray(last?.content) ? last.content.map((block: { type?: string }) => block.type) : last?.content
+          })
+          throw new Error(`the question's image never reached the model as an image block; upstream blocks: ${JSON.stringify(seen)}`)
         }
       } finally {
         socket.close()

@@ -57,6 +57,8 @@ export const KIMI_USAGE_LIMIT_MESSAGE = "You've reached your usage limit for thi
 export const GOOGLE_ADC_QUOTA_PROJECT_TRIGGER = 'MOCK_GOOGLE_ADC_QUOTA_PROJECT'
 export const GOOGLE_ADC_QUOTA_PROJECT_MESSAGE = 'The aiplatform.googleapis.com API requires a quota project, which is not set by default.'
 export const UPSTREAM_REFUSAL_TRIGGER = 'MOCK_UPSTREAM_REFUSAL'
+/** Prompt that makes the model ask a question answering with an image. */
+export const MOCK_ASK_WITH_IMAGE = 'MOCK_ASK_WITH_IMAGE'
 /**
  * Prompt whose history the provider rejects as too long, worded the way
  * OpenAI-compatible gateways word it. Once compacted, the summary no longer
@@ -266,6 +268,15 @@ export function decideReply(request: MockRequest): MockReply {
     return toolUse('AskUserQuestion', { questions: [{
       question: 'Choose A or B', header: 'Choice', multiSelect: false,
       options: [{ label: 'A', description: 'First option' }, { label: 'B', description: 'Second option' }],
+    }] })
+  }
+
+  // The image answer to this question travels back as `contentBlocks` on the
+  // permission response, so only the upstream request proves it arrived.
+  if (prompt.includes(MOCK_ASK_WITH_IMAGE) && hasTool(request, 'AskUserQuestion')) {
+    return toolUse('AskUserQuestion', { questions: [{
+      question: 'What is in the image?', header: 'Image', multiSelect: false,
+      options: [{ label: 'A square', description: 'The fixture is one blue square' }, { label: 'A circle', description: 'The fixture is round' }],
     }] })
   }
 

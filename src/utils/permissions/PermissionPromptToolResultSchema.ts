@@ -41,6 +41,30 @@ const decisionClassificationField = lazySchema(() =>
     .catch(undefined),
 )
 
+/**
+ * Block content a host may attach to an approval or denial.
+ *
+ * Mirrors `PermissionContentBlockSchema` in `entrypoints/sdk/coreSchemas.ts`.
+ * Anything else a host sends is dropped rather than failing the whole
+ * decision: the answer itself still arrives through `updatedInput`.
+ */
+const permissionContentBlockSchema = lazySchema(() =>
+  z.union([
+    z.object({
+      type: z.literal('text'),
+      text: z.string(),
+    }),
+    z.object({
+      type: z.literal('image'),
+      source: z.object({
+        type: z.literal('base64'),
+        media_type: z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']),
+        data: z.string(),
+      }),
+    }),
+  ]),
+)
+
 const PermissionAllowResultSchema = lazySchema(() =>
   z.object({
     behavior: z.literal('allow'),
@@ -57,6 +81,10 @@ const PermissionAllowResultSchema = lazySchema(() =>
         )
         return undefined
       }),
+    // Images and other block content a host attached to the approval (the
+    // question card's image answers travel here). Dropped by zod when absent
+    // from the schema, which silently cost the model the attachment.
+    contentBlocks: z.array(permissionContentBlockSchema()).optional(),
     toolUseID: z.string().optional(),
     decisionClassification: decisionClassificationField(),
   }),
@@ -67,6 +95,9 @@ const PermissionDenyResultSchema = lazySchema(() =>
     behavior: z.literal('deny'),
     message: z.string(),
     interrupt: z.boolean().optional(),
+    // A question handed back with images ("chat about this") carries them
+    // alongside the denial for the same reason as the allow branch.
+    contentBlocks: z.array(permissionContentBlockSchema()).optional(),
     toolUseID: z.string().optional(),
     decisionClassification: decisionClassificationField(),
   }),
