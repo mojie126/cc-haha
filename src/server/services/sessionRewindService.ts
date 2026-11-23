@@ -2,8 +2,9 @@ import type { UUID } from 'crypto'
 import { constants } from 'node:fs'
 import { access, lstat, mkdir, open, realpath, unlink, type FileHandle } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from 'node:path'
-import { createTwoFilesPatch, diffLines } from 'diff'
+import { createTwoFilesPatch } from 'diff'
 import { ApiError } from '../middleware/errorHandler.js'
+import { LINE_DIFF_MAX_EDIT_LENGTH, countLineDiffStats } from '../../utils/lineDiffBudget.js'
 import { recordedCommandIsReadOnly } from '../../tools/BashTool/readOnlyValidation.js'
 import { applyEditToFile } from '../../tools/FileEditTool/utils.js'
 import {
@@ -516,15 +517,38 @@ function buildCheckpointDiff(
   const oldFileName = oldExists ? `a/${displayPath}` : '/dev/null'
   const newFileName = newExists ? `b/${displayPath}` : '/dev/null'
 
-  return createTwoFilesPatch(
+  const patch = createTwoFilesPatch(
     oldFileName,
     newFileName,
     oldContent,
     newContent,
     '',
     '',
-    { context: 3 },
+    { context: 3, maxEditLength: LINE_DIFF_MAX_EDIT_LENGTH },
   )
+  // Past the edit budget the library bails out instead of returning a patch.
+  // A file that large and that different has no useful hunk structure anyway,
+  // so fall back to one whole-file hunk and still show what changed.
+  return patch ?? syntheticWholeFilePatch(oldFileName, newFileName, oldContent, newContent)
+}
+
+function syntheticWholeFilePatch(
+  oldFileName: string,
+  newFileName: string,
+  oldContent: string,
+  newContent: string,
+): string {
+  // `countLines` already treats a trailing newline as a terminator, so a file
+  // that ends in one does not gain a phantom empty line here.
+  const oldLines = oldContent === '' ? [] : oldContent.replace(/\n$/, '').split('\n')
+  const newLines = newContent === '' ? [] : newContent.replace(/\n$/, '').split('\n')
+  return [
+    `--- ${oldFileName}`,
+    `+++ ${newFileName}`,
+    `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+    ...oldLines.map((line) => `-${line}`),
+    ...newLines.map((line) => `+${line}`),
+  ].join('\n')
 }
 
 async function readBackupBytes(
@@ -546,13 +570,11 @@ function countTurnDiffStats(
   beforeContent: string | null,
   afterContent: string | null,
 ): { insertions: number; deletions: number } {
-  let insertions = 0
-  let deletions = 0
-  for (const change of diffLines(beforeContent ?? '', afterContent ?? '')) {
-    if (change.added) insertions += change.count || 0
-    if (change.removed) deletions += change.count || 0
-  }
-  return { insertions, deletions }
+  // Bounded by the shared edit budget: the checkpoint list runs this over every
+  // tracked file of every turn, and an unbounded diff on one rewritten file
+  // blocked the event loop for tens of seconds.
+  const stats = countLineDiffStats(beforeContent ?? '', afterContent ?? '')
+  return { insertions: stats.additions, deletions: stats.deletions }
 }
 
 function getTurnMessageRange(

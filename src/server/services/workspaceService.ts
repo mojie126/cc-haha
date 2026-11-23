@@ -4,7 +4,6 @@ import { constants as fsConstants, watch, type FSWatcher } from 'node:fs'
 import { execFile as execFileCallback } from 'node:child_process'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
-import { diffLines } from 'diff'
 import type { MessageEntry } from './sessionService.js'
 import type { FileHistorySnapshot } from '../../utils/fileHistory.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
@@ -17,6 +16,7 @@ import {
   type WorkspaceWatchState,
 } from './workspaceWatchState.js'
 import { collectErroredToolUseIds } from './transcriptToolResults.js'
+import { countLineDiffStats } from '../../utils/lineDiffBudget.js'
 import {
   isSameOrInsidePathForPlatform,
   normalizeDriveRootPathForPlatform,
@@ -31,28 +31,10 @@ import {
 const MAX_PREVIEW_BYTES = 1024 * 1024
 export const MAX_WORKSPACE_DOWNLOAD_BYTES = 20 * 1024 * 1024
 const MAX_UNTRACKED_STAT_BYTES = 256 * 1024
-/**
- * The edit distance `diffLines` may explore before it gives up. The cost of
- * the line diff grows with the number of differing lines, not the file size:
- * a 440k-character file with one hunk costs a handful of edits, while a
- * 5k-line file that changed everywhere once cost 37 s of CPU here and stalled
- * the whole server event loop.
- */
-const DIFF_EXACT_MAX_EDIT_LENGTH = 200
 const GIT_TIMEOUT_MS = 5_000
 const MAX_GIT_BUFFER_BYTES = 2_000_000
 const VCS_METADATA_DIRECTORY_NAMES = new Set(['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'])
 const execFile = promisify(execFileCallback)
-
-/** Number of lines a string spans, without materializing a split array. */
-function countLines(content: string): number {
-  if (content.length === 0) return 0
-  let lines = 1
-  for (let index = content.indexOf('\n'); index !== -1; index = content.indexOf('\n', index + 1)) {
-    lines += 1
-  }
-  return content.endsWith('\n') ? lines - 1 : lines
-}
 
 function isVcsMetadataDirectoryName(name: string): boolean {
   return VCS_METADATA_DIRECTORY_NAMES.has(name.toLowerCase())
@@ -1289,26 +1271,11 @@ export class WorkspaceService {
   }
 
   /**
-   * Line counts for one changed file.
-   *
-   * `diffLines` backtracks over both texts, so a large rewrite costs O(n·m)
-   * and can block the server event loop for tens of seconds. Past the edit
-   * budget the library returns `undefined`; the whole-file fallback then
-   * reports every new line added and every old line removed, without the
-   * exact match the LCS would have found.
+   * Line counts for one changed file. Bounded by the shared edit budget so a
+   * large rewrite cannot stall the event loop; see `lineDiffBudget`.
    */
   private countDiffStats(oldContent: string, newContent: string): { additions: number; deletions: number } {
-    const changes = diffLines(oldContent, newContent, { maxEditLength: DIFF_EXACT_MAX_EDIT_LENGTH })
-    if (!changes) {
-      return { additions: countLines(newContent), deletions: countLines(oldContent) }
-    }
-    let additions = 0
-    let deletions = 0
-    for (const change of changes) {
-      if (change.added) additions += change.count || 0
-      if (change.removed) deletions += change.count || 0
-    }
-    return { additions, deletions }
+    return countLineDiffStats(oldContent, newContent)
   }
 
   private extractSessionChangesFromTool(

@@ -1,5 +1,4 @@
 import { createHash, randomUUID, type UUID } from 'crypto'
-import { diffLines } from 'diff'
 import { constants as fsConstants, type Stats } from 'fs'
 import {
   copyFile,
@@ -31,6 +30,7 @@ import { getErrnoCode, isENOENT } from './errors.js'
 import { pathExists } from './file.js'
 import { logError } from './log.js'
 import { recordFileHistorySnapshot } from './sessionStorage.js'
+import { countLineDiffStats } from './lineDiffBudget.js'
 
 type BackupFileName = string | null // The null value means the file does not exist in this version
 
@@ -780,16 +780,12 @@ async function computeDiffStatsForFile(
 
     filesChanged.push(originalFile)
 
-    // Compute the diff
-    const changes = diffLines(originalContent ?? '', backupContent ?? '')
-    changes.forEach(c => {
-      if (c.added) {
-        insertions += c.count || 0
-      }
-      if (c.removed) {
-        deletions += c.count || 0
-      }
-    })
+    // Compute the diff. Bounded for the same reason as the server's cards: an
+    // unbounded line diff on one rewritten file costs O(n·m) and can stall the
+    // event loop; past the budget the whole-file counts still describe it.
+    const stats = countLineDiffStats(originalContent ?? '', backupContent ?? '')
+    insertions += stats.additions
+    deletions += stats.deletions
   } catch (error) {
     logError(new Error(`FileHistory: Error generating diffStats: ${error}`))
   }
