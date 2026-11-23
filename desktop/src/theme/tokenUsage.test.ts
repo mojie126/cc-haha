@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
@@ -31,6 +31,7 @@ const RUNTIME_INJECTED = new Set([
   '--trace-tree-width',
   '--touch-h5-viewport-height',
   '--line-start',
+  '--settings-page-width',
   // The zoom of a Word document, set on its wrapper inside the sandboxed frame (docxFrame.ts).
   '--docx-zoom',
 ])
@@ -59,7 +60,10 @@ describe('css custom property usage', () => {
       // preview-agent 是注入到第三方页面的独立脚本：它的样式活在 Shadow DOM 里，
       // 页面上不存在 globals.css，token 由那段样式自己定义自己消费。自洽性由
       // preview-agent/editBubble.test.ts 用同等强度的检查守住。
-      if (file.includes('/preview-agent/')) continue
+      // The `replaceAll` keeps the check independent of the platform separator:
+      // a Windows walk produces backslash paths, and a `/`-only needle would
+      // silently stop matching and report 50 harmless tokens as unresolved.
+      if (file.replaceAll('\\', '/').includes('/preview-agent/')) continue
 
       const lines = readFileSync(file, 'utf8').split('\n')
       lines.forEach((line, index) => {
@@ -68,7 +72,7 @@ describe('css custom property usage', () => {
           if (definedTokens.has(token)) continue
           if (TAILWIND_BUILTIN.has(token)) continue
           if (RUNTIME_INJECTED.has(token)) continue
-          unresolved.push(`${file.replace(SRC_ROOT, 'src')}:${index + 1}  ${token}`)
+          unresolved.push(`${relative(SRC_ROOT, file).replaceAll('\\', '/')}:${index + 1}  ${token}`)
         }
       })
     }
@@ -86,7 +90,7 @@ describe('css custom property usage', () => {
     for (const file of sourceFiles) {
       // The pet window is an OS-level always-on-top surface with its own
       // stacking context; it is not part of the in-app overlay scale.
-      if (file.includes('/features/pets/')) continue
+      if (file.replaceAll('\\', '/').includes('/features/pets/')) continue
 
       const lines = readFileSync(file, 'utf8').split('\n')
       lines.forEach((line, index) => {
@@ -123,7 +127,7 @@ describe('css custom property usage', () => {
     const offenders: string[] = []
 
     for (const file of sourceFiles) {
-      if (file.includes('/features/pets/')) continue
+      if (file.replaceAll('\\', '/').includes('/features/pets/')) continue
 
       const lines = readFileSync(file, 'utf8').split('\n')
       lines.forEach((line, index) => {
@@ -131,7 +135,7 @@ describe('css custom property usage', () => {
         const bareZ = /\bz-(\d+)\b/.exec(line)
         if (bareZ) {
           offenders.push(
-            `${file.replace(SRC_ROOT, 'src')}:${index + 1}  z-${bareZ[1]} (use z-[var(--z-…)])`,
+            `${relative(SRC_ROOT, file).replaceAll('\\', '/')}:${index + 1}  z-${bareZ[1]} (use z-[var(--z-…)])`,
           )
         }
       })

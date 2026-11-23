@@ -8,6 +8,10 @@ import { mcpApi } from '../api/mcp'
 import { sessionsApi } from '../api/sessions'
 import { useUIStore } from '../stores/uiStore'
 import { useContextUsageStore } from '../stores/contextUsageStore'
+import {
+  NEW_SESSION_DRAFT_SESSION_ID,
+  clearPersistedComposerDraft,
+} from '../lib/composerDraftPersistence'
 
 vi.mock('../api/skills', () => ({
   skillsApi: {
@@ -93,6 +97,10 @@ import { useTaskStore } from '../stores/taskStore'
 
 beforeEach(() => {
   useContextUsageStore.setState({ bySession: {} })
+  // An earlier case types into the empty composer, which persists a
+  // new-session draft; without clearing it the next EmptySession restores that
+  // text instead of starting empty (and drops the placeholder with it).
+  clearPersistedComposerDraft(NEW_SESSION_DRAFT_SESSION_ID)
   useSettingsStore.setState({ locale: 'en' })
   useProviderStore.setState({
     providers: [],
@@ -189,7 +197,10 @@ describe('Content-only pages render without errors', () => {
     expect(container.querySelector('[data-composer-editor]')).toBeInTheDocument()
     // The 「素」 new-session hero asks what to work on (with or without a project).
     expect(container.innerHTML).toMatch(/What should we work on/)
-    expect(container.innerHTML).toContain('Ask anything')
+    // `data-placeholder` is cleared whenever a ghost prompt suggestion occupies
+    // the same line; `aria-placeholder` always carries the real placeholder.
+    await waitFor(() => expect(container.querySelector('[data-composer-editor]'))
+      .toHaveAttribute('aria-placeholder', 'Ask anything...'))
   })
 
   it('EmptySession draws no context usage before a session is created', async () => {

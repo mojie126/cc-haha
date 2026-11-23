@@ -2020,6 +2020,30 @@ describe('MessageList nested tool calls', () => {
     ])
   })
 
+  it('keeps a wake segment that actually ran tools expanded, unlike a bare receipt', () => {
+    // 唤醒提示说后台任务结束，模型接着跑命令把活干完、再给出结论：这一段是
+    // 用户等待的过程与结论，不能折成一行；只有回执文字的唤醒段才折叠。
+    const worked: UIMessage[] = [
+      { id: 'user', type: 'user_text', content: '修一下构建', timestamp: 1 },
+      { id: 'answer', type: 'assistant_text', content: '先看看依赖。', timestamp: 2 },
+      { id: 'notice', type: 'system', content: 'Background task finished.', backgroundContinueTaskIds: ['task-1'], timestamp: 3 },
+      { id: 'wake-tool', type: 'tool_use', toolName: 'Bash', toolUseId: 'tu-1', input: { command: 'ls' }, timestamp: 4 },
+      { id: 'conclusion', type: 'assistant_text', content: '依赖缺失，已经补上。', timestamp: 5 },
+    ]
+    const workedItems = buildRenderModel(worked).renderItems
+    expect(workedItems.some((item) => item.kind === 'message' && item.message.id === 'conclusion' && item.wakeReply)).toBe(false)
+
+    // 醒来只回执一句、没有再干活：这类段照旧折叠，避免整段铺在正文里。
+    const receiptOnly: UIMessage[] = [
+      { id: 'user', type: 'user_text', content: '修一下构建', timestamp: 1 },
+      { id: 'answer', type: 'assistant_text', content: '先看看依赖。', timestamp: 2 },
+      { id: 'notice', type: 'system', content: 'Background task finished.', backgroundContinueTaskIds: ['task-1'], timestamp: 3 },
+      { id: 'receipt', type: 'assistant_text', content: '后台任务没有新增信息。', timestamp: 4 },
+    ]
+    const receiptItems = buildRenderModel(receiptOnly).renderItems
+    expect(receiptItems.some((item) => item.kind === 'message' && item.message.id === 'receipt' && item.wakeReply)).toBe(true)
+  })
+
   it('keeps reloaded background failures in Activity while hiding both current and legacy wake-up rows', () => {
     const failure = 'Background command "temporary server" failed with exit code 143'
     const history: MessageEntry[] = [

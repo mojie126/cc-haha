@@ -1798,5 +1798,65 @@ describe('AskUserQuestion', () => {
 
       expect(screen.getByText('Ship it?')).toBeTruthy()
     })
+
+    it('renders Markdown in the question and option text', () => {
+      const { container } = render(<AskUserQuestion toolUseId="tool-1" input={singleQuestion({
+        question: 'Which **path** to use?',
+        options: [{ label: 'The **fast** one', description: 'Runs `deploy.sh`' }],
+      })} />)
+
+      expect(screen.getByText('path', { selector: 'strong' })).toBeTruthy()
+      expect(screen.getByText('fast', { selector: 'strong' })).toBeTruthy()
+      expect(container.querySelector('.markdown-prose code')?.textContent).toBe('deploy.sh')
+    })
+
+    it('does not pick an option when a Markdown link inside it is clicked', () => {
+      const openSpy = vi.spyOn(getDesktopHost().shell, 'open').mockResolvedValue(undefined)
+      try {
+        render(<AskUserQuestion toolUseId="tool-1" input={singleQuestion({
+          question: 'Which page?',
+          options: [{ label: 'See the [docs](https://example.com/docs)' }],
+        })} />)
+
+        fireEvent.click(screen.getByRole('link', { name: 'docs' }))
+
+        expect(openSpy).toHaveBeenCalledWith('https://example.com/docs')
+        expect(screen.getByRole('button', { name: /docs/ }).getAttribute('aria-pressed')).toBe('false')
+      } finally {
+        openSpy.mockRestore()
+      }
+    })
+
+    it('shows a platform-aware submit shortcut on the submit button', () => {
+      const platformSpy = vi.spyOn(navigator, 'platform', 'get')
+      const userAgentSpy = vi.spyOn(navigator, 'userAgent', 'get')
+
+      try {
+        platformSpy.mockReturnValue('Win32')
+        userAgentSpy.mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+
+        const { rerender } = render(
+          <AskUserQuestion
+            toolUseId="tool-1"
+            input={{ questions: [{ question: 'Ship it?', options: [{ label: 'Yes' }] }] }}
+          />,
+        )
+        expect(screen.getByRole('button', { name: 'Submit' }).textContent).toContain('Ctrl+↵')
+
+        platformSpy.mockReturnValue('MacIntel')
+        userAgentSpy.mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)')
+
+        rerender(
+          <AskUserQuestion
+            toolUseId="tool-1"
+            input={{ questions: [{ question: 'Ship it?', options: [{ label: 'Yes' }] }] }}
+          />,
+        )
+        expect(screen.getByRole('button', { name: 'Submit' }).textContent).toContain('⌘↵')
+      } finally {
+        platformSpy.mockRestore()
+        userAgentSpy.mockRestore()
+      }
+    })
   })
 })

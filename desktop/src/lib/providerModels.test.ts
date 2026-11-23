@@ -33,7 +33,10 @@ describe('groupProviderModels', () => {
       '其他',
     )
 
-    expect(groups.map((group) => group.group)).toEqual(['xai', '其他'])
+    // Mixed Latin/CJK ordering depends on the host ICU collation (Windows puts
+    // 「其他」 first, Linux CI last), so only the grouping is asserted here; the
+    // alphabetical order is covered by the all-Latin case above.
+    expect(groups.map((group) => group.group).sort()).toEqual(['xai', '其他'].sort())
     expect(groups.find((group) => group.group === '其他')?.models.map((m) => m.id))
       .toEqual(['no-owner', 'blank-owner'])
   })

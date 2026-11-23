@@ -31,11 +31,16 @@ const components = readdirSync(COMPOSITE_DIR)
   .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
   .map((file) => basename(file).replace(/\.tsx?$/, ''))
 
-const allSources = collect(SRC_DIR).map((path) => ({ path, code: readFileSync(path, 'utf8') }))
+const allSources = collect(SRC_DIR).map((path) => ({
+  path,
+  // Normalize to `/` so the directory test reads the same on Windows.
+  normalized: path.replaceAll('\\', '/'),
+  code: readFileSync(path, 'utf8'),
+}))
 
 describe('components/composite contract', () => {
   it.each(components)('%s has at least two callers', (name) => {
-    const importers = allSources.filter(({ path, code }) => {
+    const importers = allSources.filter(({ normalized: path, code }) => {
       if (path.includes('/components/composite/')) return false
       if (/\.test\.tsx?$/.test(path)) return false
       return new RegExp(`from\\s+['"][^'"]*${name}['"]`).test(code)
@@ -43,7 +48,7 @@ describe('components/composite contract', () => {
 
     expect(
       importers.length,
-      `${name} has ${importers.length} caller(s): ${importers.map((i) => i.path.replace(SRC_DIR, 'src')).join(', ') || 'none'}. ` +
+      `${name} has ${importers.length} caller(s): ${importers.map((i) => i.normalized.replace(`${SRC_DIR.replaceAll('\\', '/')}/`, 'src/')).join(', ') || 'none'}. ` +
       'A single-caller component belongs in that caller\'s directory.',
     ).toBeGreaterThanOrEqual(2)
   })

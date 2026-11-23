@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, ClipboardEvent } from 'react'
+import type { ChangeEvent, ClipboardEvent, MouseEvent as ReactMouseEvent } from 'react'
 import {
   listPendingPermissions,
   useChatStore,
@@ -12,6 +12,8 @@ import { useTranslation } from '../../i18n'
 import { ArrowRight, Check, CircleCheck, ImagePlus, Info, MessageCircleQuestion, MessagesSquare, Send } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Kbd } from '@/components/ui/Kbd'
+import { detectPlatform } from '../../lib/workspace/shortcuts'
 import { isInlineImagePath } from '../../lib/attachmentImages'
 import {
   filesToComposerAttachments,
@@ -21,10 +23,13 @@ import {
   type ComposerAttachment,
 } from '../../lib/composerAttachments'
 import { isDesktopRuntime } from '../../lib/desktopRuntime'
+import { openPreviewLink } from '../../lib/openPreviewLink'
+import type { PreviewLinkTarget } from '../../lib/previewLinkRouter'
 import { formatBytes } from '../../lib/formatBytes'
 import { checkUserMessageBudget } from '../../lib/userMessageBudget'
 import type { AttachmentRef, ClientMessage } from '../../types/chat'
 import { AttachmentGallery, type AttachmentPreview } from './AttachmentGallery'
+import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
 import { PendingDecisionMarker } from './PendingDecisionMarker'
 import { useComposerFileDrop } from './useComposerFileDrop'
 import {
@@ -391,6 +396,19 @@ export function AskUserQuestion({
     if (resultText) return resultText
     return localSummary
   }, [hasStructuredAnswers, imageAttachedDisplayText, localSummary, questions, resultAnnotations, resultAnswers, resultText])
+
+  /**
+   * Markdown links inside a question travel the same route as chat prose.
+   * The click always stops here so it never also picks the option it sits in.
+   */
+  const handleQuestionLinkClick = useCallback(
+    (href: PreviewLinkTarget, event: ReactMouseEvent<HTMLDivElement>) => {
+      event.stopPropagation()
+      if (!targetSessionId) return false
+      return openPreviewLink(href, targetSessionId)
+    },
+    [targetSessionId],
+  )
 
   const markUserActivity = useCallback(() => {
     if (!requestSessionId || !pendingRequest || submitted ||
@@ -942,9 +960,11 @@ export function AskUserQuestion({
               <span>{t('question.expiredNotice')}</span>
             </div>
           )}
-          <p className="mb-2 px-1 text-sm font-medium text-[var(--color-text-primary)]">
-            {activeQuestion.question}
-          </p>
+          <MarkdownRenderer
+            content={activeQuestion.question}
+            className="mb-2 px-1 text-sm font-medium prose-p:!my-0 prose-p:!leading-relaxed"
+            onLinkClick={handleQuestionLinkClick}
+          />
 
           {/* Option cards: hairline at rest, a 1.5px terracotta edge on the
               faint brand wash when picked. */}
@@ -982,14 +1002,18 @@ export function AskUserQuestion({
                     >
                       {isSelected && isMultiSelect ? <Check size={12} strokeWidth={2.5} /> : null}
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium text-[var(--color-text-primary)]">
-                        {opt.label}
-                      </span>
+                    <span className="min-w-0 flex-1 text-[13px] font-medium text-[var(--color-text-primary)]">
+                      <MarkdownRenderer
+                        content={opt.label}
+                        className="prose-p:!my-0 prose-p:!text-[13px] prose-p:!font-medium prose-p:!leading-snug"
+                        onLinkClick={handleQuestionLinkClick}
+                      />
                       {opt.description && (
-                        <span className="mt-0.5 block text-xs text-[var(--color-text-tertiary)]">
-                          {opt.description}
-                        </span>
+                        <MarkdownRenderer
+                          content={opt.description}
+                          className="mt-0.5 prose-p:!my-0 prose-p:!text-xs prose-p:!font-normal prose-p:!leading-snug prose-p:!text-[var(--color-text-tertiary)]"
+                          onLinkClick={handleQuestionLinkClick}
+                        />
                       )}
                     </span>
                   </button>
@@ -1122,7 +1146,8 @@ export function AskUserQuestion({
             disabled={!allAnswered || (!expired && !pendingRequest)}
             onClick={handleSubmit}
           >
-            {t(expired ? 'question.sendAsMessage' : 'question.submit')}
+            <span>{t(expired ? 'question.sendAsMessage' : 'question.submit')}</span>
+            <Kbd size="xs" appearance="inverse" aria-hidden="true" className="ml-0.5 opacity-85">{detectPlatform() === 'mac' ? '⌘↵' : 'Ctrl+↵'}</Kbd>
           </Button>
           <Button
             variant="ghost"

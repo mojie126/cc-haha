@@ -82,7 +82,7 @@ export function ProjectContextChip({
         className="inline-flex h-7 min-w-0 max-w-full shrink items-center gap-1.5 px-1.5 text-xs leading-none text-[var(--color-text-tertiary)]"
       >
         <Folder size={14} strokeWidth={1.75} aria-hidden="true" className={iconClassName} />
-        <span className="min-w-[1.75rem] shrink truncate">{label}</span>
+        <span className="min-w-[1.75rem] shrink truncate leading-[1.45]">{label}</span>
         {showBranch && (
           <>
             <span aria-hidden="true" className="shrink-0 text-[var(--color-outline)]">/</span>
@@ -92,7 +92,7 @@ export function ProjectContextChip({
                 took both down together and left `cc-…/…n` — two truncations,
                 neither readable. The project name is the one that identifies
                 the row, so the branch gives up its width first. */}
-            <span dir="rtl" className="min-w-0 shrink-[4] truncate text-left">
+            <span dir="rtl" className="min-w-0 shrink-[4] truncate text-left leading-[1.45]">
               <bdi>{branch}</bdi>
             </span>
           </>
@@ -122,12 +122,12 @@ export function ProjectContextChip({
       }`}
     >
       <Folder size={14} strokeWidth={1.75} aria-hidden="true" className={iconClassName} />
-      <span className="truncate">{label}</span>
+      <span className="truncate leading-[1.45]">{label}</span>
       {showBranch ? (
         <>
           <span aria-hidden="true" className="shrink-0 text-[var(--color-outline)]">/</span>
           <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" className={iconClassName} />
-          <span className="truncate">{branch}</span>
+          <span className="truncate leading-[1.45]">{branch}</span>
         </>
       ) : null}
       {isWorktree ? (

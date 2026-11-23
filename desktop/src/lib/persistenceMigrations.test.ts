@@ -71,7 +71,9 @@ describe('desktop persistence migrations', () => {
   test('normalizes unversioned reading preferences and preserves a future schema', () => {
     localStorage.setItem(CHAT_APPEARANCE_STORAGE_KEY, JSON.stringify({ font: 'serif', fontSize: 80, extra: true }))
     runDesktopPersistenceMigrations()
-    expect(JSON.parse(localStorage.getItem(CHAT_APPEARANCE_STORAGE_KEY)!)).toEqual({ version: 1, font: 'serif', fontSize: 24, width: 'standard', extra: true })
+    expect(JSON.parse(localStorage.getItem(CHAT_APPEARANCE_STORAGE_KEY)!)).toEqual({
+      version: 1, font: 'serif', fontSize: 24, width: 'standard', customWidth: '1200px', extra: true,
+    })
     const future = '{"version":2,"font":"future","extra":true}'
     localStorage.setItem(CHAT_APPEARANCE_STORAGE_KEY, future)
     runDesktopPersistenceMigrations()

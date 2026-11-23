@@ -44,7 +44,9 @@ function staticImports(file: string): StaticImport[] {
     const isReExport = ts.isExportDeclaration(node)
     if (!(isImport || isReExport) || !node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) continue
     const typeOnly = isImport ? node.importClause?.isTypeOnly === true : node.isTypeOnly
-    found.push({ file: path.relative(srcRoot, file), specifier: node.moduleSpecifier.text, typeOnly })
+    // Normalize to `/` so the allowlist and the endsWith needles below read
+    // the same on Windows, where `path.relative` yields backslashes.
+    found.push({ file: path.relative(srcRoot, file).replaceAll('\\', '/'), specifier: node.moduleSpecifier.text, typeOnly })
   }
   return found
 }

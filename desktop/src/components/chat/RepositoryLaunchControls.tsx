@@ -1075,7 +1075,7 @@ export const RepositoryLaunchControls = forwardRef<RepositoryLaunchControlsHandl
     >
       <Folder size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
 
-      <span className="min-w-[1.75rem] shrink truncate">
+      <span className="min-w-[1.75rem] shrink truncate leading-[1.45]">
         {repoLabel || t('dirPicker.selectProject')}
       </span>
 
@@ -1090,7 +1090,7 @@ export const RepositoryLaunchControls = forwardRef<RepositoryLaunchControlsHandl
             prefixes carry no information. `<bdi>` isolates the name so the RTL
             container cannot reorder its own neutral characters (the slashes).
           */}
-          <span dir="rtl" className="min-w-0 shrink truncate text-left">
+          <span dir="rtl" className="min-w-0 shrink truncate text-left leading-[1.45]">
             <bdi>{branchPillName}</bdi>
           </span>
         </>

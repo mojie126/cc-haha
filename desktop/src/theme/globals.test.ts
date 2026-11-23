@@ -272,10 +272,13 @@ describe('desktop theme tokens', () => {
   it('keeps the UI zoom slider thumb visible on every dark ground', () => {
     // The thumb is a light disc on a light track; on a dark ground it needs an
     // accent border to read at all. Both dark palettes get the override.
-    expect(css).toContain(DARK_THEME_MODES.map((theme) => `[data-theme="${theme}"] .settings-zoom-control`).join(',\n'))
-    expect(css).toContain('--settings-zoom-thumb-bg: var(--color-surface-bright);')
-    expect(css).toContain('--settings-zoom-thumb-border: var(--color-brand);')
-    expect(css).toContain('box-shadow: var(--settings-zoom-thumb-shadow);')
+    // The stylesheet is read raw, so its line endings are whatever Git checked
+    // out (CRLF on Windows); match the multi-line selector against the
+    // normalized copy rather than the raw import.
+    expect(normalizedCss).toContain(DARK_THEME_MODES.map((theme) => `[data-theme="${theme}"] .settings-zoom-control`).join(',\n'))
+    expect(normalizedCss).toContain('--settings-zoom-thumb-bg: var(--color-surface-bright);')
+    expect(normalizedCss).toContain('--settings-zoom-thumb-border: var(--color-brand);')
+    expect(normalizedCss).toContain('box-shadow: var(--settings-zoom-thumb-shadow);')
   })
 
   it('maps markdown typography colors to theme tokens', () => {

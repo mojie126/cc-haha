@@ -1,7 +1,12 @@
-import { FileText, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, ChevronUp, FileText, ShieldCheck } from 'lucide-react'
 import { MarkdownRenderer } from '../markdown/MarkdownRenderer'
+import { useTranslation } from '../../i18n'
 import type { PermissionUpdate } from '../../types/chat'
 import { PLAN_REJECTION_MESSAGE, PLAN_REJECTION_WITH_REASON_PREFIX } from '../../../../src/constants/messages'
+
+const PLAN_COLLAPSE_LINE_THRESHOLD = 14
+const PLAN_COLLAPSE_CHAR_THRESHOLD = 900
 
 export const EXIT_PLAN_MODE_TOOL_NAME = 'ExitPlanMode'
 export const ENTER_PLAN_MODE_TOOL_NAME = 'EnterPlanMode'
@@ -50,7 +55,13 @@ export function PlanPreviewCard({
   emptyLabel = 'No plan content available.',
   embedded = false,
 }: Props) {
+  const t = useTranslation()
   const trimmedPlan = plan.trim()
+  const planLines = trimmedPlan ? trimmedPlan.split('\n') : []
+  const isLongPlan = planLines.length > PLAN_COLLAPSE_LINE_THRESHOLD || trimmedPlan.length > PLAN_COLLAPSE_CHAR_THRESHOLD
+  const [expanded, setExpanded] = useState(false)
+  const isCollapsedPreview = isLongPlan && !expanded
+  const hiddenLineCount = Math.max(1, planLines.length - PLAN_COLLAPSE_LINE_THRESHOLD)
 
   // `embedded` is the plan inside the approval card, which already supplies
   // the frame and the header — a second bordered card inside it was the
@@ -75,13 +86,50 @@ export function PlanPreviewCard({
         ) : null}
       </div>
 
-      <div className={`max-h-[520px] overflow-auto ${embedded ? '' : 'px-3.5 py-3'}`}>
-        {trimmedPlan ? (
-          <MarkdownRenderer content={trimmedPlan} variant="compact" />
-        ) : (
-          <div className="text-xs text-[var(--color-text-tertiary)]">{emptyLabel}</div>
-        )}
+      <div className="relative">
+        <div className={[
+          isCollapsedPreview
+            ? 'max-h-[260px] overflow-hidden'
+            : 'max-h-[520px] overflow-auto',
+          embedded ? '' : 'px-3.5 py-3',
+        ].filter(Boolean).join(' ')}>
+          {trimmedPlan ? (
+            <MarkdownRenderer content={trimmedPlan} variant="compact" />
+          ) : (
+            <div className="text-xs text-[var(--color-text-tertiary)]">{emptyLabel}</div>
+          )}
+        </div>
+        {isCollapsedPreview ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[var(--color-surface-container-lowest)] to-transparent"
+          />
+        ) : null}
       </div>
+
+      {isLongPlan ? (
+        <button
+          type="button"
+          data-plan-expand-toggle="true"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className={`flex h-8 w-full items-center justify-center gap-1 border-t border-[var(--color-border)] text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-border-focus)] ${
+            embedded ? 'mt-2 rounded-[var(--radius-md)]' : ''
+          }`}
+        >
+          {expanded ? (
+            <>
+              {t('codeViewer.collapse')}
+              <ChevronUp size={14} strokeWidth={1.75} aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              {t('codeViewer.showMoreLines', { count: hiddenLineCount })}
+              <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+            </>
+          )}
+        </button>
+      ) : null}
 
       {allowedPrompts.length > 0 && requestedPermissionsTitle ? (
         <div className={embedded ? 'pt-2.5' : 'border-t border-[var(--color-border)] px-3.5 py-2.5'}>

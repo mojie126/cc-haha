@@ -66,6 +66,7 @@ import { SYNTHETIC_MODEL } from '../../utils/messages.js'
 import { getTokenUsage, isUsableContextUsage } from '../../utils/tokens.js'
 import { ProviderService } from './providerService.js'
 import { OPENAI_OFFICIAL_PROVIDER_ID, isOpenAIOfficialProviderId } from './openaiOfficialProvider.js'
+import { GROK_OFFICIAL_PROVIDER_ID, isGrokOfficialProviderId } from './grokOfficialProvider.js'
 import { shouldHideCommandMetadataContent } from '../../utils/commandMetadata.js'
 import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
@@ -3205,7 +3206,10 @@ export class SessionService {
     model: string,
     launchInfoOverride?: ProviderContextWindowHint | null,
     hints: { autoCompactWindow?: string } = {},
-    openAIRuntimeEnv?: Record<string, string> | null,
+    officialRuntimeEnvs?: {
+      openAI?: Record<string, string> | null
+      grok?: Record<string, string> | null
+    },
   ): Promise<number | undefined> {
     const launchInfo = launchInfoOverride ?? await this.getSessionLaunchInfo(sessionId).catch(() => null)
     const providerIds: string[] = []
@@ -3245,9 +3249,11 @@ export class SessionService {
     let sessionProviderAutoCompactWindow: string | undefined
     let sawSessionProvider = false
     for (const providerId of providerIds) {
-      const env = openAIRuntimeEnv !== undefined && isOpenAIOfficialProviderId(providerId)
-        ? openAIRuntimeEnv
-        : await this.providerService.getProviderRuntimeEnv(providerId, { cachedCatalogOnly: true }).catch(() => null)
+      const env = officialRuntimeEnvs?.openAI !== undefined && isOpenAIOfficialProviderId(providerId)
+        ? officialRuntimeEnvs.openAI
+        : officialRuntimeEnvs?.grok !== undefined && isGrokOfficialProviderId(providerId)
+          ? officialRuntimeEnvs.grok
+          : await this.providerService.getProviderRuntimeEnv(providerId, { cachedCatalogOnly: true }).catch(() => null)
       hints.autoCompactWindow = env?.[AUTO_COMPACT_WINDOW_ENV_KEY]
       if (env && !sawSessionProvider) {
         sawSessionProvider = true
@@ -3399,7 +3405,10 @@ export class SessionService {
     sessionId: string,
     model: string,
     launchInfo?: ProviderContextWindowHint | null,
-    openAIRuntimeEnv?: Record<string, string> | null,
+    officialRuntimeEnvs?: {
+      openAI?: Record<string, string> | null
+      grok?: Record<string, string> | null
+    },
   ): Promise<number> {
     const hints: { autoCompactWindow?: string } = {}
     const providerContextWindow = await this.getProviderContextWindowForSession(
@@ -3407,7 +3416,7 @@ export class SessionService {
       model,
       launchInfo,
       hints,
-      openAIRuntimeEnv,
+      officialRuntimeEnvs,
     )
     if (providerContextWindow !== undefined) {
       return applyAutoCompactWindowLimit(providerContextWindow, hints.autoCompactWindow, true)
@@ -3538,13 +3547,15 @@ export class SessionService {
     const stat = await fs.stat(found.filePath, { bigint: true })
     // The transcript is immutable between polls, but its interpreted token budget
     // also depends on editable provider settings and process-level overrides.
-    const [providers, openAIRuntimeEnv] = await Promise.all([
+    const [providers, openAIRuntimeEnv, grokRuntimeEnv] = await Promise.all([
       this.providerService.listProviders().catch(() => null),
       this.providerService.getProviderRuntimeEnv(OPENAI_OFFICIAL_PROVIDER_ID, { cachedCatalogOnly: true }).catch(() => null),
+      this.providerService.getProviderRuntimeEnv(GROK_OFFICIAL_PROVIDER_ID, { cachedCatalogOnly: true }).catch(() => null),
     ])
     const contextRevision = createHash('sha256').update(JSON.stringify({
       activeId: providers?.activeId,
       openAIRuntimeEnv,
+      grokRuntimeEnv,
       providers: providers?.providers.map(provider => ({
         id: provider.id,
         models: provider.models,
@@ -3563,7 +3574,10 @@ export class SessionService {
     const existing = this.inspectionSnapshots.get(key)
     if (existing) return existing
     const request = (async () => {
-      const snapshot = await this.readInspectionTranscriptSnapshot(sessionId, openAIRuntimeEnv)
+      const snapshot = await this.readInspectionTranscriptSnapshot(sessionId, {
+        openAI: openAIRuntimeEnv,
+        grok: grokRuntimeEnv,
+      })
       const after = await fs.stat(found.filePath, { bigint: true })
       if (after.dev !== stat.dev || after.ino !== stat.ino || after.size !== stat.size || after.mtimeNs !== stat.mtimeNs || after.ctimeNs !== stat.ctimeNs) {
         throw ApiError.conflict('Transcript changed during inspection; retry the request')
@@ -3581,7 +3595,10 @@ export class SessionService {
 
   private async readInspectionTranscriptSnapshot(
     sessionId: string,
-    openAIRuntimeEnv: Record<string, string> | null,
+    officialRuntimeEnvs: {
+      openAI: Record<string, string> | null
+      grok: Record<string, string> | null
+    },
   ): Promise<SessionInspectionTranscriptSnapshot | null> {
     const found = await this.findSessionFile(sessionId)
     if (!found) return null
@@ -3800,7 +3817,7 @@ export class SessionService {
         sessionId,
         modelUsage.model,
         modelRuntimeHints.get(modelUsage.model),
-        openAIRuntimeEnv,
+        officialRuntimeEnvs,
       )
     }
 
@@ -3833,7 +3850,7 @@ export class SessionService {
     const latestContextUsage = resolveTranscriptContextUsage(contextState)
     const contextEstimate = latestContextUsage
       ? this.buildTranscriptContextEstimate(
-          await this.getSessionModelContextWindow(sessionId, latestContextUsage.model, launchInfo, openAIRuntimeEnv),
+          await this.getSessionModelContextWindow(sessionId, latestContextUsage.model, launchInfo, officialRuntimeEnvs),
           latestContextUsage,
           contextState.estimatedTokensFromMessages,
           contextState.estimatedTokensAfterUsage + contextState.unreportedOutputTokens,
@@ -4783,7 +4800,13 @@ export class SessionService {
 
   /** Read only the addressed Agent call and result. Ordinary transcript bodies
    * are parsed one bounded record at a time and never retained by card lookup. */
-  async getSubagentRunLookup(sessionId: string, toolRef: string, agentId?: string): Promise<SubagentTranscript> {
+  async getSubagentRunLookup(
+    sessionId: string,
+    toolRef: string,
+    agentId?: string,
+    signal?: AbortSignal,
+  ): Promise<SubagentTranscript> {
+    signal?.throwIfAborted()
     const found = await this.findSessionFile(sessionId)
     if (!found) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const filePath = agentId ? this.subagentTranscriptPath(found.projectDir, sessionId, agentId) : found.filePath
@@ -4798,7 +4821,7 @@ export class SessionService {
     const key = JSON.stringify([filePath, toolRef])
     const cached = this.subagentLookupCache.get(key)
     if (cached?.version === version) return cached.transcript
-    return withHistoryReadBudget(undefined, async () => {
+    return withHistoryReadBudget(signal, async () => {
       const entries: RawEntry[] = []
       const taskNotifications = new Map<string, SessionTaskNotification>()
       let bytes = 0
@@ -4826,7 +4849,7 @@ export class SessionService {
         for (const notice of notices) {
           taskNotifications.set(sessionTaskNotificationIdentity(notice), notice)
         }
-      }, undefined, { maxRecordBytes: HISTORY_SEMANTIC_RECORD_BYTES })
+      }, signal, { maxRecordBytes: HISTORY_SEMANTIC_RECORD_BYTES })
       // A skipped record may be unrelated to this Agent. Preserve the evidence
       // we did read without claiming that absence proves a missing run.
       const transcript = { messages: this.entriesToMessages(entries), taskNotifications: [...taskNotifications.values()], historyComplete: !incomplete && scan.omittedRecords === 0 }
@@ -4840,9 +4863,10 @@ export class SessionService {
   async getSubagentTranscript(
     sessionId: string,
     agentId: string,
-    options: { bounded?: boolean; toolUseId?: string } = {},
+    options: { bounded?: boolean; toolUseId?: string; signal?: AbortSignal } = {},
   ): Promise<SubagentTranscript> {
-    if (options.toolUseId) return this.getSubagentRunLookup(sessionId, options.toolUseId, agentId)
+    options.signal?.throwIfAborted()
+    if (options.toolUseId) return this.getSubagentRunLookup(sessionId, options.toolUseId, agentId, options.signal)
     const found = await this.findSessionFile(sessionId)
     if (!found) throw ApiError.notFound(`Session not found: ${sessionId}`)
     const filePath = this.subagentTranscriptPath(found.projectDir, sessionId, agentId)
@@ -4851,7 +4875,7 @@ export class SessionService {
         // A byte-bounded small transcript can preserve the full Activity view,
         // including more than 1000 tiny records. Large files use the tail page.
         if ((await fs.stat(filePath)).size <= 1536 * 1024) {
-          return await withHistoryReadBudget(undefined, async () => {
+          return await withHistoryReadBudget(options.signal, async () => {
             const entries: RawEntry[] = []
             let retainedBytes = 0
             const scan = await streamBoundedHistory(filePath, entry => {
@@ -4859,12 +4883,12 @@ export class SessionService {
               if (retainedBytes > 2 * 1024 * 1024) throw new ApiError(413, 'Agent transcript changed beyond its viewing budget', 'SUBAGENT_RECORD_LIMIT')
               if (entries.length >= 10_000) throw new ApiError(413, 'Agent transcript exceeds its record budget', 'SUBAGENT_RECORD_LIMIT')
               entries.push(entry as RawEntry)
-            }, undefined, { maxRecordBytes: HISTORY_SEMANTIC_RECORD_BYTES })
+            }, options.signal, { maxRecordBytes: HISTORY_SEMANTIC_RECORD_BYTES })
             return { messages: this.entriesToMessages(entries), taskNotifications: this.taskNotificationsFromEntries(entries), historyComplete: scan.omittedRecords === 0 }
           })
         }
-        const result = await readBoundedHistoryPage(filePath)
-        const projection = await this.projectHistoryPageEntries(filePath, result, undefined, true)
+        const result = await readBoundedHistoryPage(filePath, { signal: options.signal })
+        const projection = await this.projectHistoryPageEntries(filePath, result, options.signal, true)
         const entries = result.entries.map(item => item.entry as RawEntry)
         return {
           messages: this.entriesToMessages(projection.entries),
@@ -4925,7 +4949,9 @@ export class SessionService {
     sessionId: string,
     toolUseId: string,
     expectedOwnerAgentId: string | null,
+    signal?: AbortSignal,
   ): Promise<string | null> {
+    signal?.throwIfAborted()
     const found = await this.findSessionFile(sessionId)
     if (!found) {
       throw ApiError.notFound(`Session not found: ${sessionId}`)
@@ -4943,6 +4969,7 @@ export class SessionService {
     let metadataComplete = true
 
     for (const metadataFile of files.filter((file) => file.endsWith('.meta.json'))) {
+      signal?.throwIfAborted()
       try {
         const metadata = await this.readSubagentMetadata(path.join(subagentsDir, metadataFile))
         if (metadata.toolUseId !== toolUseId) continue
@@ -4955,6 +4982,7 @@ export class SessionService {
         })
       } catch (error) {
         if (error instanceof ApiError) throw error
+        if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError')
         // A half-written sidecar must not hide the other candidates.
         metadataComplete = false
       }
@@ -4985,8 +5013,9 @@ export class SessionService {
   async getSubagentTranscriptFragmentsByAgentType(
     sessionId: string,
     agentType: string,
-    options: { bounded?: boolean; toolUseId?: string } = {},
+    options: { bounded?: boolean; toolUseId?: string; signal?: AbortSignal } = {},
   ): Promise<SubagentTranscriptFragment[]> {
+    options.signal?.throwIfAborted()
     const found = await this.findSessionFile(sessionId)
     if (!found) {
       throw ApiError.notFound(`Session not found: ${sessionId}`)
@@ -5003,6 +5032,7 @@ export class SessionService {
     const fragments: SubagentTranscriptFragment[] = []
 
     for (const metadataFile of files.filter((file) => file.endsWith('.meta.json'))) {
+      options.signal?.throwIfAborted()
       try {
         const metadata = await this.readSubagentMetadata(path.join(subagentsDir, metadataFile))
         if (metadata.agentType !== agentType) continue
@@ -5021,6 +5051,7 @@ export class SessionService {
         if (options.bounded && (fragments.length > 16 || Buffer.byteLength(JSON.stringify(fragments)) > 4 * 1024 * 1024)) throw new ApiError(413, 'Agent fragments exceed their viewing budget', 'SUBAGENT_FRAGMENTS_LIMIT')
       } catch (error) {
         if (error instanceof ApiError) throw error
+        if (options.signal?.aborted) throw options.signal.reason ?? new DOMException('Aborted', 'AbortError')
         // A partially persisted fragment must not hide the other resumable runs.
       }
     }

@@ -32,7 +32,7 @@ const TEXT_ATTRIBUTE = /^(?:title|alt|placeholder|label|content|aria-(?:label|de
 const KEYWORD_ATTRIBUTES = new Set(['enterKeyHint'])
 
 /** Elements whose text is code, a key cap or a style sheet rather than prose. */
-const NON_PROSE_ELEMENTS = new Set(['kbd', 'Keycap', 'code', 'pre', 'style', 'script'])
+const NON_PROSE_ELEMENTS = new Set(['kbd', 'Kbd', 'Keycap', 'code', 'pre', 'style', 'script'])
 
 /**
  * Literals that read the same in every language, by file. Anything else goes
@@ -159,7 +159,12 @@ function findUntranslatedText(file: string, code: string): Finding[] {
 }
 
 const files = sourceFiles(srcRoot)
-const findings = files.flatMap((file) => findUntranslatedText(path.relative(srcRoot, file), readFileSync(file, 'utf8')))
+// Exemption keys are written with `/`; `path.relative` yields backslash
+// paths on Windows, so normalize before matching.
+const findings = files.flatMap((file) => findUntranslatedText(
+  path.relative(srcRoot, file).replaceAll('\\', '/'),
+  readFileSync(file, 'utf8'),
+))
 
 function isExempt(finding: Finding): boolean {
   return [LANGUAGE_NEUTRAL, KNOWN_GAPS].some((exemptions) => exemptions[finding.file]?.includes(finding.text))

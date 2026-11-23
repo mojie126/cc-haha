@@ -909,6 +909,7 @@ export function buildRenderModel(
     pendingSteps.push({ kind: 'tool', toolCall })
     pendingToolCount += 1
     if (nextIsAgent) pendingAgentCount += 1
+    if (wakeTurn) wakeSegmentRanTools = true
   }
   const appendThinking = (message: Extract<UIMessage, { type: 'thinking' }>) => {
     if (pendingToolCount > 0 && pendingAgentCount === pendingToolCount) flushGroup()
@@ -920,6 +921,9 @@ export function buildRenderModel(
   let pendingCommentary: Array<Extract<UIMessage, { type: 'assistant_text' }>> = []
   // 后台任务结果开启的回合里，助手回答不是对用户提示词的最终答复，默认折叠
   let wakeTurn = false
+  // 唤醒段里是否真的执行了工具：只有回执（含伴生思考）的唤醒段折起来是
+  // 去噪，真正跑了任务的唤醒段是要读的过程与结论，不能折。每一段重置一次。
+  let wakeSegmentRanTools = false
   const appendCommentaryToRun = () => {
     if (pendingCommentary.length === 0) return
     for (const message of pendingCommentary) pendingSteps.push({ kind: 'text', message })
@@ -927,8 +931,11 @@ export function buildRenderModel(
   }
   const flushCommentaryAsMessages = () => {
     if (pendingCommentary.length === 0) return
+    // 唤醒段只有回执、没真正跑工具时才折叠：醒来后真的跑了命令、读了文件
+    // 的回复是用户等待的结论，折成一行等于把它藏起来。
+    const foldAsWake = wakeTurn && !wakeSegmentRanTools
     for (const message of pendingCommentary) {
-      items.push(wakeTurn
+      items.push(foldAsWake
         ? { kind: 'message', message, wakeReply: true }
         : { kind: 'message', message })
     }
@@ -1026,8 +1033,11 @@ export function buildRenderModel(
         flushGroup()
         flushCommentaryAsMessages()
       }
-      // 这一轮由任务结果唤醒，后面到下一个用户提示词之前的回答默认折叠
+      // 这一轮由任务结果唤醒，后面到下一个用户提示词之前的回答默认折叠；
+      // 折叠只对“回执”生效：醒来后真的跑了工具的段由 flushCommentaryAsMessages
+      // 判断是否展开，这里标记段起点并重置本段的工具痕迹
       wakeTurn = true
+      wakeSegmentRanTools = false
       continue
     }
 

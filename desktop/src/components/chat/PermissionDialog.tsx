@@ -16,6 +16,7 @@ import { useProviderStore } from '../../stores/providerStore'
 import { useTranslation } from '../../i18n'
 import { Badge, StatusDot } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Kbd } from '@/components/ui/Kbd'
 import { ModelSelector } from '../controls/ModelSelector'
 import { resolveDefaultRuntimeSelection } from '../../lib/runtimeSelection'
 import type { RuntimeSelection } from '../../types/runtime'
@@ -23,6 +24,7 @@ import type { PermissionUpdate } from '../../types/chat'
 import { DiffViewer } from './DiffViewer'
 import { PERMISSION_TOOL_ICONS, extractToolDetails, getPermissionTitle } from './permissionPresentation'
 import { PendingDecisionMarker } from './PendingDecisionMarker'
+import { detectPlatform } from '../../lib/workspace/shortcuts'
 import {
   PlanPreviewCard,
   buildPlanApprovalPermissionUpdates,
@@ -101,6 +103,7 @@ export function PermissionDialog({ sessionId, requestId, toolName, input, descri
     ? getPendingPermission(s.sessions[targetSessionId], requestId)
     : undefined)
   const t = useTranslation()
+  const submitShortcut = detectPlatform() === 'mac' ? '⌘↵' : 'Ctrl+↵'
   const isPending = Boolean(pendingPermission)
   const [showRaw, setShowRaw] = useState(false)
 
@@ -152,6 +155,16 @@ export function PermissionDialog({ sessionId, requestId, toolName, input, descri
     <div
       role="group"
       aria-label={`${title}: ${permissionContext}`}
+      onKeyDown={(event) => {
+        if (!targetSessionId) return
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault()
+          respondToPermission(targetSessionId, requestId, true)
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          respondToPermission(targetSessionId, requestId, false)
+        }
+      }}
       className={PENDING_CARD}
     >
       {/* Header: icon block, title over context, "awaiting" pill. */}
@@ -231,7 +244,8 @@ export function PermissionDialog({ sessionId, requestId, toolName, input, descri
           aria-label={`${t('permission.allow')}: ${permissionContext}`}
           onClick={() => targetSessionId && respondToPermission(targetSessionId, requestId, true)}
         >
-          {t('permission.allow')}
+          <span>{t('permission.allow')}</span>
+          <Kbd size="xs" appearance="inverse" aria-hidden="true" className="ml-0.5 opacity-85">{submitShortcut}</Kbd>
         </Button>
         <Button
           variant="secondary"
@@ -248,7 +262,8 @@ export function PermissionDialog({ sessionId, requestId, toolName, input, descri
           aria-label={`${t('permission.deny')}: ${permissionContext}`}
           onClick={() => targetSessionId && respondToPermission(targetSessionId, requestId, false)}
         >
-          {t('permission.deny')}
+          <span>{t('permission.deny')}</span>
+          <Kbd size="xs" appearance="subtle" aria-hidden="true" className="ml-0.5">Esc</Kbd>
         </Button>
       </div>
     </div>
@@ -277,6 +292,7 @@ function ExitPlanModePermissionDialog({
   const errorId = useId()
   const respondToPermission = useChatStore((s) => s.respondToPermission)
   const t = useTranslation()
+  const submitShortcut = detectPlatform() === 'mac' ? '⌘↵' : 'Ctrl+↵'
   const [feedback, setFeedback] = useState('')
   // null = execute on the planning model (unchanged); non-null = the staged
   // execution-model switch sent with the approval as runtimeOverride.
@@ -365,7 +381,26 @@ function ExitPlanModePermissionDialog({
   }
 
   return (
-    <div className={PENDING_CARD}>
+    <div
+      className={PENDING_CARD}
+      onKeyDown={(event) => {
+        if (submittingRuntime) return
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          const isEditableTarget = event.target instanceof HTMLElement && (
+            event.target.tagName === 'TEXTAREA'
+            || event.target.tagName === 'INPUT'
+            || event.target.isContentEditable
+          )
+          if (trimmedFeedback.length > 0) {
+            event.preventDefault()
+            keepPlanning()
+          } else if (!isEditableTarget) {
+            event.preventDefault()
+            approve(permissionUpdates.length ? { permissionUpdates } : undefined)
+          }
+        }
+      }}
+    >
       <div className="flex h-[42px] items-center gap-2 border-b border-[var(--color-border)] px-3.5">
         <ListChecks aria-hidden="true" size={15} strokeWidth={1.75} className="shrink-0 text-[var(--color-text-tertiary)]" />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
@@ -438,7 +473,8 @@ function ExitPlanModePermissionDialog({
           aria-describedby={runtimeError ? errorId : undefined}
           onClick={() => approve(permissionUpdates.length ? { permissionUpdates } : undefined)}
         >
-          {t('permission.planApprove')}
+          <span>{t('permission.planApprove')}</span>
+          <Kbd size="xs" appearance="inverse" aria-hidden="true" className="ml-0.5 opacity-85">{submitShortcut}</Kbd>
         </Button>
         <Button
           variant="secondary"

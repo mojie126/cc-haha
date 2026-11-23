@@ -119,7 +119,9 @@ describe('component reachability', () => {
   it('finds the entry points it is supposed to walk from', () => {
     // A typo in ENTRY_HTML, or a renamed entry, would make everything look unreachable
     // and the failure message would send the reader hunting in the wrong place.
-    const entries = entryPoints().map((path) => relative(ROOT, path))
+    // `relative` uses the platform separator; compare in the `/` form every
+    // other path in this repository is written in.
+    const entries = entryPoints().map((path) => relative(ROOT, path).replaceAll('\\', '/'))
     expect(entries).toContain('src/main.tsx')
     expect(entries.length).toBeGreaterThanOrEqual(2)
     // The walk must actually traverse: main.tsx alone proves nothing.
