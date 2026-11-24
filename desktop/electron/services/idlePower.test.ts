@@ -28,7 +28,6 @@ async function fixture() {
   const readActivity = vi.fn(async () => ({ ...snapshot }))
   const service = new IdlePowerService({
     settings: { ...DEFAULT_IDLE_POWER_SETTINGS, action: 'sleep', countdownSeconds: 30 },
-    lastAction: null,
     capabilities: { lock: true, sleep: true, hibernate: false, shutdown: true },
     readActivity, execute, save, notifyCountdown: notify, notifyNotice: vi.fn(), onChange: vi.fn(),
     getIdleSeconds: () => Math.floor((Date.now() - lastInputAt) / 1000), pollIntervalMs: 100, quietPeriodMs: 500,

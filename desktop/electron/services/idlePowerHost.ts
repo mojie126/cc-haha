@@ -39,7 +39,6 @@ export async function createIdlePowerHost(options: {
   const service = new IdlePowerService({
     settings: preferences.settings,
     blocker: options.blocker,
-    lastAction: preferences.lastAction,
     capabilities,
     readActivity: options.readActivity,
     getIdleSeconds: () => options.monitor.getSystemIdleTime(),

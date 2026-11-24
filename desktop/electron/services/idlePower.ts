@@ -40,7 +40,6 @@ export async function readIdlePowerActivity(
 type Options = {
   settings: IdlePowerSettings
   blocker?: Pick<PowerSaveBlocker, 'start' | 'stop'>
-  lastAction: IdlePowerRecord | null
   capabilities: IdlePowerCapabilities
   readActivity(signal: AbortSignal): Promise<PowerActivitySnapshot>
   /** The platform calls beforeExecute after capability checks, immediately before dispatch. */
@@ -74,8 +73,9 @@ export class IdlePowerService {
   private countdownInput: { at: number, idle: number, pointer?: { x: number, y: number } } | null = null
 
   constructor(private readonly options: Options) {
+    // 动作提醒只属于本次运行，磁盘上的记录仅作日志，不在每次启动时重复提示
     this.state = { settings: { ...options.settings }, capabilities: { ...options.capabilities },
-      lastAction: options.lastAction, countdown: null,
+      lastAction: null, countdown: null,
       notice: options.settings.action !== 'none' && !options.capabilities[options.settings.action] ? 'unavailable' : null }
     this.log('service.create', { settings: this.state.settings, lastAction: this.state.lastAction,
       capabilities: this.state.capabilities })

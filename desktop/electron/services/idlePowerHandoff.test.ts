@@ -39,7 +39,7 @@ async function fixture(options: { action?: 'sleep' | 'none', scope?: 'any' | 'sc
   const service = new IdlePowerService({
     settings: { action: options.action ?? 'sleep', scope: options.scope ?? 'any', countdownSeconds: 60 },
     blocker,
-    lastAction: null, capabilities: { lock: true, sleep: true, hibernate: false, shutdown: true },
+    capabilities: { lock: true, sleep: true, hibernate: false, shutdown: true },
     readActivity, execute, save, notifyCountdown: notify, notifyNotice: vi.fn(), onChange: vi.fn(),
     getIdleSeconds: () => Math.floor(Date.now() / 1000), pollIntervalMs: 1000,
   })

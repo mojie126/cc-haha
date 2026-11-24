@@ -62,7 +62,7 @@ async function fixture() {
 }
 
 describe('native idle-power integration with mocked OS and notification boundary', () => {
-  it('persists an explicit selection, delivers a cancellable notification and restores a truthful last-action reminder', async () => {
+  it('persists an explicit selection, delivers a cancellable notification and keeps the last-action reminder to the current run', async () => {
     const f = await fixture()
     expect(f.service.getState().settings.action).toBe('none')
     f.service.configure({ action: 'shutdown', scope: 'any', countdownSeconds: 30 })
@@ -80,12 +80,15 @@ describe('native idle-power integration with mocked OS and notification boundary
     f.complete()
     await advanceTime(37_000)
     expect(f.dispatch).toHaveBeenCalledTimes(1)
+    expect(f.service.getState().lastAction).toMatchObject({ action: 'shutdown', result: 'accepted' })
     expect(readIdlePowerPreferences(f.options.app).lastAction).toMatchObject({ action: 'shutdown', result: 'accepted' })
     f.service.dispose()
     const restarted = await createIdlePowerHost(f.options)
     services.push(restarted)
     await advanceTime(60_000)
-    expect(restarted.getState().lastAction?.result).toBe('accepted')
+    // 持久化记录只作日志，重新启动的实例不再重复弹出上次动作提醒
+    expect(restarted.getState().lastAction).toBeNull()
+    expect(readIdlePowerPreferences(f.options.app).lastAction).toMatchObject({ action: 'shutdown', result: 'accepted' })
     expect(f.dispatch).toHaveBeenCalledTimes(1)
   })
   it('keeps the countdown running when the notification fails, and stops on renderer replacement', async () => {
