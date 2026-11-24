@@ -44,9 +44,18 @@ export function readIdlePowerPreferences(app: PowerPreferenceApp): Preferences {
   return migrateIdlePowerPreferences(JSON.parse(raw))
 }
 
-export function writeIdlePowerPreferences(app: PowerPreferenceApp, value: Pick<Preferences, 'settings' | 'lastAction'>): void {
+/** 只写调用方明确给出的字段，未给出的字段沿用磁盘上的当前值 */
+export type IdlePowerPreferencesUpdate = { settings?: IdlePowerSettings, lastAction?: IdlePowerRecord | null }
+
+export function writeIdlePowerPreferences(app: PowerPreferenceApp, value: IdlePowerPreferencesUpdate): void {
   // Read-modify-write retains extensions. Unknown/corrupt versions are never overwritten.
-  const next = migrateIdlePowerPreferences({ ...readIdlePowerPreferences(app), ...value })
+  // 未给出的字段沿用磁盘值，写入动作日志不会顺带改写用户配置的电源动作
+  const current = readIdlePowerPreferences(app)
+  const next = migrateIdlePowerPreferences({
+    ...current,
+    ...(value.settings === undefined ? {} : { settings: value.settings }),
+    ...(value.lastAction === undefined ? {} : { lastAction: value.lastAction }),
+  })
   const target = preferencePath(app)
   fs.mkdirSync(path.dirname(target), { recursive: true })
   const temporary = `${target}.${randomUUID()}.tmp`

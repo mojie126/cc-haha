@@ -2,6 +2,19 @@ import { create } from 'zustand'
 import { getDesktopHost, type DesktopHostUnlisten } from '@/lib/desktopHost'
 import type { IdlePowerSettings, IdlePowerState } from '@/lib/idlePower'
 
+// 诊断日志经控制台汇入主进程的 idle-power-debug.jsonl，记录配置与状态下发
+function debugLog(event: string, data: Record<string, unknown> = {}): void {
+  try {
+    console.info(`[idle-power] ${JSON.stringify({ event, ...data })}`)
+  } catch {
+    // 诊断输出不得影响电源设置
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 type IdlePowerStore = {
   snapshot: IdlePowerState | null
   loading: boolean
@@ -20,6 +33,12 @@ export const useIdlePowerStore = create<IdlePowerStore>((set, get) => {
 
   function receive(snapshot: IdlePowerState) {
     snapshotRevision += 1
+    debugLog('renderer.state', {
+      settings: snapshot.settings,
+      countdown: snapshot.countdown?.action ?? null,
+      notice: snapshot.notice,
+      lastAction: snapshot.lastAction,
+    })
     set({ snapshot, error: null })
   }
 
@@ -42,6 +61,7 @@ export const useIdlePowerStore = create<IdlePowerStore>((set, get) => {
         // In particular, a cancelled countdown must never reappear.
         if (request === refreshSequence && revision === snapshotRevision) receive(snapshot)
       } catch (error) {
+        debugLog('renderer.refresh.failed', { error: errorMessage(error) })
         if (request === refreshSequence && revision === snapshotRevision) set({ error: 'load' })
         throw error
       } finally {
@@ -53,6 +73,7 @@ export const useIdlePowerStore = create<IdlePowerStore>((set, get) => {
       const host = getDesktopHost()
       if (!host.isDesktop || get().saving) return
       const revision = snapshotRevision
+      debugLog('renderer.configure', { settings, stack: new Error('idle-power configure').stack })
       set({ saving: true, error: null })
       try {
         const snapshot = await host.power.configureIdleAction(settings)
@@ -64,6 +85,7 @@ export const useIdlePowerStore = create<IdlePowerStore>((set, get) => {
           await get().refresh().catch(() => {})
         }
       } catch (error) {
+        debugLog('renderer.configure.failed', { settings, error: errorMessage(error) })
         set({ error: 'save' })
         throw error
       } finally {
@@ -98,6 +120,7 @@ export const useIdlePowerStore = create<IdlePowerStore>((set, get) => {
           if (active) receive(snapshot)
         })
       } catch (error) {
+        debugLog('renderer.start.failed', { error: errorMessage(error) })
         set({ error: 'load' })
         throw error
       }

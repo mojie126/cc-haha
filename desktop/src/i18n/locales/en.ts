@@ -3022,7 +3022,7 @@ Row 9, all 8 cells: continuing from straight down, turning left through lower-le
   'settings.help.voiceCorrection.cost': 'Each dictation waits about 1 second longer and is billed by the chosen model, a few hundred tokens per sentence. The text goes to that model\'s provider; the audio never does.',
   'settings.general.notificationsTitle': 'System Notifications',
   'settings.general.idlePowerTitle': 'After tasks finish',
-  'settings.general.idlePowerDescription': 'Request a system action only after all tasks, queued work, and approval waits have finished. Off by default.',
+  'settings.general.idlePowerDescription': 'Request a system action only after all tasks, queued work, and approval waits have finished. Off by default; restores to "Do nothing" after the action runs once.',
   'settings.general.idlePowerAction': 'When all tasks finish',
   'settings.general.idlePowerScope': 'Trigger after',
   'settings.general.idlePowerScopeDescription': 'Both options wait until all work in cc-haha has finished.',

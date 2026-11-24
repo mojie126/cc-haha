@@ -75,6 +75,7 @@ function fixture(pendingCapabilities?: Promise<{ lock: boolean, sleep: boolean, 
     ELECTRON_EVENT_CHANNELS, mainWindow: window as Window | null,
     isQuitting: false, idlePowerRendererGeneration: 0,
     idlePowerInitialization: null, idlePowerService: null as IdlePowerService | null,
+    getIdlePowerDebug: () => () => {},
     createIdlePowerHost: async (options: Parameters<typeof createIdlePowerHost>[0]) => {
       const service = await createIdlePowerHost({ ...options, executeAction,
         detectCapabilities: () => pendingCapabilities ?? Promise.resolve({ lock: true, sleep: true, hibernate: false, shutdown: true }),

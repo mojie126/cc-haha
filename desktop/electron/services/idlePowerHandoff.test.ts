@@ -154,7 +154,8 @@ describe('continuous task-to-idle power assertion handoff', () => {
     expect(stopped.active.size).toBe(0)
   })
 
-  it.each(['cancel', 'stop', 'dispose', 'configure', 'busy', 'epoch', 'read-error', 'notification', 'journal', 'platform'] as const)('releases on %s and never dispatches stale work', async reason => {
+  // 通知失败不阻断派发，该路径由 idlePower.test.ts 的通知用例覆盖
+  it.each(['cancel', 'stop', 'dispose', 'configure', 'busy', 'epoch', 'read-error', 'journal', 'platform'] as const)('releases on %s and never dispatches stale work', async reason => {
     const f = await fixture()
     f.complete()
     await advance(1100)
@@ -166,7 +167,6 @@ describe('continuous task-to-idle power assertion handoff', () => {
     if (reason === 'busy') { f.snapshot({ busy: true, revision: 3 }); f.prevent.setEnabled(false) }
     if (reason === 'epoch') f.snapshot({ epoch: 'new-server' })
     if (reason === 'read-error') f.readActivity.mockRejectedValue(new Error('offline'))
-    if (reason === 'notification') f.notify.mockReturnValue(false)
     if (reason === 'journal') f.save.mockImplementation(() => { throw new Error('disk full') })
     if (reason === 'platform') f.execute.mockRejectedValue(new Error('probe failed'))
     await advance(70_000)

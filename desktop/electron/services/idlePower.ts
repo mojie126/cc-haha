@@ -45,10 +45,12 @@ type Options = {
   readActivity(signal: AbortSignal): Promise<PowerActivitySnapshot>
   /** The platform calls beforeExecute after capability checks, immediately before dispatch. */
   execute(action: IdlePowerAction, beforeExecute: () => Promise<void>): Promise<void>
-  save(value: { settings: IdlePowerSettings, lastAction: IdlePowerRecord | null }): void
+  save(value: { settings?: IdlePowerSettings, lastAction?: IdlePowerRecord | null }): void
   notifyCountdown(countdown: NonNullable<IdlePowerState['countdown']>, seconds: number, cancel: (notice?: Exclude<IdlePowerNotice, null>) => void): void
   notifyNotice(notice: Exclude<IdlePowerNotice, null>): void
   onChange(state: IdlePowerState): void
+  /** 诊断日志，写盘失败由日志实现自行忽略 */
+  debug?(event: string, data?: Record<string, unknown>): void
   getIdleSeconds(): number
   getPointerPosition?(): { x: number, y: number }
   pollIntervalMs?: number
@@ -75,6 +77,12 @@ export class IdlePowerService {
     this.state = { settings: { ...options.settings }, capabilities: { ...options.capabilities },
       lastAction: options.lastAction, countdown: null,
       notice: options.settings.action !== 'none' && !options.capabilities[options.settings.action] ? 'unavailable' : null }
+    this.log('service.create', { settings: this.state.settings, lastAction: this.state.lastAction,
+      capabilities: this.state.capabilities })
+  }
+
+  private log(event: string, data: Record<string, unknown> = {}): void {
+    try { this.options.debug?.(event, data) } catch { /* 诊断日志不得影响电源功能 */ }
   }
 
   getState(): IdlePowerState {
@@ -84,6 +92,7 @@ export class IdlePowerService {
   start(): void {
     if (this.running || this.disposed) return
     this.running = true
+    this.log('service.start', { settings: this.state.settings })
     this.inputTimer = setInterval(() => {
       if (this.state.countdown && this.hasUserInput()) this.cancel('user-activity')
     }, 250)
@@ -96,6 +105,7 @@ export class IdlePowerService {
     if (!this.running || this.disposed || !this.options.blocker
       || action === 'none' || !this.state.capabilities[action] || this.dispatchGeneration === this.generation) return
     this.setBlocked(true)
+    this.log('handoff.prepare', { action })
     // A read started before this handoff may still describe the old busy state.
     // Preserve the completion baseline but validate ownership using a new read.
     this.generation += 1
@@ -119,7 +129,8 @@ export class IdlePowerService {
   configure(settings: IdlePowerSettings): IdlePowerState {
     if (!isIdlePowerSettings(settings)) throw new Error('Invalid power settings')
     if (settings.action !== 'none' && !this.state.capabilities[settings.action]) throw new Error('Power action unavailable')
-    this.options.save({ settings, lastAction: this.state.lastAction })
+    this.log('service.configure', { settings })
+    this.options.save({ settings })
     this.invalidate()
     this.state.settings = { ...settings }
     this.state.notice = null
@@ -131,6 +142,7 @@ export class IdlePowerService {
 
   cancel(notice: Exclude<IdlePowerNotice, null> = 'cancelled'): void {
     const hadCountdown = this.state.countdown !== null
+    if (hadCountdown) this.log('countdown.cancel', { notice, action: this.state.countdown?.action })
     this.invalidate()
     if (hadCountdown) {
       this.state.notice = notice
@@ -142,6 +154,7 @@ export class IdlePowerService {
 
   /** Renderer loss, system suspend and quit invalidate history as well as pending work. */
   stop(): void {
+    this.log('service.stop', { settings: this.state.settings, countdown: this.state.countdown?.action ?? null })
     this.running = false
     this.invalidate()
     this.observed = null
@@ -234,6 +247,7 @@ export class IdlePowerService {
       this.state.countdown = countdown
       this.state.notice = null
       this.countdownInput = { at: Date.now(), idle: this.options.getIdleSeconds(), pointer: this.options.getPointerPosition?.() }
+      this.log('countdown.start', { action, seconds })
       this.emit()
       if (!Number.isFinite(this.countdownInput.idle) || this.countdownInput.idle < 0) { this.cancel('unavailable'); return }
       // 通知发送失败（例如系统关闭了 Toast 通知）不阻塞派发，倒计时照常推进，
@@ -256,6 +270,7 @@ export class IdlePowerService {
     const countdown = this.state.countdown
     if (!countdown) return
     let dispatched = false
+    this.log('execute.begin', { action: countdown.action })
     try {
       await this.options.execute(countdown.action, async () => {
         const fresh = await this.read()
@@ -270,7 +285,11 @@ export class IdlePowerService {
           throw new Error('User activity before power action')
         }
         const record: IdlePowerRecord = { action: countdown.action, requestedAt: Date.now(), result: 'requested' }
-        this.options.save({ settings: this.state.settings, lastAction: record })
+        // 一次性动作，提交派发即恢复为不执行操作，无人值守场景不会反复触发
+        const settings: IdlePowerSettings = { ...this.state.settings, action: 'none' }
+        this.log('execute.dispatch', { action: countdown.action, settings })
+        this.options.save({ settings, lastAction: record })
+        this.state.settings = settings
         this.state.lastAction = record
         dispatched = true
         this.state.countdown = null
@@ -283,15 +302,17 @@ export class IdlePowerService {
         this.setBlocked(false)
       })
       if (!dispatched) throw new Error('Power backend did not validate dispatch')
+      this.log('execute.accepted', { action: countdown.action })
       this.state.lastAction = { ...this.state.lastAction!, result: 'accepted' }
-      try { this.options.save({ settings: this.state.settings, lastAction: this.state.lastAction }) } catch { /* The durable requested record remains truthful. */ }
+      try { this.options.save({ lastAction: this.state.lastAction }) } catch { /* The durable requested record remains truthful. */ }
       this.invalidate()
       this.emit()
     } catch {
       if (generation !== this.generation || !this.running) return
+      this.log('execute.failed', { action: countdown.action, dispatched })
       if (dispatched) {
         this.state.lastAction = { ...this.state.lastAction!, result: 'failed' }
-        try { this.options.save({ settings: this.state.settings, lastAction: this.state.lastAction }) } catch { /* Keep requested journal on disk. */ }
+        try { this.options.save({ lastAction: this.state.lastAction }) } catch { /* Keep requested journal on disk. */ }
       }
       this.cancel('failed')
       this.state.notice = 'failed'

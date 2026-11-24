@@ -7,6 +7,7 @@ import { kr } from '../../src/i18n/locales/kr'
 import type { Locale } from '../../src/i18n/locale'
 import type { IdlePowerAction, IdlePowerState } from '../../src/lib/idlePower'
 import { IdlePowerService, type PowerActivitySnapshot } from './idlePower'
+import type { IdlePowerDebug } from './idlePowerDebug'
 import { detectPowerCapabilities, executePowerAction } from './idlePowerPlatform'
 import { readIdlePowerPreferences, writeIdlePowerPreferences, type PowerPreferenceApp } from './idlePowerPersistence'
 import { sendDesktopNotification, type ElectronNotificationConstructor } from './notifications'
@@ -23,6 +24,8 @@ export async function createIdlePowerHost(options: {
   onChange(state: IdlePowerState): void
   detectCapabilities?: typeof detectPowerCapabilities
   executeAction?: typeof executePowerAction
+  /** 诊断日志，记录读盘、配置与派发过程 */
+  debug?: IdlePowerDebug
 }): Promise<IdlePowerService> {
   const preferences = readIdlePowerPreferences(options.app)
   const translate = (key: string, params: Record<string, string | number> = {}) => {
@@ -32,6 +35,7 @@ export async function createIdlePowerHost(options: {
   }
   const actionName = (action: IdlePowerAction) => translate(`power.action.${action}`)
   const capabilities = await (options.detectCapabilities ?? detectPowerCapabilities)()
+  options.debug?.('host.load', { settings: preferences.settings, lastAction: preferences.lastAction, capabilities })
   const service = new IdlePowerService({
     settings: preferences.settings,
     blocker: options.blocker,
@@ -41,8 +45,17 @@ export async function createIdlePowerHost(options: {
     getIdleSeconds: () => options.monitor.getSystemIdleTime(),
     getPointerPosition: () => options.screen.getCursorScreenPoint(),
     execute: (action, beforeExecute) => (options.executeAction ?? executePowerAction)(action, { beforeExecute }),
-    save: value => writeIdlePowerPreferences(options.app, value),
+    save: value => {
+      try {
+        writeIdlePowerPreferences(options.app, value)
+        options.debug?.('persist.ok', { ...value })
+      } catch (error) {
+        options.debug?.('persist.failed', { ...value, error: error instanceof Error ? error.message : String(error) })
+        throw error
+      }
+    },
     onChange: options.onChange,
+    debug: options.debug,
     notifyCountdown: (countdown, seconds, cancel) => {
       // 通知失败不阻塞派发（系统关闭 Toast 通知时倒计时照常推进），仅取消点击仍生效
       sendDesktopNotification({

@@ -3022,7 +3022,7 @@ export const zh: Record<TranslationKey, string> = {
   'settings.help.voiceCorrection.cost': '每次聽寫多等約 1 秒，依所選模型計費，每句數百個 token。文字會傳給該模型的服務商，音訊不會。',
   'settings.general.notificationsTitle': '系統通知',
   'settings.general.idlePowerTitle': '任務完成後',
-  'settings.general.idlePowerDescription': '所有任務、排隊工作和等待確認結束後，才請求執行系統操作。預設不執行。',
+  'settings.general.idlePowerDescription': '所有任務、排隊工作和等待確認結束後，才請求執行系統操作。預設不執行，執行一次後自動恢復為不執行操作。',
   'settings.general.idlePowerAction': '所有任務完成時',
   'settings.general.idlePowerScope': '觸發來源',
   'settings.general.idlePowerScopeDescription': '兩種範圍都要等待 cc-haha 中的所有工作結束。',

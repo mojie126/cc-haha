@@ -55,8 +55,33 @@ describe('all-idle power completion edge', () => {
     await advanceTime(30_100)
     expect(f.execute).toHaveBeenCalledTimes(1)
     expect(f.save).toHaveBeenCalledWith(expect.objectContaining({ lastAction: expect.objectContaining({ result: 'requested' }) }))
+    // 一次性动作：派发后恢复为不执行操作，后续完成不再重复触发
+    expect(f.service.getState().settings.action).toBe('none')
+    expect(f.save).toHaveBeenCalledWith({
+      settings: { action: 'none', scope: 'any', countdownSeconds: 30 },
+      lastAction: expect.objectContaining({ result: 'requested' }),
+    })
+    // 复位必须在系统命令执行前落盘，关机杀进程也不会丢失
+    const resetWrite = f.save.mock.calls.findIndex(([value]) => value.settings?.action === 'none')
+    expect(resetWrite).toBeGreaterThanOrEqual(0)
+    expect(f.save.mock.invocationCallOrder[resetWrite]).toBeLessThan(f.dispatch.mock.invocationCallOrder[0]!)
     await advanceTime(60_000)
     expect(f.execute).toHaveBeenCalledTimes(1)
+  })
+  it('re-arms only after the user configures the action again', async () => {
+    const f = await fixture()
+    f.complete()
+    await advanceTime(40_000)
+    expect(f.execute).toHaveBeenCalledTimes(1)
+    expect(f.service.getState().settings.action).toBe('none')
+    f.complete()
+    await advanceTime(40_000)
+    expect(f.execute).toHaveBeenCalledTimes(1)
+    f.service.configure({ action: 'sleep', scope: 'any', countdownSeconds: 30 })
+    await advanceTime(100)
+    f.complete()
+    await advanceTime(40_000)
+    expect(f.execute).toHaveBeenCalledTimes(2)
   })
   it.each(['busy', 'quick-work', 'epoch', 'unavailable', 'user', 'cancel'] as const)('cancels countdown on %s without replay', async reason => {
     const f = await fixture()
@@ -129,7 +154,7 @@ describe('all-idle power completion edge', () => {
     })
     f.complete()
     await advanceTime(40_000)
-    expect(f.service.getState()).toMatchObject({ countdown: null, notice: 'failed', lastAction: { result: 'failed' } })
+    expect(f.service.getState()).toMatchObject({ settings: { action: 'none' }, countdown: null, notice: 'failed', lastAction: { result: 'failed' } })
     expect(f.execute).toHaveBeenCalledTimes(1)
     await advanceTime(40_000)
     expect(f.execute).toHaveBeenCalledTimes(1)

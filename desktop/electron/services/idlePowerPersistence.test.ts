@@ -32,6 +32,15 @@ describe('idle power preference migration', () => {
     expect(readIdlePowerPreferences(app)).toMatchObject(value)
     expect(JSON.parse(readFileSync(app.file, 'utf8'))).toMatchObject({ schemaVersion: 1, extension: { keep: true } })
   })
+  it('keeps the configured action when only the journal is updated', () => {
+    const app = fixture()
+    writeIdlePowerPreferences(app, { settings: { action: 'shutdown', scope: 'any', countdownSeconds: 0 } })
+    writeIdlePowerPreferences(app, { lastAction: { action: 'shutdown', requestedAt: 7, result: 'requested' } })
+    expect(readIdlePowerPreferences(app)).toMatchObject({
+      settings: { action: 'shutdown', scope: 'any', countdownSeconds: 0 },
+      lastAction: { action: 'shutdown', requestedAt: 7, result: 'requested' },
+    })
+  })
   it('fails closed on corrupt/future data and refuses to overwrite it', () => {
     const app = fixture()
     for (const raw of ['{broken', '{"schemaVersion":9000,"settings":{"action":"shutdown","scope":"any","countdownSeconds":0}}']) {

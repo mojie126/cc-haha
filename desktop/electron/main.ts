@@ -79,6 +79,7 @@ import { resolveRendererEntry } from './services/rendererEntry'
 import { installRendererLifecycle, showRendererRecoveryFailure } from './services/rendererLifecycle'
 import type { IdlePowerSettings } from '../src/lib/idlePower'
 import { IdlePowerService, readIdlePowerActivity } from './services/idlePower'
+import { createIdlePowerDebugLog, type IdlePowerDebug } from './services/idlePowerDebug'
 import { createIdlePowerHost, installIdlePowerLifecycle } from './services/idlePowerHost'
 import { installPreventSleepLifecycle, PreventSleepService, readPreventSleepActivity } from './services/preventSleep'
 import { writeWindowSmokeSnapshot } from './services/windowSmoke'
@@ -140,11 +141,17 @@ let trayController: TrayController | null = null
 let idlePowerRendererGeneration = 0
 let idlePowerService: IdlePowerService | null = null
 let idlePowerInitialization: Promise<IdlePowerService> | null = null
+let idlePowerDebug: IdlePowerDebug | null = null
+function getIdlePowerDebug(): IdlePowerDebug {
+  idlePowerDebug ??= createIdlePowerDebugLog(app)
+  return idlePowerDebug
+}
 async function getIdlePowerService(): Promise<IdlePowerService> {
   const rendererGeneration = idlePowerRendererGeneration
   idlePowerInitialization ??= createIdlePowerHost({
     app, blocker: powerSaveBlocker, monitor: powerMonitor, screen, NotificationClass: Notification,
     locale: () => readLocalePreference(app) ?? resolveSupportedLocale(app.getPreferredSystemLanguages()),
+    debug: getIdlePowerDebug(),
     readActivity: signal => {
       if (isQuitting || dataMigration?.running || areStorageWritesFrozen()) throw new Error('Desktop is unavailable')
       return readIdlePowerActivity(resolveMainRendererServerAccess(), signal)
@@ -157,10 +164,18 @@ async function getIdlePowerService(): Promise<IdlePowerService> {
       // stop() still emits so live renderers can clear a cancelled countdown.
       if (!contents.isDestroyed()) contents.send(ELECTRON_EVENT_CHANNELS.powerIdleActionState, state)
     },
-  }).then(service => { idlePowerService = service; return service }).catch(error => { idlePowerInitialization = null; throw error })
+  }).then(service => { idlePowerService = service; return service }).catch(error => {
+    idlePowerInitialization = null
+    getIdlePowerDebug()('host.create.failed', { error: error instanceof Error ? error.message : String(error) })
+    throw error
+  })
   const service = await idlePowerInitialization
   if (isQuitting) { service.dispose(); throw new Error('Application is quitting') }
-  if (rendererGeneration !== idlePowerRendererGeneration) { service.stop(); throw new Error('Desktop window changed') }
+  if (rendererGeneration !== idlePowerRendererGeneration) {
+    service.stop()
+    getIdlePowerDebug()('host.renderer-changed', { rendererGeneration, current: idlePowerRendererGeneration })
+    throw new Error('Desktop window changed')
+  }
   service.start()
   return service
 }
@@ -647,8 +662,21 @@ function registerIpcHandlers() {
   registerHandler(ELECTRON_IPC_CHANNELS.publicAccessSetKeepAwake, (_event, payload) => publicAccessStatus(getPublicAccessManager().setKeepAwake(payload as boolean)))
   registerHandler(ELECTRON_IPC_CHANNELS.appGetVersion, () => app.getVersion())
   registerHandler(ELECTRON_IPC_CHANNELS.powerGetIdleActionState, async () => (await getIdlePowerService()).getState())
-  registerHandler(ELECTRON_IPC_CHANNELS.powerConfigureIdleAction, async (_event, payload) => (await getIdlePowerService()).configure(payload as IdlePowerSettings))
-  registerHandler(ELECTRON_IPC_CHANNELS.powerCancelIdleAction, async () => { (await getIdlePowerService()).cancel() })
+  registerHandler(ELECTRON_IPC_CHANNELS.powerConfigureIdleAction, async (event, payload) => {
+    getIdlePowerDebug()('ipc.configure', { payload, frame: event.senderFrame?.url ?? null })
+    try {
+      const state = (await getIdlePowerService()).configure(payload as IdlePowerSettings)
+      getIdlePowerDebug()('ipc.configure.done', { settings: state.settings })
+      return state
+    } catch (error) {
+      getIdlePowerDebug()('ipc.configure.failed', { payload, error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
+  })
+  registerHandler(ELECTRON_IPC_CHANNELS.powerCancelIdleAction, async () => {
+    getIdlePowerDebug()('ipc.cancel', {})
+    ;(await getIdlePowerService()).cancel()
+  })
   registerHandler(ELECTRON_IPC_CHANNELS.powerSetPreventSleepWhileRunning, (event, payload) => {
     if (currentWindow(event) !== mainWindow || event.senderFrame !== event.sender.mainFrame) {
       throw new Error('Prevent-sleep settings require the main desktop window')
@@ -1064,6 +1092,16 @@ async function createMainWindow() {
   installMainWindowNavigationGuards(mainWindow.webContents, { openExternal: openExternalUrl })
   installPreventSleepLifecycle(mainWindow.webContents, preventSleepService)
   installIdlePowerLifecycle(mainWindow.webContents, () => idlePowerService, () => { idlePowerRendererGeneration += 1 })
+  const idlePowerDebug = getIdlePowerDebug()
+  mainWindow.webContents.on('did-navigate', () => idlePowerDebug('lifecycle.stop', { reason: 'did-navigate' }))
+  mainWindow.webContents.on('render-process-gone', () => idlePowerDebug('lifecycle.stop', { reason: 'render-process-gone' }))
+  mainWindow.webContents.on('destroyed', () => idlePowerDebug('lifecycle.stop', { reason: 'destroyed' }))
+  mainWindow.webContents.on('before-input-event', () => {
+    if (idlePowerService?.getState().countdown) idlePowerDebug('lifecycle.input-cancel', {})
+  })
+  mainWindow.webContents.on('console-message', details => {
+    if (details.message.includes('[idle-power]')) idlePowerDebug('renderer.console', { level: details.level, message: details.message })
+  })
   await installRendererContextMenu(
     mainWindow,
     () => readLocalePreference(app) ?? resolveSupportedLocale(app.getPreferredSystemLanguages()),
@@ -1154,9 +1192,14 @@ app.whenReady().then(async () => {
     return
   }
   if (validation) process.env.CC_HAHA_MIGRATION_VALIDATION = '1'
-  powerMonitor.on('suspend', () => idlePowerService?.stop())
-  powerMonitor.on('resume', () => { if (!isQuitting) idlePowerService?.start() })
-  powerMonitor.on('lock-screen', () => { if (idlePowerService?.getState().countdown) idlePowerService.cancel('user-activity') })
+  powerMonitor.on('suspend', () => { getIdlePowerDebug()('monitor.suspend', {}); idlePowerService?.stop() })
+  powerMonitor.on('resume', () => { getIdlePowerDebug()('monitor.resume', {}); if (!isQuitting) idlePowerService?.start() })
+  powerMonitor.on('lock-screen', () => {
+    if (idlePowerService?.getState().countdown) {
+      getIdlePowerDebug()('monitor.lock-screen.cancel', {})
+      idlePowerService.cancel('user-activity')
+    }
+  })
   installSystemAppearanceWatch()
   screen.on('display-metrics-changed', (_event, _display, changedMetrics) => {
     if (changedMetrics.includes('scaleFactor') || changedMetrics.includes('bounds')) {
