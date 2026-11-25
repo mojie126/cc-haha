@@ -1918,7 +1918,7 @@ describe('TabBar', () => {
     expectNoHeaderText()
   })
 
-  it('keeps the window gutter on the panel paper while the workspace is open', async () => {
+  it('keeps the window gutter on the canvas while the workspace is open', async () => {
     const { TabBar } = await import('./TabBar')
     const { useTabStore } = await import('../../stores/tabStore')
     const { useChatStore } = await import('../../stores/chatStore')
@@ -1947,17 +1947,15 @@ describe('TabBar', () => {
     const frame = screen.getByTestId('workspace-header-frame')
     const gutter = screen.getByTestId('tab-bar-drag-gutter')
 
-    // Closed, the trough runs to the window edge and the gutter disappears
-    // into it; the frame paints nothing of its own.
+    // Closed and open alike, the frame paints nothing of its own: the strip
+    // above the panel shares the canvas ground with the session tabs, and the
+    // whole bar is closed off by one hairline under it.
     expect(frame.className).not.toMatch(/\bbg-\[/)
 
-    // Open, everything above the panel is one ground — the trough the
-    // workspace's resource tabs sit in, not paper. The gutter is a transparent
-    // sibling of the header, so the element that paints has to contain it.
     await act(async () => {
       useWorkspaceStore.getState().toggleWorkspace(sessionId)
     })
-    expect(frame).toHaveClass('bg-[var(--color-surface-sidebar)]')
+    expect(frame.className).not.toMatch(/\bbg-\[/)
     expect(frame).not.toHaveClass('bg-[var(--color-surface)]')
     expect(frame).toContainElement(gutter)
   })
@@ -1996,7 +1994,7 @@ describe('TabBar', () => {
     expect(header).toHaveAttribute('data-desktop-drag-region')
   })
 
-  it('uses the shared tab chip, with selection strictly stronger than hover', async () => {
+  it('draws session tabs as capsules with selection strictly stronger than hover', async () => {
     const { TabBar } = await import('./TabBar')
     const { useTabStore } = await import('../../stores/tabStore')
     const { useChatStore } = await import('../../stores/chatStore')
@@ -2020,37 +2018,26 @@ describe('TabBar', () => {
     const active = screen.getByText('Active One').closest('.tab-bar-interactive')
     const inactive = screen.getByText('Inactive One').closest('.tab-bar-interactive')
 
-    // One chip for both strips: the session tabs carry exactly the classes the
-    // workspace's resource tabs do.
-    expect(active?.className).toContain(tabChipClass(true))
-    expect(inactive?.className).toContain(tabChipClass(false))
+    // Session tabs are their own capsule on the canvas; the workspace's
+    // resource tabs keep `ui/tabChip`, tuned for their sidebar trough.
+    expect(active?.className).not.toContain(tabChipClass(true))
 
-    // #1123 landed because the strip, the active tab and the content were all
-    // `--color-surface`. The strip stays on the sidebar's ground and only the
-    // active chip is filled with paper at rest.
-    expect(active?.className).toContain('bg-[var(--color-surface)]')
+    // The active capsule takes the container fill and a plain border hairline,
+    // because it now sits on the page ground rather than the sidebar trough.
+    expect(active?.className).toContain('bg-[var(--color-surface-container)]')
+    expect(active?.className).toContain('0_0_0_1px_var(--color-border)')
     expect(inactive?.className).not.toMatch(/(?:^|\s)bg-/)
 
-    // Paper against the trough is 1.05–1.10:1, so the active chip needs the
-    // `--color-tab-edge` ring to have a shape; `--color-border` lands at
-    // 1.12:1 there and cannot draw it (see contrast.test.ts).
-    expect(active?.className).toContain('0_0_0_1px_var(--color-tab-edge)')
-    expect(active?.className).not.toContain('var(--color-border)')
-
-    // Hover rises to paper with the faint ring and never uses
-    // `--color-surface-hover`, which is brighter than paper on the ink themes
-    // and would make a hovered tab outshine the selected one.
-    expect(inactive?.className).toContain('hover:bg-[var(--color-surface)]')
-    expect(inactive?.className).toContain('hover:shadow-[0_0_0_1px_var(--color-tab-separator)]')
-    expect(inactive?.className).not.toContain('surface-hover')
-    expect(active?.className).not.toContain('--color-tab-separator')
+    // Hover is one step weaker than selection: the neutral hover fill, no ring.
+    expect(inactive?.className).toContain('hover:bg-[var(--color-surface-hover)]')
+    expect(inactive?.className).not.toContain('hover:shadow-')
 
     // Rings are shadows, not borders, so selecting a tab never moves its title.
     expect(active?.className).not.toMatch(/(?:^|\s)border(?:-|\s|$)/)
     expect(inactive?.className).not.toMatch(/(?:^|\s)border(?:-|\s|$)/)
   })
 
-  it('keeps the strip on the frame ground so the active tab can lift off it', async () => {
+  it('sits the strip on the canvas above a single hairline', async () => {
     const { TabBar } = await import('./TabBar')
     const { useTabStore } = await import('../../stores/tabStore')
     const { useChatStore } = await import('../../stores/chatStore')
@@ -2072,22 +2059,15 @@ describe('TabBar', () => {
 
     const strip = screen.getByTestId('tab-bar')
 
-    // The two halves of the contract. If the strip ever goes back to
-    // `--color-surface` the active tab's fill stops reading as a lift and the
-    // whole bar flattens again, which is the regression #1123 reported.
-    expect(strip).toHaveClass('bg-[var(--color-surface-sidebar)]')
+    // The strip is the canvas itself: transparent, separated from the content
+    // below by one hairline. Painting it a second ground is what turns the
+    // titlebar into a separate band across the top of the window.
+    expect(strip).toHaveClass('bg-transparent', 'border-b')
     expect(screen.getByText('Active One').closest('.tab-bar-interactive')?.className)
-      .toContain('bg-[var(--color-surface)]')
+      .toContain('bg-[var(--color-surface-container)]')
 
-    // And it stays *exactly* the sidebar's ground — not a darkened trough.
-    // Darkening it is the easy way to make the tabs pop, and it is the wrong
-    // one: it turns the titlebar into a separate band running across the top
-    // of the window instead of the same surface the sidebar is already on.
-    expect(strip.className).not.toMatch(/bg-\[var\(--color-(?!surface-sidebar)/)
-
-    // No rule under the strip: like the workspace's resource strip, it is
-    // separated from the content by its ground alone.
-    expect(strip.className).not.toMatch(/\bborder-b\b/)
+    // No second ground of its own on either side of the divider.
+    expect(strip.className).not.toMatch(/bg-\[var\(--color-/)
   })
 
   it('marks every tab with its selection state', async () => {

@@ -1,7 +1,7 @@
 import { MODEL_SLOTS, type ModelSlot } from '@/lib/providerModelContext'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowRight, Check, ChevronDown, Zap } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, ChevronRight, ShieldCheck, Zap } from 'lucide-react'
 import {
   COMPOSER_MENU_ITEM,
   COMPOSER_MENU_ITEM_ACTIVE,
@@ -13,6 +13,7 @@ import {
   OPENAI_OFFICIAL_MODELS,
   OPENAI_OFFICIAL_PROVIDER_ID,
 } from '../../constants/openaiOfficialProvider'
+import { ModelBrandIcon } from '@/components/composite/ModelBrandIcon'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chatStore'
 import { useProviderStore } from '../../stores/providerStore'
@@ -47,6 +48,8 @@ import {
 } from '../../constants/deepseekAccountProvider'
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet'
 import { SearchField } from '@/components/ui/SearchField'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { Switch } from '@/components/ui/Switch'
 import { ReasoningEffortPopover } from './ReasoningEffortPopover'
 import { useUIStore } from '../../stores/uiStore'
 import { SETTINGS_TAB_ID, useTabStore } from '../../stores/tabStore'
@@ -102,6 +105,10 @@ type Props = {
   disabled?: boolean
   compact?: boolean
   fluid?: boolean
+  /** 下拉底部停靠区显示的权限模式名称，点击跳到权限选择器 */
+  permissionModeLabel?: string
+  /** 停靠区的权限入口回调，由输入框决定打开哪一个选择器 */
+  onOpenPermissions?: () => void
 }
 
 export type ModelSelectorHandle = {
@@ -361,6 +368,8 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
   disabled = false,
   compact = false,
   fluid = false,
+  permissionModeLabel,
+  onOpenPermissions,
 }: Props = {}, selectorRef) {
   const t = useTranslation()
   const isMobileBrowser = useMobileViewport() && !isDesktopRuntime()
@@ -727,6 +736,11 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
       (isAnthropicSavedProvider && (claudeModelSupportsFast || isClaudeFamilySelection)))
   const claudeFastModeSupported = showClaudeFastMode && claudeModelSupportsFast
   const claudeFastModeActive = claudeFastModeSupported && fastMode
+  // 下拉底部停靠区：推理强度、快速模式、权限入口，不用离开模型面板就能改
+  const showDockedEffort = showEffortPill && !!selectedRuntimeEffort && !disabled && lockedProviderId === undefined
+  const showDockedFastMode = showDockedEffort && (showOpenAIFastMode || showClaudeFastMode)
+  const showDockedPermissions = Boolean(onOpenPermissions) && !isMobileBrowser
+  const showDockedFooter = showDockedEffort || showDockedPermissions
 
   const navigateToProviderSettings = useCallback(() => {
     setOpen(false)
@@ -818,7 +832,7 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
     open: openSelector,
   }), [openSelector])
 
-  const handleRuntimeSelect = (selection: RuntimeSelection) => {
+  const handleRuntimeSelect = (selection: RuntimeSelection, options?: { closeDropdown?: boolean }) => {
     if (lockedProviderId !== undefined && selection.providerId !== lockedProviderId) return
     const provider = providers.find((entry) => entry.id === selection.providerId)
     const isLeadingChoice = !!leadingChoices?.some((choice) => choice.providerId === selection.providerId)
@@ -835,10 +849,11 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
         useChatStore.getState().setSessionRuntime(runtimeKey, normalizedSelection)
       }
     }
-    setOpen(false)
+    // 停靠区改努力或快速模式时不关闭下拉，一次调整多项不用反复打开
+    if (options?.closeDropdown !== false) setOpen(false)
   }
 
-  const handleRuntimeEffortSelect = (level: ReasoningEffortLevel) => {
+  const handleRuntimeEffortSelect = (level: ReasoningEffortLevel, options?: { closeDropdown?: boolean }) => {
     if (!activeRuntimeSelection || lockedProviderId !== undefined) return
     if (onEffortChange) {
       onEffortChange(level)
@@ -847,12 +862,12 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
     handleRuntimeSelect({
       ...activeRuntimeSelection,
       effortLevel: level,
-    })
+    }, options)
   }
 
-  const handleOpenAIFastModeChange = (enabled: boolean) => {
+  const handleOpenAIFastModeChange = (enabled: boolean, options?: { closeDropdown?: boolean }) => {
     if (!activeRuntimeSelection || !showOpenAIFastMode) return
-    handleRuntimeSelect({ ...activeRuntimeSelection, openAIFastMode: enabled })
+    handleRuntimeSelect({ ...activeRuntimeSelection, openAIFastMode: enabled }, options)
   }
 
   const handleClaudeFastModeChange = (enabled: boolean) => {
@@ -907,8 +922,17 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
             {filteredProviderChoices.map((choice) => (
               <div key={choice.providerId ?? 'official'}>
                 <div className={`flex items-center justify-between gap-2 ${COMPOSER_MENU_SECTION}`}>
-                  <span className="truncate">
-                    {choice.providerName}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <ModelBrandIcon
+                      providerId={choice.providerId === null ? 'claude-official' : choice.providerId}
+                      presetId={providers.find((provider) => provider.id === choice.providerId)?.presetId}
+                      providerName={choice.providerName}
+                      size={12}
+                      className="text-[var(--color-text-tertiary)]"
+                    />
+                    <span className="truncate">
+                      {choice.providerName}
+                    </span>
                   </span>
                   {choice.isDefault && (
                     <span className="flex-shrink-0 font-normal">
@@ -989,6 +1013,14 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
                         aria-current={isSelected || undefined}
                         className={`${COMPOSER_MENU_ITEM} ${isMobileBrowser ? 'min-h-[56px] py-3' : ''} ${isSelected ? COMPOSER_MENU_ITEM_ACTIVE : ''}`}
                       >
+                        <ModelBrandIcon
+                          modelId={model.id}
+                          providerId={choice.providerId === null ? 'claude-official' : choice.providerId}
+                          presetId={providers.find((provider) => provider.id === choice.providerId)?.presetId}
+                          providerName={choice.providerName}
+                          size={14}
+                          className={isSelected ? 'text-[var(--color-brand)]' : 'text-[var(--color-text-tertiary)]'}
+                        />
                         <div className="grid min-w-0 flex-1 gap-px">
                           {/* Model ids are identifiers, so they sit in the
                               mono face alongside paths and token counts. */}
@@ -1030,6 +1062,11 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
                   aria-current={isSelected || undefined}
                   className={`${COMPOSER_MENU_ITEM} ${isMobileBrowser ? 'min-h-[56px] py-3' : ''} ${isSelected ? COMPOSER_MENU_ITEM_ACTIVE : ''}`}
                 >
+                  <ModelBrandIcon
+                    modelId={model.id}
+                    size={14}
+                    className={isSelected ? 'text-[var(--color-brand)]' : 'text-[var(--color-text-tertiary)]'}
+                  />
                   <div className="grid min-w-0 flex-1 gap-px">
                     <div className="truncate font-mono text-[13px] text-[var(--color-text-primary)]">{model.name}</div>
                     {model.description && (
@@ -1049,6 +1086,76 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
         )}
       </div>
 
+      {showDockedFooter && (
+        <div
+          data-testid="model-selector-docked-controls"
+          className="flex-none space-y-2 border-t border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-2.5 py-2"
+        >
+          {showDockedEffort && selectedRuntimeEffort && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--color-text-tertiary)]">
+                <span>{t('model.effort')}</span>
+                <span className="font-normal tabular-nums text-[var(--color-text-secondary)]">{runtimeEffortLabel}</span>
+              </div>
+              <SegmentedControl
+                size="sm"
+                layout="fill"
+                label={t('model.effort')}
+                value={runtimeEffortUnset ? ('' as ReasoningEffortLevel) : selectedRuntimeEffort}
+                items={runtimeEffortOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+                onChange={(level) => handleRuntimeEffortSelect(level, { closeDropdown: false })}
+              />
+            </div>
+          )}
+          {showDockedFastMode && (
+            <div className="pt-0.5">
+              {showOpenAIFastMode ? (
+                <Switch
+                  size="sm"
+                  checked={activeRuntimeSelection?.openAIFastMode === true}
+                  onChange={(enabled) => handleOpenAIFastModeChange(enabled, { closeDropdown: false })}
+                  label={t('model.openAIFastMode')}
+                  description={t('model.openAIFastModeDescription')}
+                />
+              ) : (
+                <Switch
+                  size="sm"
+                  checked={claudeFastModeActive}
+                  disabled={!claudeFastModeSupported}
+                  onChange={handleClaudeFastModeChange}
+                  label={t('model.claudeFastMode')}
+                  description={claudeFastModeSupported ? t('model.claudeFastModeDescription') : t('model.claudeFastModeUnsupported')}
+                />
+              )}
+            </div>
+          )}
+          {showDockedPermissions && onOpenPermissions && (
+            <button
+              type="button"
+              disabled={disabled}
+              data-testid="model-selector-permissions-shortcut"
+              onClick={() => {
+                if (disabled) return
+                setOpen(false)
+                requestAnimationFrame(() => onOpenPermissions())
+              }}
+              className="flex min-h-7 w-full cursor-pointer items-center justify-between gap-2 rounded-[var(--radius-sm)] px-1.5 py-1 text-left text-xs text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <ShieldCheck size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-[var(--color-text-tertiary)]" />
+                <span className="truncate">{t('permMode.executionPermissions')}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-text-tertiary)]">
+                {permissionModeLabel && <span className="truncate">{permissionModeLabel}</span>}
+                <ChevronRight size={12} strokeWidth={1.75} aria-hidden="true" />
+              </span>
+            </button>
+          )}
+        </div>
+      )}
     </>
   )
 
@@ -1129,6 +1236,16 @@ export const ModelSelector = forwardRef<ModelSelectorHandle, Props>(function Mod
               : `rounded-l-[var(--radius-sm)] focus-visible:rounded-[var(--radius-sm)] pl-2 ${fluid ? 'flex-1' : ''} ${compact ? 'max-w-[112px]' : 'max-w-[220px]'} ${showEffortPill ? 'pr-1' : 'rounded-r-[var(--radius-sm)] pr-1.5'}`
           }`}
         >
+          {!needsProviderConfiguration && (selectedRuntimeModel?.id || selectedModel?.id) && (
+            <ModelBrandIcon
+              modelId={selectedRuntimeModel?.id ?? selectedModel?.id}
+              providerId={activeRuntimeSelection ? (activeRuntimeSelection.providerId ?? 'claude-official') : undefined}
+              presetId={selectedRuntimeProvider?.presetId}
+              providerName={buttonProviderLabel ?? undefined}
+              size={appearance === 'field' ? 15 : 13}
+              className="text-[var(--color-text-secondary)]"
+            />
+          )}
           <span className={`${appearance === 'field' ? 'text-[13px]' : 'text-xs'} min-w-0 flex-1 truncate text-[var(--color-text-primary)]`}>
             {buttonModelLabel}
           </span>

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import {
   BookMarked,
   Bot,
@@ -35,6 +35,7 @@ import { listPendingPermissions, useChatStore } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
 import type { AgentTaskNotification, BackgroundAgentTask, UIMessage } from '../../types/chat'
 import { AGENT_LIFECYCLE_TYPES } from '../../types/team'
+import { useScrollEdgeFade } from '../../hooks/useScrollEdgeFade'
 
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
 type ToolResult = Extract<UIMessage, { type: 'tool_result' }>
@@ -422,21 +423,29 @@ function MemoryToolActivityGroup({
     <div>
       <div
         data-testid="memory-tool-activity-card"
-        className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-memory-border)] bg-[var(--color-memory-surface)]"
+        className={expanded
+          ? 'overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-memory-border)] bg-[var(--color-memory-surface)]'
+          : 'overflow-hidden rounded-[var(--radius-sm)]'}
       >
         <button
           type="button"
           data-chat-disclosure="true"
           aria-expanded={expanded}
           onClick={toggleExpanded}
-          className="flex min-h-10 w-full items-center gap-2 px-3 text-left transition-colors hover:bg-[var(--color-surface-hover)] focus:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]"
+          className={[
+            'flex w-full items-center gap-1.5 text-left transition-colors hover:bg-[var(--color-surface-hover)] focus:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]',
+            expanded ? 'min-h-9 px-3' : '-mx-1.5 min-h-6 w-[calc(100%+0.75rem)] rounded-[var(--radius-sm)] px-1.5 py-0.5',
+            isStreaming && !expanded ? 'border-b border-[var(--color-memory-border)]' : '',
+          ].filter(Boolean).join(' ')}
         >
-          <BookMarked size={15} strokeWidth={1.75} className="shrink-0 text-[var(--color-memory-accent)]" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--color-text-primary)]">
+          <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--color-memory-accent)]">
+            <BookMarked size={14} strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--color-text-secondary)]">
             {t(titleKey, { count: activity.files.length })}
           </span>
           {isStreaming ? (
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-memory-accent)] animate-pulse-dot" />
+            <span className="animate-stepped-pulse h-1.5 w-1.5 rounded-full bg-[var(--color-memory-accent)]" />
           ) : null}
           <ChevronRight
             size={14}
@@ -553,16 +562,26 @@ function AgentToolGroup({
           : 'starting'
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)]">
+    <div
+      className={expanded
+        ? 'overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container)]'
+        : 'overflow-hidden rounded-[var(--radius-sm)]'}
+    >
       <button
         type="button"
         data-chat-disclosure="true"
         aria-expanded={expanded}
         onClick={toggleExpanded}
-        className="flex min-h-10 w-full items-center gap-2 px-3 text-left transition-colors hover:bg-[var(--color-surface-hover)] focus:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]"
+        className={[
+          'flex w-full items-center gap-1.5 text-left transition-colors hover:bg-[var(--color-surface-hover)] focus:outline-none focus-visible:shadow-[var(--shadow-focus-ring)]',
+          expanded ? 'min-h-9 px-3' : '-mx-1.5 min-h-6 w-[calc(100%+0.75rem)] rounded-[var(--radius-sm)] px-1.5 py-0.5',
+          (groupStatus === 'running' || groupStatus === 'starting') && !expanded ? 'border-b border-[var(--color-info-container)]' : '',
+        ].filter(Boolean).join(' ')}
       >
-        <Bot size={15} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-[var(--color-text-tertiary)]" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--color-text-primary)]">
+        <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--color-text-tertiary)]">
+          <Bot size={14} strokeWidth={1.75} />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--color-text-secondary)]">
           {toolCalls.length === 1 ? t('toolGroup.agentOne') : t('toolGroup.agentMany', { count: toolCalls.length })}
         </span>
         <AgentStatusBadge status={groupStatus} t={t} />
@@ -644,6 +663,9 @@ function AgentCallCard({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  // 预览正文首尾渐隐随滚动位置出现，停在顶部时第一行是清晰的
+  const previewScrollRef = useRef<HTMLDivElement>(null)
+  const previewFade = useScrollEdgeFade(previewScrollRef, previewOpen)
   const t = useTranslation()
   const input = toolCall.input && typeof toolCall.input === 'object'
     ? toolCall.input as Record<string, unknown>
@@ -870,7 +892,7 @@ function AgentCallCard({
                 ))}
               </ToolTimeline>
               {lazyActivity.truncated && (
-                <div className="py-1 pl-[30px] text-[12px] text-[var(--color-text-tertiary)]">
+                <div className="py-1 pl-7 text-[12px] text-[var(--color-text-tertiary)]">
                   {t('agentActivity.truncated')}
                 </div>
               )}
@@ -892,7 +914,12 @@ function AgentCallCard({
         title={description || t('agentStatus.resultTitle')}
         width={900}
       >
-        <div className="max-h-[70vh] overflow-y-auto">
+        <div
+          ref={previewScrollRef}
+          data-fade-top={previewFade.top ? 'true' : 'false'}
+          data-fade-bottom={previewFade.bottom ? 'true' : 'false'}
+          className="scrollbar-autohide scroll-edge-fade max-h-[70vh] overflow-y-auto px-1 py-2"
+        >
           <MarkdownRenderer content={previewText || errorText} />
         </div>
       </Modal>
@@ -940,7 +967,7 @@ function ToolCallTree({
         toolUseId={toolCall.parentToolUseId ? undefined : toolCall.toolUseId}
       />
       {childToolCalls.length > 0 && (isRow ? (
-        <ToolTimeline className="ml-[30px]">
+        <ToolTimeline className="ml-7">
           {childToolCalls.map((childToolCall) => (
             <ToolCallTree
               key={childToolCall.id}

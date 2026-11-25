@@ -1161,6 +1161,49 @@ describe('settingsStore desktop notification persistence', () => {
     expect(updateUser).toHaveBeenLastCalledWith({ desktopNotificationsEnabled: true })
     expect(useSettingsStore.getState().desktopNotificationsEnabled).toBe(true)
   })
+
+  it('persists the notification sound preference separately from the notification switch', async () => {
+    const updateUser = vi.fn(async () => ({ ok: true as const }))
+    vi.doMock('../api/settings', () => ({
+      settingsApi: {
+        getUser: vi.fn(),
+        updateUser,
+        getPermissionMode: vi.fn(),
+        setPermissionMode: vi.fn(),
+        getCliLauncherStatus: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/models', () => ({
+      modelsApi: {
+        list: vi.fn(),
+        getCurrent: vi.fn(),
+        setCurrent: vi.fn(),
+        getEffort: vi.fn(),
+        setEffort: vi.fn(),
+      },
+    }))
+    vi.doMock('../api/h5Access', () => ({
+      h5AccessApi: {
+        get: vi.fn().mockResolvedValue({
+          settings: { enabled: false, tokenPreview: null, allowedOrigins: [], publicBaseUrl: null },
+        }),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        regenerate: vi.fn(),
+        update: vi.fn(),
+      },
+    }))
+
+    const { useSettingsStore } = await import('./settingsStore')
+
+    await useSettingsStore.getState().setDesktopNotificationSoundEnabled(false)
+    expect(useSettingsStore.getState().desktopNotificationSoundEnabled).toBe(false)
+    expect(updateUser).toHaveBeenCalledWith({ desktopNotificationSoundEnabled: false })
+
+    await useSettingsStore.getState().setDesktopNotificationSoundEnabled(true)
+    expect(useSettingsStore.getState().desktopNotificationSoundEnabled).toBe(true)
+    expect(updateUser).toHaveBeenLastCalledWith({ desktopNotificationSoundEnabled: true })
+  })
 })
 
 describe('settingsStore thinking persistence', () => {

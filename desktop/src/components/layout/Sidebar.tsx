@@ -1,7 +1,6 @@
-import { SessionScheduleMark } from '@/components/tasks/SessionScheduleMark'
 import { forwardRef, useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, Bell, CalendarClock, Check, ChevronRight, Clock, Copy, Download, Ellipsis, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings, Smartphone, SquarePen, Store, Trash2, X } from 'lucide-react'
+import { Archive, Bell, CalendarClock, Check, ChevronRight, Clock, Copy, Download, Ellipsis, Folder, FolderOpen, FolderPlus, ListChecks, Pencil, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings, Smartphone, SquarePen, Store, Trash2, X } from 'lucide-react'
 import { releaseWorkspaceSession } from '../../lib/workspace/releaseSession'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -12,13 +11,14 @@ import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
-import { Spinner } from '@/components/ui/Spinner'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { useAnchoredPosition } from '@/hooks/useAnchoredPosition'
 import { useDismissable } from '@/hooks/useDismissable'
 import { GlobalSearchModal } from '../search/GlobalSearchModal'
 import { FindInPageModal } from '../search/FindInPageModal'
 import { ProjectEditorModal, type ProjectEditorSubmission } from './ProjectEditorModal'
 import { SidebarTaskList } from './SidebarTaskList'
+import { SidebarSessionCard } from './SidebarSessionCard'
 import { SIDEBAR_PROJECT_SESSION_PREVIEW_LIMIT } from '../../lib/sessionListPagination'
 import { ProjectSessionList, notifyProjectHistoryAtSidebarBottom } from '@/components/layout/ProjectSessionList'
 import { ArchivedSessionsPanel } from '@/components/layout/ArchivedSessionsPanel'
@@ -28,7 +28,6 @@ import {
   buildSidebarTaskGroups,
   getSessionProjectKey,
   getSessionWorkspaceLabel,
-  isWorktreeSession,
   normalizePathForCompare,
   projectTitle,
 } from './sidebarTaskGroups'
@@ -52,10 +51,9 @@ import {
 import { getDesktopHost } from '../../lib/desktopHost'
 import { hasRunningBackgroundTasks } from '../../lib/backgroundTasks'
 import { collectAttentionIds } from '../../lib/sessionAttention'
-import { getSessionWorkspaceState, getSessionSeedWorkDir } from '../../lib/sessionWorkspace'
+import { getSessionSeedWorkDir } from '../../lib/sessionWorkspace'
 import { projectPathMatches } from '../../lib/projectPath'
 import { detectPlatform } from '../../lib/workspace/shortcuts'
-import { SessionAttentionMark } from './SessionAttentionMark'
 import {
   buildSidebarProjectPreferences,
   hasSidebarProjectPreferences,
@@ -75,7 +73,6 @@ import {
   type SidebarProjectSortBy,
 } from './sidebarProjectPreferenceStorage'
 import { useSessionListAutoRefresh } from '../../hooks/useSessionListAutoRefresh'
-import { formatRelativeTime } from '../../lib/formatRelativeTime'
 import { buildSessionMarkdown, downloadTextFile, isCompleteSessionHistory, sanitizeSessionFilename } from '../../lib/sessionMarkdown'
 
 const desktopHost = getDesktopHost()
@@ -1180,9 +1177,13 @@ export function Sidebar({
       <div
         data-testid="sidebar-title-region"
         data-desktop-drag-region
-        className={`px-2 pb-2 ${isDesktopRuntime && !isWindows ? 'pt-[44px]' : 'pt-3'}`}
+        className={
+          expanded
+            ? 'flex h-[52px] shrink-0 items-center pr-2 ' + (isDesktopRuntime && !isWindows ? 'pl-[76px]' : 'pl-2.5')
+            : `px-2 pb-2 ${isDesktopRuntime && !isWindows ? 'pt-[44px]' : 'pt-3'}`
+        }
       >
-        <div className={`flex ${expanded ? 'items-center justify-between gap-2' : 'flex-col items-center gap-2'}`}>
+        <div className={`flex w-full ${expanded ? 'items-center justify-between gap-2' : 'flex-col items-center gap-2'}`}>
           {/* The mark only stands in for the wordmark on the rail. Expanded,
               the name says it better and the icon beside it is just clutter;
               collapsed, the copy is width-clamped to zero and the header would
@@ -1204,26 +1205,6 @@ export function Sidebar({
             </span>
           </div>
           <div className={`flex items-center ${expanded ? 'gap-0.5' : 'flex-col gap-2'}`}>
-            {/* 折叠态下整个会话列表都不渲染，露一个切不动视图的铃铛只会让人点空。
-                跟 GitHub 链接同一套处理：宽度夹到零、退出 tab 顺序，并且 `aria-hidden`
-                ——`sidebar-copy--hidden` 只是 `max-width:0; opacity:0`，元素仍留在
-                无障碍树里，少了这一条读屏还会念出一个按不动的按钮。 */}
-            <span
-              className={`sidebar-copy ${expanded ? 'sidebar-copy--visible' : 'sidebar-copy--hidden'} inline-flex`}
-              aria-hidden={!expanded}
-            >
-              <IconButton
-                icon={<Bell size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
-                label={t('sidebar.taskView')}
-                onClick={toggleTaskView}
-                size="sm"
-                tone="muted"
-                pressed={isTaskView}
-                surface="sidebar"
-                tabIndex={expanded ? undefined : -1}
-                data-testid="sidebar-task-view-toggle"
-              />
-            </span>
             <a
               href="https://github.com/mojie126/cc-haha"
               target="_blank"
@@ -1249,17 +1230,21 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className={`px-2 pb-1 flex flex-col ${expanded ? 'gap-px' : 'items-center gap-2'}`}>
-        <NavItem
-          active={false}
-          collapsed={!expanded}
-          label={t('sidebar.newSession')}
-          onClick={createSessionInCurrentProject}
-          icon={<Plus size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
-          shortcut={`${MOD_KEY}N`}
-        >
-          {t('sidebar.newSession')}
-        </NavItem>
+      {/* 折叠态没有搜索行，新建会话、视图切换都收导航列；展开态它们与搜索同一个八像素行 */}
+      <div data-testid="sidebar-primary-nav" className={expanded ? 'flex flex-none flex-col gap-px px-2 pb-1' : 'mt-0.5 flex flex-col items-center gap-2'}>
+        {!expanded && (
+          <NavItem
+            active={false}
+            collapsed
+            label={t('sidebar.newSession')}
+            onClick={createSessionInCurrentProject}
+            icon={<Plus size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            shortcut={`${MOD_KEY}N`}
+            testId="sidebar-new-session-button"
+          >
+            {t('sidebar.newSession')}
+          </NavItem>
+        )}
         <NavItem
           active={activeTabId === SCHEDULED_TAB_ID}
           collapsed={!expanded}
@@ -1267,7 +1252,7 @@ export function Sidebar({
           onClick={() => {
             useTabStore.getState().openTab(SCHEDULED_TAB_ID, t('sidebar.scheduled'), 'scheduled')
           }}
-          icon={<CalendarClock size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+          icon={<CalendarClock size={expanded ? 15 : 16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
         >
           {t('sidebar.scheduled')}
         </NavItem>
@@ -1280,7 +1265,7 @@ export function Sidebar({
             useUIStore.getState().setActiveSettingsTab('h5Access')
             useTabStore.getState().openTab(SETTINGS_TAB_ID, t('sidebar.settings'), 'settings')
           }}
-          icon={<Smartphone size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+          icon={<Smartphone size={expanded ? 15 : 16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
         >
           {t('settings.tab.h5Access')}
         </NavItem>}
@@ -1291,11 +1276,22 @@ export function Sidebar({
           onClick={() => {
             useTabStore.getState().openTab(MARKET_TAB_ID, t('sidebar.extensions'), 'market')
           }}
-          icon={<Store size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+          icon={<Store size={expanded ? 15 : 16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
         >
           {t('sidebar.extensions')}
         </NavItem>
-
+        {!expanded && (
+          <NavItem
+            active={isTaskView}
+            collapsed
+            label={t('sidebar.taskView')}
+            onClick={toggleTaskView}
+            icon={<Bell size={16} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            testId="sidebar-task-view-toggle-rail"
+          >
+            {t('sidebar.taskView')}
+          </NavItem>
+        )}
       </div>
 
       {expanded ? (
@@ -1305,17 +1301,53 @@ export function Sidebar({
             className="sidebar-section sidebar-section--visible relative z-20 flex-none px-2 pb-1 pt-3"
             style={{ overflow: 'visible' }}
           >
-            <button
-              type="button"
-              onClick={() => openModal('globalSearch')}
-              className={`flex w-full min-w-0 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-sidebar-search-border)] bg-[var(--color-sidebar-search-bg)] pl-2 pr-1.5 text-left text-[13px] text-[var(--color-text-tertiary)] transition-colors hover:border-[var(--color-outline)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface-sidebar)] h-[30px]`}
-              aria-label={t('search.global.trigger')}
-              title={t('search.global.trigger')}
-            >
-              <Search size={14} strokeWidth={ICON_STROKE} className="pointer-events-none shrink-0" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">{t('search.global.trigger')}</span>
-              <kbd className={KBD_CLASS}>{MOD_KEY}K</kbd>
-            </button>
+            {/* 一行：搜索、视图切换、新建会话。搜索让出宽度，两个图标按钮守在右边 */}
+            <div className="flex h-8 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => openModal('globalSearch')}
+                className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-sidebar-search-border)] bg-[var(--color-sidebar-search-bg)] pl-2 pr-1.5 text-left text-[12px] text-[var(--color-text-tertiary)] shadow-[var(--bevel-surface-rest)] transition-colors hover:border-[var(--color-outline)] hover:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface-sidebar)]"
+                aria-label={t('search.global.trigger')}
+                title={t('search.global.trigger')}
+              >
+                <Search size={13} strokeWidth={ICON_STROKE} className="pointer-events-none shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">{t('search.global.trigger')}</span>
+                <kbd className={KBD_CLASS}>{MOD_KEY}K</kbd>
+              </button>
+              <IconButton
+                icon={<Bell size={15} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+                label={t('sidebar.taskView')}
+                onClick={toggleTaskView}
+                size="md"
+                tone="muted"
+                pressed={isTaskView}
+                bordered={isTaskView}
+                surface="sidebar"
+                data-testid="sidebar-task-view-toggle"
+              />
+              <Tooltip
+                placement="bottom-end"
+                appearance="surface"
+                content={(
+                  <span className="flex items-center gap-2 whitespace-nowrap font-medium">
+                    {t('sidebar.newSession')}
+                    <kbd className={KBD_CLASS}>{MOD_KEY}N</kbd>
+                  </span>
+                )}
+              >
+                <IconButton
+                  icon={<Plus size={15} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+                  label={t('sidebar.newSession')}
+                  showTooltip={false}
+                  onClick={createSessionInCurrentProject}
+                  size="md"
+                  tone="default"
+                  filled
+                  surface="sidebar"
+                  data-testid="sidebar-new-session-button"
+                />
+              </Tooltip>
+            </div>
           </div>
 
           <div
@@ -1597,63 +1629,18 @@ export function Sidebar({
                                   className={`w-full rounded-[var(--radius-sm)] border border-[var(--color-border-focus)] bg-[var(--color-surface)] pl-[31px] pr-2 text-[13px] text-[var(--color-text-primary)] outline-none h-[30px]`}
                                 />
                               ) : (
-                                <button
-                                  onClick={(event) => handleSessionRowClick(event, session)}
-                                  onContextMenu={(e) => handleContextMenu(e, session.id)}
-                                  // `pl-8` puts the title on the project name's
-                                  // line (8px inset + 16px folder + 8px gap), while
-                                  // the row's own fill still spans the full width.
-                                  className={`
-                                    group/session flex w-full items-center rounded-[var(--radius-sm)] pl-8 pr-2 h-[30px] text-left text-[13px] transition-[background,color,box-shadow] duration-150
-                                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focus)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface-sidebar)]
-                                    ${selectedSessionIds.has(session.id)
-                                      ? `sidebar-session-row--selected ${SIDEBAR_ROW_RAISED} font-medium`
-                                      : session.id === activeTabId
-                                      // The open session is a white card lifted off the
-                                      // sidebar ground: page fill, hairline, raised step.
-                                      ? `sidebar-session-row--active ${SIDEBAR_ROW_RAISED} font-medium`
-                                      : 'sidebar-session-row--idle text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-item-hover)] hover:text-[var(--color-text-primary)]'
-                                    }
-                                  `}
-                                  aria-pressed={isBatchMode ? selectedSessionIds.has(session.id) : undefined}
-                                  title={session.title || t('tabs.untitled')}
-                                >
-                                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                    {isBatchMode ? (
-                                      <span
-                                        className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[var(--radius-xs)] border transition-colors ${
-                                          selectedSessionIds.has(session.id)
-                                            ? 'border-[var(--color-brand)] bg-[var(--color-brand)] text-[var(--color-on-primary)]'
-                                            // Hairline `--color-border` only reaches 1.2:1 here; a control
-                                            // boundary needs 3:1 (WCAG 1.4.11).
-                                            : 'border-[var(--color-border-strong)] bg-[var(--color-surface)]'
-                                        }`}
-                                        aria-hidden="true"
-                                      >
-                                        {selectedSessionIds.has(session.id) && (
-                                          <Check size={12} strokeWidth={2} aria-hidden="true" />
-                                        )}
-                                      </span>
-                                    ) : null}
-                                    <span className="min-w-0 flex-1 truncate">{session.title || t('tabs.untitled')}</span>
-                                    {getSessionWorkspaceState(session) === 'missing' && (
-                                      <span
-                                        className="flex-shrink-0 text-[11px] text-[var(--color-warning)]"
-                                        title={session.workDir ?? ''}
-                                      >
-                                        {t('sidebar.missingDir')}
-                                      </span>
-                                    )}
-                                    <SessionScheduleMark sessionId={session.id} />
-                                    <SessionRowMeta
-                                      isRunning={runningSessionIds.has(session.id)}
-                                      needsAttention={attentionSessionIds.has(session.id)}
-                                      isWorktree={isWorktreeSession(session)}
-                                      modifiedAt={session.modifiedAt}
-                                      t={t}
-                                    />
-                                  </span>
-                                </button>
+                                <SidebarSessionCard
+                                  session={session}
+                                  variant="project"
+                                  isActive={session.id === activeTabId}
+                                  isSelected={selectedSessionIds.has(session.id)}
+                                  isRunning={runningSessionIds.has(session.id)}
+                                  needsAttention={attentionSessionIds.has(session.id)}
+                                  isBatchMode={isBatchMode}
+                                  onClick={handleSessionRowClick}
+                                  onContextMenu={handleContextMenu}
+                                  t={t}
+                                />
                               )}
                             </div>
                           ))}
@@ -2397,65 +2384,6 @@ function positionProjectMenu(clientX: number, clientY: number): React.CSSPropert
   }
 }
 
-function SessionRowMeta({
-  isRunning,
-  needsAttention,
-  isWorktree,
-  modifiedAt,
-  t,
-}: {
-  isRunning: boolean
-  needsAttention: boolean
-  isWorktree: boolean
-  modifiedAt: string
-  t: (key: TranslationKey, params?: Record<string, string | number>) => string
-}) {
-  const relativeTime = formatRelativeTime(modifiedAt, t)
-  const updatedLabel = t('session.lastUpdated', { time: relativeTime })
-
-  return (
-    <span
-      className="ml-auto flex h-5 flex-shrink-0 items-center justify-end gap-1 whitespace-nowrap text-[11px] font-normal tabular-nums text-[var(--color-text-tertiary)]"
-      title={updatedLabel}
-    >
-      {/* 等人比在跑更要紧：停在卡片上的会话按 chatState 也算「在跑」，但转圈会
-          让人以为可以不管它。等你确认时，状态文字顶替相对时间。 */}
-      {needsAttention ? (
-        <span className="flex min-w-0 items-center gap-1 font-medium text-[var(--color-on-warning-container)]">
-          <SessionAttentionMark label={t('sidebar.sessionNeedsAttention')} />
-          {/* The mark already names the state; the words are for the eye. */}
-          <span aria-hidden="true" className="max-w-[88px] truncate">{t('sidebar.sessionStatus.attention')}</span>
-        </span>
-      ) : (
-        <>
-          {isRunning && (
-            <span
-              className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-info)]"
-              aria-label={t('sidebar.sessionRunning')}
-              title={t('sidebar.sessionRunning')}
-            >
-              {/* The wrapper already carries the name, so the spinner stays silent. */}
-              <Spinner size={12} />
-            </span>
-          )}
-          {/* Only a session that really runs in its own worktree gets the
-              branch glyph; an ordinary session in its project needs no badge. */}
-          {isWorktree && (
-            <span
-              className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center"
-              title={t('sidebar.worktree')}
-            >
-              <GitBranch size={12} strokeWidth={2} aria-hidden="true" />
-              <span className="sr-only">{t('sidebar.worktree')}</span>
-            </span>
-          )}
-          <span className="flex-shrink-0">{relativeTime}</span>
-        </>
-      )}
-    </span>
-  )
-}
-
 function NavItem({
   active,
   collapsed,
@@ -2463,6 +2391,7 @@ function NavItem({
   onClick,
   icon,
   shortcut,
+  testId,
   children,
 }: {
   active: boolean
@@ -2472,6 +2401,8 @@ function NavItem({
   icon: React.ReactNode
   /** Shown as a kbd on hover; desktop only. */
   shortcut?: string
+  'data-testid'?: string
+  testId?: string
   children: React.ReactNode
 }) {
   return (
@@ -2479,6 +2410,7 @@ function NavItem({
       onClick={onClick}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
+      data-testid={testId}
       title={collapsed ? label : undefined}
       className={`
         group/nav flex items-center text-[13px] transition-colors duration-150

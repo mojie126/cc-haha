@@ -577,19 +577,18 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
     setSlashMenuOpen(false)
   }, [referenceContext])
 
-  // The run location lives in the toolbar on the wide desktop composer, and it
-  // stays there for the whole session: editable while the session is still a
-  // draft, read-only once the first message lands. It used to jump from inside
-  // the panel to a chip below it at that moment.
+  // The run location lives in the toolbar on the wide desktop composer: it
+  // stays there for the whole session, editable while the session is still a
+  // draft and read-only once the first message lands.
   //
   // Deliberately not keyed on `isHeroComposer`: ActiveSession only renders the
   // hero variant while the session is empty, so keying on it moved the location
   // out of the toolbar at the exact moment it was supposed to stay put — the
   // first message swaps the variant and the draft state in the same render.
-  // The condition is the composer's width, not its variant — and now literally
-  // so. It used to read `compact`, which ActiveSession wires to "is the
-  // workspace panel open", so opening the panel dropped the location to a
-  // second line on columns with hundreds of pixels to spare.
+  // The condition is the composer's width, not its variant: it used to read
+  // `compact`, which ActiveSession wires to "is the workspace panel open", so
+  // opening the panel dropped the location to a second line on columns with
+  // hundreds of pixels to spare.
   const showLocationInToolbar = !useCompactControls && !isMemberSession
   const embedLaunchControlsInToolbar = showLocationInToolbar && showLaunchControls
   const pendingSlashUiAction = !isMemberSession && input.trim().startsWith('/')
@@ -1870,15 +1869,44 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
             : `${isMobileComposer ? 'mx-0 max-w-none' : 'mx-auto max-w-[var(--chat-content-max-width)]'}`
         }
       >
+        {!isMemberSession && activeTabId && queuedUserMessages.length > 0 && (
+          // 排队消息做成缝式横幅：顶角随输入框圆角，底边无缝接进输入框卡片，
+          // 配合 composer-seam-above 的阴影过渡，读成同一个悬浮体的上沿。
+          <div
+            data-testid="pending-user-message-list"
+            className="surface-glass composer-seam-above relative z-[var(--z-base)] mx-5 -mb-4 flex flex-col gap-1.5 rounded-t-[var(--radius-2xl)] border border-b-0 border-[var(--color-surface-glass-border)] px-3 pb-5 pt-2.5"
+          >
+            {queuedUserMessages.map((message) => (
+              <QueuedPromptCard
+                key={message.id}
+                message={message}
+                sessionId={activeTabId ?? undefined}
+                isEditing={editingQueuedMessageId === message.id}
+                editingText={editingQueuedMessageText}
+                editingAttachments={editingQueuedMessageAttachments}
+                onEditingTextChange={setEditingQueuedMessageText}
+                onEditingAttachmentsChange={setEditingQueuedMessageAttachments}
+                onStartEdit={() => startEditingQueuedMessage(message)}
+                onSave={saveQueuedMessageEdit}
+                onCancel={cancelQueuedMessageEdit}
+                onGuide={() => sendQueuedUserMessage(activeTabId, message.id)}
+                guideDisabled={questionPending}
+                onDelete={() => removeQueuedUserMessage(activeTabId, message.id)}
+                onRecall={() => recallQueuedMessage(activeTabId, message)}
+              />
+            ))}
+          </div>
+        )}
+
         <div
           ref={panelRef}
           data-testid="chat-input-panel"
-          // The floating card (「素」): `glass-panel--composer` supplies the
-          // opaque lifted fill, the hairline and the composer step of the shadow
-          // scale; `--radius-xl` is the composer corner. One geometry for every
-          // variant — the editor and the toolbar carry their own insets, so a
-          // draft turning into a live session moves nothing.
-          className={`glass-panel glass-panel--composer relative flex flex-col overflow-visible rounded-[var(--radius-xl)] p-2 ${isDragActive ? 'composer-drop-target-active' : ''}`}
+          // The floating card (「素」): `composer-glass` supplies the frosted
+          // fill, the hairline, the top specular rim and the composer step of
+          // the shadow scale; `--radius-2xl` is the composer corner. One
+          // geometry for every variant — the editor and the toolbar carry their
+          // own insets, so a draft turning into a live session moves nothing.
+          className={`composer-glass relative z-[var(--z-raised)] flex flex-col overflow-visible rounded-[var(--radius-2xl)] p-2 transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-[var(--color-brand)] focus-within:ring-2 focus-within:ring-[var(--color-brand-soft)] ${isDragActive ? 'composer-drop-target-active' : ''}`}
           {...dragHandlers}
         >
           {isDragActive && (
@@ -1977,37 +2005,6 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
               <Button variant="primary" size="sm" onClick={() => void handleSubmit({ steer: true })}>
                 {t('chat.pendingMessageGuide')}
               </Button>
-            </div>
-          )}
-
-          {!isMemberSession && activeTabId && queuedUserMessages.length > 0 && (
-            // Dashed outline cards stacked above the input, per §4 of the
-            // handoff. They used to be a full-bleed filled strip pinned to the
-            // panel's top edge, which read as part of the composer chrome
-            // rather than as messages waiting their turn.
-            <div
-              data-testid="pending-user-message-list"
-              className="flex flex-col gap-1.5 px-1 pb-1 pt-1"
-            >
-              {queuedUserMessages.map((message) => (
-                <QueuedPromptCard
-                  key={message.id}
-                  message={message}
-                  sessionId={activeTabId ?? undefined}
-                  isEditing={editingQueuedMessageId === message.id}
-                  editingText={editingQueuedMessageText}
-                  editingAttachments={editingQueuedMessageAttachments}
-                  onEditingTextChange={setEditingQueuedMessageText}
-                  onEditingAttachmentsChange={setEditingQueuedMessageAttachments}
-                  onStartEdit={() => startEditingQueuedMessage(message)}
-                  onSave={saveQueuedMessageEdit}
-                  onCancel={cancelQueuedMessageEdit}
-                  onGuide={() => sendQueuedUserMessage(activeTabId, message.id)}
-                  guideDisabled={questionPending}
-                  onDelete={() => removeQueuedUserMessage(activeTabId, message.id)}
-                  onRecall={() => recallQueuedMessage(activeTabId, message)}
-                />
-              ))}
             </div>
           )}
 
@@ -2262,6 +2259,9 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   disabled={false}
                   compact={useCompactControls}
                   fluid={isMobileComposer}
+                  // 下拉底部停靠区：推理强度、快速模式与权限入口都在这里改
+                  permissionModeLabel={isMemberSession ? undefined : t(PERMISSION_MODE_LABEL_KEYS[resolvedPermissionMode])}
+                  onOpenPermissions={isMemberSession ? undefined : () => permissionSelectorRef.current?.open()}
                 />
               )}
               {memberRuntimeSelection && (
@@ -2292,8 +2292,8 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   onClick={() => stopGeneration(activeTabId!)}
                   aria-label={t('common.stop')}
                   title={t('chat.stopTitle')}
-                  className={`shrink-0 ${isMobileComposer ? 'h-11 w-11' : ''}`}
-                  icon={<Square size={isMobileComposer ? 12 : 10} strokeWidth={2} fill="currentColor" aria-hidden="true" />}
+                  className={`shrink-0 hover:bg-[var(--color-error)] hover:text-[var(--color-on-error)] motion-safe:enabled:hover:scale-105 ${isMobileComposer ? 'h-11 w-11' : ''}`}
+                  icon={<Square data-icon="stop" size={isMobileComposer ? 12 : 10} strokeWidth={2} fill="currentColor" aria-hidden="true" />}
                 />
               ) : null}
               {/* Same component, shape and icon as EmptySession's send button.
@@ -2310,18 +2310,20 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                   send without a word next to it. Dropping the label is why the
                   name now lives only in `aria-label`, on both breakpoints.
 
-                  Terracotta (`accent`) is the send key's alone; mid-turn the
-                  same circle turns ink (`primary`) with a filled square, so a
+                  Terracotta (`accent`) is the send key's alone. Mid-turn with a draft the
+                  same circle stays `accent` and queues the message; mid-turn
+                  with an empty draft, or in a member session, it turns ink
+                  (`primary`) with a filled square and stops instead, so a
                   running turn does not read as an error. */}
               <Button
-                variant={stopOffer === 'turn' ? 'primary' : 'accent'}
+                variant={stopOffer === 'turn' && (!canSubmit || isMemberSession) ? 'primary' : 'accent'}
                 size="base"
                 shape="circle"
-                onClick={stopOffer === 'turn' ? () => stopGeneration(activeTabId!) : () => void handleSubmit()}
-                disabled={stopOffer === 'turn' ? false : !canSubmit}
-                aria-label={stopOffer === 'turn' ? t('common.stop') : isMemberSession ? t('common.send') : t('common.run')}
+                onClick={stopOffer === 'turn' && (!canSubmit || isMemberSession) ? () => stopGeneration(activeTabId!) : () => void handleSubmit()}
+                disabled={stopOffer === 'turn' && (!canSubmit || isMemberSession) ? false : !canSubmit}
+                aria-label={stopOffer === 'turn' && (!canSubmit || isMemberSession) ? t('common.stop') : isMemberSession ? t('common.send') : t('common.run')}
                 title={
-                  stopOffer === 'turn'
+                  stopOffer === 'turn' && (!canSubmit || isMemberSession)
                     ? t('chat.stopTitle')
                     : isMemberSession
                       ? t('common.send')
@@ -2329,8 +2331,12 @@ export function ChatInput({ variant = 'default', compact = false, sessionId, vis
                 }
                 // 44px on touch is the platform minimum for a primary target;
                 // the desktop circle stays at the size's own 32px.
-                className={`shrink-0 ${isMobileComposer ? 'h-11 w-11' : ''}`}
-                icon={stopOffer === 'turn'
+                className={`shrink-0 motion-safe:enabled:hover:scale-105 ${
+                  stopOffer === 'turn' && (!canSubmit || isMemberSession)
+                    ? 'hover:bg-[var(--color-error)] hover:text-[var(--color-on-error)]'
+                    : ''
+                } ${isMobileComposer ? 'h-11 w-11' : ''}`}
+                icon={stopOffer === 'turn' && (!canSubmit || isMemberSession)
                   ? <Square data-icon="stop" size={isMobileComposer ? 12 : 10} strokeWidth={2} fill="currentColor" aria-hidden="true" />
                   : <ArrowUp data-icon="send" size={isMobileComposer ? 18 : 16} strokeWidth={2} aria-hidden="true" />}
               />

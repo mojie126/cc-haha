@@ -107,6 +107,22 @@ describe('Settings section navigation', () => {
     expect(document.querySelector('.settings-search-target')).toBeNull()
   })
 
+  it('focuses the settings search from the slash key unless a field has focus', async () => {
+    render(<Settings />)
+    const search = screen.getByRole('searchbox') as HTMLInputElement
+
+    fireEvent.keyDown(document.body, { key: '/' })
+    expect(document.activeElement).toBe(search)
+
+    search.blur()
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    fireEvent.keyDown(input, { key: '/' })
+    expect(document.activeElement).toBe(input)
+    input.remove()
+  })
+
   it('says so when no setting matches the search', () => {
     render(<Settings />)
 

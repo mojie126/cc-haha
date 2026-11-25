@@ -8,6 +8,7 @@ import {
 } from '../services/analytics/index.js'
 import type { ToolUseContext } from '../Tool.js'
 import {
+  clearThreadGoalHook,
   ensureThreadGoalHookFromTranscript,
   isGoalPromptHookCommand,
 } from '../goals/goalState.js'
@@ -100,6 +101,23 @@ export function formatGoalWaitingForTeamStatusOutput(reason: string): string {
   return normalizedReason
     ? `Goal waiting for teammates: ${normalizedReason}`
     : 'Goal waiting for teammates: more work is required'
+}
+
+/**
+ * 目标求值器出错时生成清除提示，避免无效目标反复触发求值
+ * @param errorDetail 求值失败的原因文本
+ * @returns 供本地命令输出使用的清除提示
+ */
+export function formatGoalEvaluatorErrorClearedOutput(errorDetail: string): string {
+  const sanitized = errorDetail
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500)
+  return sanitized
+    ? `Goal cleared: ${sanitized}`
+    : 'Goal cleared: Goal evaluator failed'
 }
 
 export async function* handleStopHooks(
@@ -246,6 +264,7 @@ export async function* handleStopHooks(
     const hookInfos: StopHookInfo[] = []
     let goalCompleted = false
     let goalContinuationReason: string | null = null
+    let goalEvaluatorError: string | null = null
 
     // Goal hook's preventContinuation and blockingError arrive as separate
     // generator yields — preventContinuation comes first, but blockingError.command
@@ -286,9 +305,13 @@ export async function* handleStopHooks(
               attachment.hookEvent === 'SubagentStop')
           ) {
             if (attachment.type === 'hook_non_blocking_error') {
-              hookErrors.push(
-                attachment.stderr || `Exit code ${attachment.exitCode}`,
-              )
+              const detail =
+                attachment.stderr || `Exit code ${attachment.exitCode}`
+              hookErrors.push(detail)
+              // 目标求值器自身故障不构成继续条件，记下原因交由后续清除
+              if (isGoalPromptHookCommand(attachment.command)) {
+                goalEvaluatorError ??= detail
+              }
               // Non-blocking errors always have output
               hasOutput = true
             } else if (attachment.type === 'hook_error_during_execution') {
@@ -444,6 +467,16 @@ export async function* handleStopHooks(
     if (goalCompleted) {
       yield createCommandInputMessage(
         '<local-command-stdout>Goal marked complete.</local-command-stdout>',
+      )
+    }
+
+    // 求值器自身报错时清除目标，避免下一轮继续拿同一个坏目标反复重试
+    if (goalEvaluatorError) {
+      if (!toolUseContext.agentId) {
+        clearThreadGoalHook(toolUseContext, getSessionId())
+      }
+      yield createCommandInputMessage(
+        `<local-command-stdout>${formatGoalEvaluatorErrorClearedOutput(goalEvaluatorError)}</local-command-stdout>`,
       )
     }
 

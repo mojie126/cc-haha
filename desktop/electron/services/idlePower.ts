@@ -270,6 +270,7 @@ export class IdlePowerService {
     const countdown = this.state.countdown
     if (!countdown) return
     let dispatched = false
+    let dispatchedSettings: IdlePowerSettings | null = null
     this.log('execute.begin', { action: countdown.action })
     try {
       await this.options.execute(countdown.action, async () => {
@@ -289,6 +290,7 @@ export class IdlePowerService {
         const settings: IdlePowerSettings = { ...this.state.settings, action: 'none' }
         this.log('execute.dispatch', { action: countdown.action, settings })
         this.options.save({ settings, lastAction: record })
+        dispatchedSettings = this.state.settings
         this.state.settings = settings
         this.state.lastAction = record
         dispatched = true
@@ -307,12 +309,21 @@ export class IdlePowerService {
       try { this.options.save({ lastAction: this.state.lastAction }) } catch { /* The durable requested record remains truthful. */ }
       this.invalidate()
       this.emit()
-    } catch {
+    } catch (error) {
       if (generation !== this.generation || !this.running) return
-      this.log('execute.failed', { action: countdown.action, dispatched })
+      // 系统拒绝派发时带上退出码，便于区分「系统拒绝」与「命令无法启动」
+      const failure = error as { code?: string | number, message?: string }
+      this.log('execute.failed', { action: countdown.action, dispatched, code: failure?.code ?? null,
+        error: failure?.message ?? String(error) })
       if (dispatched) {
         this.state.lastAction = { ...this.state.lastAction!, result: 'failed' }
-        try { this.options.save({ lastAction: this.state.lastAction }) } catch { /* Keep requested journal on disk. */ }
+        // 系统当场拒绝时，预先落盘的重置不代表用户意愿，恢复已选动作并允许下一次完成重试
+        if (dispatchedSettings) {
+          this.state.settings = dispatchedSettings
+          this.log('execute.rearm', { settings: dispatchedSettings })
+        }
+        try { this.options.save({ settings: this.state.settings, lastAction: this.state.lastAction }) }
+        catch { /* Keep requested journal on disk. */ }
       }
       this.cancel('failed')
       this.state.notice = 'failed'

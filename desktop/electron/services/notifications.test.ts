@@ -119,4 +119,54 @@ describe('Electron notification service', () => {
     })).toThrow('Invalid Electron notification payload')
     expect(NotificationClass).not.toHaveBeenCalled()
   })
+
+  it('mutes the OS notification and beeps once when a sound is requested', () => {
+    const { NotificationClass, show } = fakeNotificationClass(true)
+    const beep = vi.fn()
+
+    expect(sendDesktopNotification({
+      NotificationClass,
+      options: { title: 'Done', sound: true },
+      onAction: vi.fn(),
+      beep,
+    })).toBe(true)
+
+    expect(NotificationClass).toHaveBeenCalledWith(expect.objectContaining({ silent: true }))
+    expect(show).toHaveBeenCalledTimes(1)
+    expect(beep).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the OS notification untouched and stays silent when no sound is requested', () => {
+    const { NotificationClass } = fakeNotificationClass(true)
+    const beep = vi.fn()
+
+    sendDesktopNotification({
+      NotificationClass,
+      options: { title: 'Done' },
+      onAction: vi.fn(),
+      beep,
+    })
+
+    expect(NotificationClass).toHaveBeenCalledWith(expect.not.objectContaining({ silent: true }))
+    expect(beep).not.toHaveBeenCalled()
+  })
+
+  it('stays silent instead of falling back to the OS sound when the caller withheld the beep', () => {
+    const { NotificationClass, show } = fakeNotificationClass(true)
+
+    sendDesktopNotification({
+      NotificationClass,
+      options: { title: 'Done', sound: true },
+      onAction: vi.fn(),
+    })
+
+    // 声音开关关掉时主进程不注入 beep，通知必须静音，否则系统默认音会绕过开关
+    expect(NotificationClass).toHaveBeenCalledWith(expect.objectContaining({ silent: true }))
+    expect(show).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts the sound flag in payload validation and rejects non-boolean values', () => {
+    expect(validateNotificationOptions({ title: 'Done', sound: true })).toBe(true)
+    expect(validateNotificationOptions({ title: 'Done', sound: 'yes' })).toBe(false)
+  })
 })

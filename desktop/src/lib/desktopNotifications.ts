@@ -26,6 +26,8 @@ type NativeNotificationPayload = {
   id?: number
   extra?: Record<string, unknown>
   target?: DesktopNotificationTarget
+  /** 主进程在发送同一条通知时播放提示音，声音开关在设置里控制 */
+  sound?: boolean
 }
 
 type NativeNotificationSender = (options: NativeNotificationPayload) => Promise<boolean> | boolean
@@ -206,10 +208,12 @@ function buildNativeNotificationPayload(options: {
   title: string
   body?: string
   target?: DesktopNotificationTarget
+  sound?: boolean
 }): NativeNotificationPayload {
   const payload: NativeNotificationPayload = {
     title: options.title,
     body: options.body,
+    ...(options.sound ? { sound: true } : {}),
   }
 
   if (options.target) {
@@ -224,7 +228,7 @@ function buildNativeNotificationPayload(options: {
   return payload
 }
 
-async function sendMacNotification(options: { title: string; body?: string; target?: DesktopNotificationTarget }): Promise<boolean | null> {
+async function sendMacNotification(options: { title: string; body?: string; target?: DesktopNotificationTarget; sound?: boolean }): Promise<boolean | null> {
   if (detectPlatform() !== 'darwin') return null
 
   try {
@@ -233,6 +237,7 @@ async function sendMacNotification(options: { title: string; body?: string; targ
       title: options.title,
       body: options.body,
       ...(target ? { target } : {}),
+      ...(options.sound ? { sound: true } : {}),
     })
     return typeof sent === 'boolean' ? sent : false
   } catch (err) {
@@ -412,6 +417,7 @@ export async function notifyDesktop(options: DesktopNotificationOptions): Promis
       title: options.title,
       body: options.body,
       ...(options.target ? { target: options.target } : {}),
+      sound: true,
     }))
     if (options.dedupeKey) {
       pendingKeys.delete(options.dedupeKey)

@@ -33,7 +33,7 @@ describe('Kbd', () => {
   it('draws a tactile physical keycap bottom bevel on surface appearance', () => {
     const { container } = render(<Kbd>⌘</Kbd>)
     expect(container.firstElementChild?.className).toContain('border-b-2')
-    expect(container.firstElementChild?.className).toContain('shadow-[var(--shadow-raised)]')
+    expect(container.firstElementChild?.className).toContain('shadow-[var(--bevel-surface-rest)]')
   })
 
   it('forwards ref and arbitrary HTML attributes', () => {

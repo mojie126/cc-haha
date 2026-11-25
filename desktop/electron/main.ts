@@ -2,7 +2,7 @@ import { PublicAccessManager, readPublicAccessControlResponse } from './services
 import { createPublicAccessDiagnosticWriter } from './services/publicAccessDiagnostics'
 import { configureP2PSessionPermissions, P2P_PARTITION, p2pEndpointUrl, p2pHostWanted, P2PTerminator } from './services/p2pTerminator'
 import type { DesktopPublicAccessConfiguration, DesktopPublicAccessStatus } from '../src/lib/desktopHost/types'
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, powerSaveBlocker, screen, session, systemPreferences, WebContentsView, webContents } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, powerSaveBlocker, screen, session, shell, systemPreferences, WebContentsView, webContents } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
@@ -25,6 +25,7 @@ import {
   sendDesktopNotification,
 } from './services/notifications'
 import { createNotificationBadge } from './services/notificationBadge'
+import { readNotificationSoundEnabled } from './services/notificationSound'
 import { installApplicationMenu, installRendererContextMenu } from './services/menu'
 import { saveWorkspaceBrowserPdf } from './services/workspaceBrowserPdf'
 import { workspaceBrowserMenuPosition } from './services/workspaceBrowserMenu'
@@ -150,6 +151,7 @@ async function getIdlePowerService(): Promise<IdlePowerService> {
   const rendererGeneration = idlePowerRendererGeneration
   idlePowerInitialization ??= createIdlePowerHost({
     app, blocker: powerSaveBlocker, monitor: powerMonitor, screen, NotificationClass: Notification,
+    beep: notificationBeep(),
     locale: () => readLocalePreference(app) ?? resolveSupportedLocale(app.getPreferredSystemLanguages()),
     debug: getIdlePowerDebug(),
     readActivity: signal => {
@@ -611,6 +613,14 @@ function emitNotificationAction(payload: unknown) {
   mainWindow?.webContents.send(ELECTRON_EVENT_CHANNELS.notificationAction, payload)
 }
 
+/**
+ * 通知提示音：设置里关掉声音时返回 undefined，调用方据此保持原通知静音与否
+ * 每次发送都重新读设置，切换开关无需重启
+ */
+function notificationBeep(): (() => void) | undefined {
+  return readNotificationSoundEnabled() ? () => shell.beep() : undefined
+}
+
 function broadcastLocaleChanged(locale: Locale) {
   for (const window of BrowserWindow.getAllWindows()) {
     if (window.isDestroyed()) continue
@@ -636,6 +646,7 @@ async function handleCommandInvoke(payload: unknown): Promise<unknown> {
         NotificationClass: Notification,
         options: args,
         onAction: emitNotificationAction,
+        beep: notificationBeep(),
       })
     case 'macos_open_notification_settings':
       return openSystemSettingsUrl('x-apple.systempreferences:com.apple.preference.notifications')
@@ -901,6 +912,7 @@ function registerIpcHandlers() {
     NotificationClass: Notification,
     options: payload,
     onAction: emitNotificationAction,
+    beep: notificationBeep(),
   }))
   registerHandler(ELECTRON_IPC_CHANNELS.notificationActionAck, (_event, payload) =>
     logNotificationSmokeRendererAck(process.env, payload))

@@ -388,8 +388,8 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
       omitted={toolImages.dropped}
       originalPath={toolImages.originalPath}
       toolName={toolName}
-      // Row: under the text column, where the expanded details also start.
-      className={isRow ? 'pb-1.5 pl-[30px] pt-0.5' : 'px-3 pb-3'}
+      // Row & worklog: under the text column, where the expanded details also start.
+      className="pb-1.5 pl-7 pt-0.5"
     />
   ) : null
 
@@ -401,10 +401,15 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
         data-tool-status={rowStatus}
         className={`rounded-[var(--radius-sm)]${navigationHighlighted ? ' chat-tool-navigation-target' : ''}`}
       >
-        <div className="flex min-h-[30px] items-center gap-1">
+        <div
+          className={[
+            'flex min-h-6 items-center gap-1 py-0.5',
+            rowStatus === 'running' ? 'border-b border-[var(--color-info-container)]' : '',
+          ].filter(Boolean).join(' ')}
+        >
           <ToolNode toolName={toolName} status={rowStatus} />
           <div
-            className={`group/toolhead relative flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-[var(--radius-sm)] pl-1 pr-1 transition-colors ${
+            className={`group/toolhead relative flex min-w-0 flex-1 items-center gap-1.5 self-stretch rounded-[var(--radius-sm)] pl-1 pr-1 transition-colors ${
               expandable ? 'hover:bg-[var(--color-surface-hover)]' : ''
             }`}
           >
@@ -413,7 +418,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
         </div>
 
         {SESSION_TOOL_NAMES.has(toolName) ? (
-          <div className="pl-[30px]"><SessionToolLinks input={input} result={result?.content} /></div>
+          <div className="pl-7"><SessionToolLinks input={input} result={result?.content} /></div>
         ) : null}
 
         {/* Outside the disclosure on purpose: a picture the tool returned is the
@@ -424,7 +429,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
           <div
             data-tool-call-details="inline"
             data-tool-output-error={result?.isError ? 'true' : undefined}
-            className="space-y-2 pb-2.5 pl-[30px] pt-1"
+            className="space-y-2 pb-2 pl-7 pt-1"
           >
             {preview}
             {details}
@@ -439,19 +444,21 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
       data-tool-call-chrome="card"
       data-tool-use-id={toolUseId}
       data-tool-status={rowStatus}
-      className={`overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-lowest)] ${
-        compact ? 'mb-0' : 'mb-2'
+      className={`overflow-hidden rounded-[var(--radius-sm)] ${
+        compact ? 'mb-0' : 'mb-1'
       }${navigationHighlighted ? ' chat-tool-navigation-target' : ''}`}
     >
       <div
-        className={`group/toolhead relative flex w-full items-center gap-2 px-3 transition-colors ${
-          compact ? 'min-h-9' : 'min-h-10'
-        } ${expandable ? 'hover:bg-[var(--color-surface-hover)]' : ''}`}
+        className={[
+          'group/toolhead relative -mx-1.5 flex min-h-6 w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 transition-colors',
+          expandable ? 'hover:bg-[var(--color-surface-hover)]' : '',
+          rowStatus === 'running' ? 'border-b border-[var(--color-info-container)]' : '',
+        ].filter(Boolean).join(' ')}
       >
         {head}
       </div>
 
-      {SESSION_TOOL_NAMES.has(toolName) ? <SessionToolLinks input={input} result={result?.content} /> : null}
+      {SESSION_TOOL_NAMES.has(toolName) ? <div className="pl-7"><SessionToolLinks input={input} result={result?.content} /></div> : null}
 
       {imageStrip}
 
@@ -459,7 +466,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
         <div
           data-tool-call-details="panel"
           data-tool-output-error={result?.isError ? 'true' : undefined}
-          className="space-y-2.5 border-t border-[var(--color-border)] px-3 py-3"
+          className="space-y-2 pb-2.5 pl-7 pt-1.5"
         >
           {preview}
           {details}
@@ -469,30 +476,30 @@ export const ToolCallBlock = memo(function ToolCallBlock({ toolName, input, resu
   )
 })
 
-/** The row's node on the run's rail. */
+/** The row's cap-aligned 24px icon column on the run's rail. */
 function ToolNode({ toolName, status }: { toolName: string; status: ToolRowStatus }) {
   const Icon = status === 'running' ? LoaderCircle : activitySegmentIcon(toolName)
   return (
     <span
       aria-hidden="true"
       data-tool-node={status}
-      className={`relative flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border ${NODE_TONE[status]}`}
+      className={`relative flex h-6 w-6 shrink-0 items-center justify-center ${NODE_TONE[status]}`}
     >
-      <Icon size={12} strokeWidth={2} className={status === 'running' ? 'animate-spin' : undefined} />
+      <Icon size={13} strokeWidth={1.75} className={status === 'running' ? 'animate-spin' : undefined} />
     </span>
   )
 }
 
 const NODE_TONE: Record<ToolRowStatus, string> = {
-  idle: 'border-[var(--color-outline)] bg-[var(--color-surface)] text-[var(--color-text-tertiary)]',
-  done: 'border-[var(--color-outline)] bg-[var(--color-surface)] text-[var(--color-text-tertiary)]',
-  stopped: 'border-[var(--color-outline)] bg-[var(--color-surface)] text-[var(--color-text-tertiary)]',
-  running: 'border-[var(--color-info)] bg-[var(--color-info-container)] text-[var(--color-on-info-container)]',
-  waiting: 'border-[var(--color-warning)] bg-[var(--color-warning-container)] text-[var(--color-on-warning-container)]',
-  error: 'border-[var(--color-error-soft-hover)] bg-[var(--color-error-container)] text-[var(--color-on-error-container)]',
+  idle: 'bg-[var(--color-surface)] text-[var(--color-text-tertiary)]',
+  done: 'bg-[var(--color-surface)] text-[var(--color-text-tertiary)]',
+  stopped: 'bg-[var(--color-surface)] text-[var(--color-text-tertiary)]',
+  running: 'bg-[var(--color-surface)] text-[var(--color-info)]',
+  waiting: 'rounded-[var(--radius-sm)] border border-[var(--color-warning)] bg-[var(--color-warning-container)] text-[var(--color-on-warning-container)]',
+  error: 'rounded-[var(--radius-sm)] bg-[var(--color-error-container)] text-[var(--color-on-error-container)]',
 }
 
-/** A standalone card leads with a plain glyph; the node belongs to the rail. */
+/** Cap-aligned 24px icon column for standalone borderless worklog rows. */
 function CardToolIcon({ toolName, status }: { toolName: string; status: ToolRowStatus }) {
   const Icon = status === 'running' ? LoaderCircle : activitySegmentIcon(toolName)
   const tone = status === 'error'
@@ -503,12 +510,13 @@ function CardToolIcon({ toolName, status }: { toolName: string; status: ToolRowS
         ? 'text-[var(--color-warning)]'
         : 'text-[var(--color-text-tertiary)]'
   return (
-    <Icon
-      size={14}
-      strokeWidth={1.75}
-      aria-hidden="true"
-      className={`shrink-0 ${tone} ${status === 'running' ? 'animate-spin' : ''}`}
-    />
+    <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center">
+      <Icon
+        size={14}
+        strokeWidth={1.75}
+        className={`${tone} ${status === 'running' ? 'animate-spin' : ''}`}
+      />
+    </span>
   )
 }
 
@@ -765,7 +773,7 @@ function PlanToolCallBlock({
       </button>
 
       {expanded ? (
-        <div className="space-y-2.5 border-t border-[var(--color-border)] px-3 py-3">
+        <div className="space-y-2 pb-2.5 pl-7 pt-1.5">
           {showPlanPreview ? (
             <PlanPreviewCard
               title={t('permission.planPreviewTitle')}

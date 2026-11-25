@@ -184,6 +184,8 @@ export type UserSettings = {
   outputStyle?: string
   skipWebFetchPreflight?: boolean
   desktopNotificationsEnabled?: boolean
+  /** 通知同时播放系统提示音，缺省为 true，仅在系统通知开启时生效 */
+  desktopNotificationSoundEnabled?: boolean
   /** 文件补全是否遵循 .gitignore，缺省为 true，项目设置可覆盖 */
   respectGitignore?: boolean
   autoUpdateEnabled?: boolean

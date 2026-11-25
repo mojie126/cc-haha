@@ -343,6 +343,9 @@ export type WorkspaceStatusResult = {
   branch: string | null
   isGitRepo: boolean
   changedFiles: WorkspaceChangedFile[]
+  /** 大仓库里改动文件被截断时的标记与总数 */
+  truncated?: boolean
+  totalChangedFiles?: number
   error?: string
 }
 
@@ -386,6 +389,9 @@ export type WorkspaceTreeResult = {
   state: 'ok' | 'missing' | 'error'
   path: string
   entries: WorkspaceTreeEntry[]
+  /** 目录条目被截断时的标记与总数 */
+  truncated?: boolean
+  totalCount?: number
   error?: string
 }
 
@@ -785,6 +791,14 @@ export const sessionsApi = {
     return api.get<SessionInspectionResponse>(
       `/api/sessions/${sessionId}/inspection?includeContext=0&usageOnly=1`,
       { timeout: 6_000, signal },
+    )
+  },
+
+  getWorkspaceMeta(sessionId: string, signal?: AbortSignal) {
+    // 只取仓库元数据与分支，不扫描 git status 与历史，用于大仓库的轻量刷新
+    return api.get<WorkspaceStatusResult>(
+      `${buildWorkspacePath(sessionId, 'status')}?includeChangedFiles=0`,
+      { signal },
     )
   },
 

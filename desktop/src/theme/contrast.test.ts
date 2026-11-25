@@ -441,6 +441,44 @@ describe('waiting-on-you mark', () => {
   }
 })
 
+/**
+ * 会话标签已从侧边栏地面的纸片改为画布上的胶囊：选中态用容器底色加
+ * `--color-border` 细边，悬停比选中弱一档。工作区资源标签仍坐在侧边栏地面上，
+ * 原来的 trough 口径对它们继续有效，所以这里单独守住胶囊在页面地面上可辨。
+ */
+describe('session tab capsule on the canvas', () => {
+  /** 画布地面即页面底色；胶囊里是容器底色，形状靠一像素细边承载。 */
+  const CANVAS = '--color-surface'
+  const CAPSULE = '--color-surface-container'
+  const CAPSULE_FILL_MIN = 1.03
+  const CAPSULE_EDGE_MIN = 1.15
+
+  for (const [theme, selectors] of Object.entries(THEME_BLOCKS)) {
+    it(`keeps the capsule fill visible on the canvas in ${theme}`, () => {
+      const canvas = parseColor(resolve(CANVAS, selectors))
+      const fill = parseColor(resolve(CAPSULE, selectors))
+      expect(
+        Number(contrast(fill, canvas).toFixed(2)),
+        `${theme}: ${CAPSULE} on ${CANVAS}`,
+      ).toBeGreaterThanOrEqual(CAPSULE_FILL_MIN)
+    })
+
+    it(`draws the capsule edge on both the canvas and its own fill in ${theme}`, () => {
+      const canvas = parseColor(resolve(CANVAS, selectors))
+      const fill = parseColor(resolve(CAPSULE, selectors))
+      const edge = flatten(parseColor(resolve('--color-border', selectors)), fill)
+      expect(
+        Number(contrast(edge, canvas).toFixed(2)),
+        `${theme}: --color-border on ${CANVAS}`,
+      ).toBeGreaterThanOrEqual(CAPSULE_EDGE_MIN)
+      expect(
+        Number(contrast(edge, fill).toFixed(2)),
+        `${theme}: --color-border on ${CAPSULE}`,
+      ).toBeGreaterThanOrEqual(1.05)
+    })
+  }
+})
+
 describe('tab strip outlines', () => {
   /**
    * The tab strip's trough is deliberately the sidebar's own ground rather

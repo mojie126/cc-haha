@@ -899,8 +899,10 @@ export function AskUserQuestion({
         : terminalWithoutAnswers ? 'question.completed' : 'question.answered'
 
   return (
-    <div className={`overflow-hidden rounded-[var(--radius-lg)] border bg-[var(--color-surface-container-lowest)] ${
-      submitted ? 'border-[var(--color-border)]' : 'border-[var(--color-outline)]'
+    <div className={`overflow-hidden rounded-[var(--radius-lg)] border ${
+      submitted
+        ? 'border-[var(--color-border)] bg-[var(--color-surface-container-lowest)]'
+        : 'border-[var(--color-outline)] border-l-2 border-l-[var(--color-info)] bg-[var(--color-surface-container)] shadow-[var(--shadow-card)]'
     }`}>
       {/* Header: 42px, the shared card head of the ask / plan cards. */}
       <div className={`flex h-[42px] items-center gap-2 px-3.5 ${submitted ? '' : 'border-b border-[var(--color-border)]'}`}>
@@ -1061,8 +1063,8 @@ export function AskUserQuestion({
               )}
             </div>
             <div
-              className={`rounded-[var(--radius-md)] border bg-[var(--color-surface-container)] transition-colors focus-within:border-[var(--color-outline)] focus-within:bg-[var(--color-surface-container-lowest)] focus-within:ring-2 focus-within:ring-[var(--color-border-focus)] ${
-                isDragActive ? 'border-[var(--color-brand)]' : 'border-transparent'
+              className={`rounded-[var(--radius-md)] border bg-[var(--color-surface-container-low)] transition-colors focus-within:border-[var(--color-outline)] focus-within:bg-[var(--color-surface-container-lowest)] focus-within:ring-2 focus-within:ring-[var(--color-border-focus)] ${
+                isDragActive ? 'border-[var(--color-brand)]' : 'border-[var(--color-border)]'
               }`}
             >
               {activeImages.length > 0 && (

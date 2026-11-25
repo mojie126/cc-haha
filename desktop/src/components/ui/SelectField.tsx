@@ -25,6 +25,8 @@ export type SelectFieldProps<T extends string = string> =
     hint?: ReactNode
     error?: string
     size?: FieldSize
+    /** Monospace face with tabular numerals for technical values. */
+    mono?: boolean
     containerClassName?: string
   }
 
@@ -46,6 +48,7 @@ export function SelectField<T extends string = string>({
   hint,
   error,
   size = 'lg',
+  mono = false,
   className,
   containerClassName,
   id,
@@ -95,6 +98,7 @@ export function SelectField<T extends string = string>({
               FIELD_SIZE_CLASSES[size],
               fieldStateClasses(!!error),
               'flex cursor-pointer items-center justify-between gap-2 text-left',
+              mono && 'font-mono tabular-nums',
               className,
             )}
           >

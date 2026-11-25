@@ -3571,16 +3571,16 @@ describe('Sidebar', () => {
       expect(useTabStore.getState().tabs.map((tab) => tab.sessionId)).toContain('yesterday-1')
     })
 
-    it('takes the bell out of reach while the sidebar is collapsed', () => {
+    it('keeps the view switch on the rail while the sidebar is collapsed', () => {
       seedSessions()
       useUIStore.setState({ sidebarOpen: false } as Partial<ReturnType<typeof useUIStore.getState>>)
 
       render(<Sidebar />)
 
-      // 折叠态不渲染会话列表，能聚焦或被读出来但切不动视图的铃铛只会让人点空。
-      // `sidebar-copy--hidden` 只夹宽度和透明度，所以两条都得自己钉住。
-      expect(screen.getByTestId('sidebar-task-view-toggle')).toHaveAttribute('tabindex', '-1')
-      expect(screen.queryByRole('button', { name: 'Task view' })).not.toBeInTheDocument()
+      // 折叠态没有搜索行，视图切换收进导航列，仍然是一个真正能点的 36px 图标按钮。
+      const bell = screen.getByTestId('sidebar-task-view-toggle-rail')
+      expect(bell).toHaveClass('h-9', 'w-9')
+      expect(bell).not.toHaveAttribute('tabindex', '-1')
     })
 
     it('keeps the bell reachable once the sidebar is expanded again', () => {

@@ -55,6 +55,9 @@ type Props = {
   teammateAvatarSrc?: string
   teammateAvatarKey?: string
   teammateAccent?: string
+  /** 相邻的用户消息收紧相对一侧的圆角，读成一串连贯气泡。 */
+  consecutiveBefore?: boolean
+  consecutiveAfter?: boolean
 }
 
 export const UserMessage = memo(function UserMessage({
@@ -71,6 +74,8 @@ export const UserMessage = memo(function UserMessage({
   teammateAvatarSrc,
   teammateAvatarKey,
   teammateAccent,
+  consecutiveBefore = false,
+  consecutiveAfter = false,
 }: Props) {
   const t = useTranslation()
   const hasText = content.trim().length > 0
@@ -263,7 +268,11 @@ export const UserMessage = memo(function UserMessage({
           {hasText && (
             <div
               data-message-body="user"
-              className="min-w-0 max-w-full rounded-[var(--radius-lg)] bg-[var(--color-surface-user-msg)] px-3.5 py-2.5 chat-reading-text text-[var(--color-text-primary)] whitespace-pre-wrap break-words"
+              className={[
+                'min-w-0 max-w-full rounded-[var(--radius-2xl)] bg-[var(--color-surface-user-msg)] px-4 py-2.5 chat-reading-text text-[var(--color-text-primary)] whitespace-pre-wrap break-words',
+                consecutiveBefore ? 'rounded-tr-[var(--radius-sm)]' : '',
+                consecutiveAfter ? 'rounded-br-[var(--radius-sm)]' : '',
+              ].filter(Boolean).join(' ')}
               style={{
                 overflowWrap: 'anywhere',
                 wordBreak: 'break-word',

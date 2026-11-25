@@ -18,6 +18,7 @@ import { AgentTeamsCostDialog } from '@/components/agentTeams/AgentTeamsCostDial
 import { Input } from '@/components/ui/Input'
 import { Button, type ButtonProps } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { Kbd, KbdGroup } from '@/components/ui/Kbd'
 import { cx } from '@/lib/cx'
 import {
   SettingsBlock,
@@ -132,6 +133,8 @@ export function GeneralSettings() {
     setSkipWebFetchPreflight,
     desktopNotificationsEnabled,
     setDesktopNotificationsEnabled,
+    desktopNotificationSoundEnabled,
+    setDesktopNotificationSoundEnabled,
     webSearch,
     setWebSearch,
     network,
@@ -822,25 +825,37 @@ export function GeneralSettings() {
       <span>{t('settings.general.uiZoomShortcutHint')}</span>
       <span className="inline-flex items-center gap-1">
         <span className="text-[var(--color-text-secondary)]">{t('settings.general.uiZoomShortcutMac')}</span>
-        <kbd className="settings-zoom-kbd">⌘</kbd>
-        <kbd className="settings-zoom-kbd">+</kbd>
+        <KbdGroup>
+          <Kbd size="xs">⌘</Kbd>
+          <Kbd size="xs">+</Kbd>
+        </KbdGroup>
         <span>/</span>
-        <kbd className="settings-zoom-kbd">⌘</kbd>
-        <kbd className="settings-zoom-kbd">-</kbd>
+        <KbdGroup>
+          <Kbd size="xs">⌘</Kbd>
+          <Kbd size="xs">-</Kbd>
+        </KbdGroup>
         <span>/</span>
-        <kbd className="settings-zoom-kbd">⌘</kbd>
-        <kbd className="settings-zoom-kbd">0</kbd>
+        <KbdGroup>
+          <Kbd size="xs">⌘</Kbd>
+          <Kbd size="xs">0</Kbd>
+        </KbdGroup>
       </span>
       <span className="inline-flex items-center gap-1">
         <span className="text-[var(--color-text-secondary)]">{t('settings.general.uiZoomShortcutWindows')}</span>
-        <kbd className="settings-zoom-kbd">Ctrl</kbd>
-        <kbd className="settings-zoom-kbd">+</kbd>
+        <KbdGroup>
+          <Kbd size="xs">Ctrl</Kbd>
+          <Kbd size="xs">+</Kbd>
+        </KbdGroup>
         <span>/</span>
-        <kbd className="settings-zoom-kbd">Ctrl</kbd>
-        <kbd className="settings-zoom-kbd">-</kbd>
+        <KbdGroup>
+          <Kbd size="xs">Ctrl</Kbd>
+          <Kbd size="xs">-</Kbd>
+        </KbdGroup>
         <span>/</span>
-        <kbd className="settings-zoom-kbd">Ctrl</kbd>
-        <kbd className="settings-zoom-kbd">0</kbd>
+        <KbdGroup>
+          <Kbd size="xs">Ctrl</Kbd>
+          <Kbd size="xs">0</Kbd>
+        </KbdGroup>
       </span>
       <span>{t('settings.general.uiZoomShortcutResetHint')}</span>
     </div>
@@ -1328,24 +1343,32 @@ export function GeneralSettings() {
             onChange={(enabled) => void handleDesktopNotificationsToggle(enabled)}
           />
           {desktopNotificationsEnabled && (
-            <SettingsRow
-              layout="inline"
-              title={<>{t('settings.general.notificationsStatus')}: {notificationStatusLabel[notificationPermission]}</>}
-            >
-              {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && (
-                <Button
-                  size="base"
-                  variant="secondary"
-                  className="whitespace-nowrap"
-                  disabled={notificationActionRunning}
-                  onClick={() => void handleNotificationPermissionAction()}
-                >
-                  {notificationPermission === 'denied'
-                    ? t('settings.general.notificationsOpenSettings')
-                    : t('settings.general.notificationsAuthorize')}
-                </Button>
-              )}
-            </SettingsRow>
+            <>
+              <SettingsSwitchRow
+                title={t('settings.general.notificationSoundEnabled')}
+                description={t('settings.general.notificationSoundDescription')}
+                checked={desktopNotificationSoundEnabled}
+                onChange={(enabled) => void setDesktopNotificationSoundEnabled(enabled)}
+              />
+              <SettingsRow
+                layout="inline"
+                title={<>{t('settings.general.notificationsStatus')}: {notificationStatusLabel[notificationPermission]}</>}
+              >
+                {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && (
+                  <Button
+                    size="base"
+                    variant="secondary"
+                    className="whitespace-nowrap"
+                    disabled={notificationActionRunning}
+                    onClick={() => void handleNotificationPermissionAction()}
+                  >
+                    {notificationPermission === 'denied'
+                      ? t('settings.general.notificationsOpenSettings')
+                      : t('settings.general.notificationsAuthorize')}
+                  </Button>
+                )}
+              </SettingsRow>
+            </>
           )}
         </SettingsGroup>
       </SettingsSection>

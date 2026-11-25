@@ -21,7 +21,6 @@ import { useCLITaskStore } from '../../stores/cliTaskStore'
 import { teamTaskWindowsForSnapshot, useTeamStore } from '../../stores/teamStore'
 import { StatusDot } from '@/components/ui/Badge'
 import { IconButton } from '@/components/ui/IconButton'
-import { tabChipClass, tabChipLabelClass } from '@/components/ui/tabChip'
 import { useDismissable } from '@/hooks/useDismissable'
 import { useTranslation } from '../../i18n'
 import { getDesktopHost } from '../../lib/desktopHost'
@@ -103,6 +102,18 @@ const TAB_TYPE_ICON_FALLBACK: LucideIcon = AppWindow
 const desktopHost = getDesktopHost()
 const isDesktopRuntime = desktopHost.isDesktop
 const EMPTY_DISMISSED_BACKGROUND_TASK_KEYS: readonly string[] = []
+
+/**
+ * 会话标签的胶囊样式：浮在全幅画布上的安静小片，不再做成抬起的纸卡
+ * 选中态用容器底色加一像素细边，悬停比选中弱一档，形状靠细边而不是阴影承载
+ * 工作区资源标签仍用 `ui/tabChip`，两处互不影响
+ */
+const SESSION_TAB_BASE =
+  'tab-bar-interactive group relative flex h-7 shrink-0 items-center rounded-[var(--radius-sm)] pl-2.5 pr-1 min-w-[112px] max-w-[200px] transition-[background-color,box-shadow,color] duration-150 ease-out'
+const SESSION_TAB_ACTIVE =
+  'bg-[var(--color-surface-container)] text-[var(--color-text-primary)] shadow-[0_0_0_1px_var(--color-border)]'
+const SESSION_TAB_IDLE =
+  'text-[var(--color-text-tertiary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]'
 const EMPTY_ACTIVITY_MESSAGES: UIMessage[] = []
 
 type PendingCloseRequest = {
@@ -598,7 +609,7 @@ export function TabBar() {
   ) : null
 
   const rightScrollControl = canScrollRight && (
-        <button type="button" onClick={() => scroll('right')} aria-label={t('tabs.scrollRight')} aria-describedby={attentionOffscreen.right ? `${attentionHintId}-right` : undefined} title={attentionOffscreen.right ? t('sidebar.sessionNeedsAttention') : undefined} className="relative flex h-[52px] w-7 flex-shrink-0 items-center justify-center text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-sidebar-item-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-border-focus)]">
+        <button type="button" onClick={() => scroll('right')} aria-label={t('tabs.scrollRight')} aria-describedby={attentionOffscreen.right ? `${attentionHintId}-right` : undefined} title={attentionOffscreen.right ? t('sidebar.sessionNeedsAttention') : undefined} className="relative flex h-[52px] w-7 flex-shrink-0 items-center justify-center text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-border-focus)]">
           <ChevronRight size={16} strokeWidth={1.75} aria-hidden="true" />
           {attentionHint('right')}
         </button>
@@ -609,27 +620,19 @@ export function TabBar() {
       data-testid="tab-bar"
       data-desktop-drag-region={isDesktopRuntime ? true : undefined}
       /*
-        The strip is frame, not paper: it sits on the sidebar's ground so the
-        active tab can be filled with `--color-surface` and read as a sheet
-        lifted off the desk, continuous with the content below it. Painting the
-        strip `--color-surface` instead collapses strip, active tab and content
-        into one flat plane, which is what #1123 reported as "粗犷".
+        编辑室式顶栏：标签条直接坐在全幅画布上，不再铺侧边栏底色，
+        由一条一像素细线把它与下方内容分开；会话标签因此收成安静的小胶囊，
+        选中态只用容器底色加细边，不再靠抬起纸卡表达层级。
 
-        Deliberately *not* darkened into a Chrome-style trough: keeping it on
-        the sidebar's exact ground is what stops the titlebar reading as a
-        separate band across the top of the window. The cost is that the
-        selected tab's fill is only 1.05–1.10:1 against it, so the shape has to
-        be carried by `--color-tab-edge` on the tab itself (see TabItem).
-
-        No `border-b`: the selected tab's bottom edge has to run straight into
-        the content below it, and a rule across the whole strip cuts through it.
+        工作区资源标签仍由 `WorkspaceHeaderContext` 托管到这条栏里，
+        它那截框同样留画布底色，与左侧胶囊共用一条底边细线收口。
       */
-      className="flex min-h-[52px] items-stretch bg-[var(--color-surface-sidebar)] select-none"
+      className="flex min-h-[52px] items-stretch border-b border-[var(--color-border)] bg-transparent select-none"
     >
 
       <div data-testid="workspace-session-header" className={hasWorkspaceHeader ? 'flex min-w-0 flex-1 overflow-hidden' : 'contents'}>
       {canScrollLeft && (
-        <button type="button" onClick={() => scroll('left')} aria-label={t('tabs.scrollLeft')} aria-describedby={attentionOffscreen.left ? `${attentionHintId}-left` : undefined} title={attentionOffscreen.left ? t('sidebar.sessionNeedsAttention') : undefined} className="relative flex h-[52px] w-7 flex-shrink-0 items-center justify-center text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-sidebar-item-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-border-focus)]">
+        <button type="button" onClick={() => scroll('left')} aria-label={t('tabs.scrollLeft')} aria-describedby={attentionOffscreen.left ? `${attentionHintId}-left` : undefined} title={attentionOffscreen.left ? t('sidebar.sessionNeedsAttention') : undefined} className="relative flex h-[52px] w-7 flex-shrink-0 items-center justify-center text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-border-focus)]">
           <ChevronLeft size={16} strokeWidth={1.75} aria-hidden="true" />
           {attentionHint('left')}
         </button>
@@ -699,18 +702,13 @@ export function TabBar() {
         which left the toolbar looking welded to the last tab.
       */}
       {/*
-        The frame owns the ground, not the header inside it. The drag gutter —
-        and, on Windows, the window controls — are the header's siblings in
-        here, and they are transparent, so whichever element paints has to
-        contain them. With the panel open the workspace's own tab strip sits in
-        this frame, and in 「素」 that strip is a trough like the session tabs:
-        the sidebar's ground, with the active resource tab as the paper sheet
-        that runs into the panel below. One ground for everything above it.
+        右侧这截框与左侧标签条同底：都留画布自身，由整条栏的底边细线统一收口
+        资源标签条托管进来后也不再自带第二层底色，避免同一行左右两种地面
       */}
       <div
         data-testid="workspace-header-frame"
         style={hasWorkspaceHeader ? { width: workspaceHeader.width, maxWidth: '100%' } : undefined}
-        className={`flex min-w-0 shrink-0 items-stretch ${hasWorkspaceHeader ? 'bg-[var(--color-surface-sidebar)]' : ''}`}
+        className="flex min-w-0 shrink-0 items-stretch"
       >
       <div
         data-testid="workspace-window-header"
@@ -940,11 +938,10 @@ const TabItem = forwardRef<HTMLDivElement, {
       onClick={onClick}
       onMouseDown={onMouseDown}
       onContextMenu={onContextMenu}
-      // The same chip as the workspace's resource tabs (`ui/tabChip`): one tab
-      // style for both strips. The tiers and why hover shares paper with the
-      // active tab are documented there.
+      // Session tabs are capsules on the canvas; the workspace's resource tabs
+      // keep `ui/tabChip`, whose tiers are tuned for their sidebar trough.
       className={`
-        ${tabChipClass(isActive || isDragging)} tab-strip-item
+        ${SESSION_TAB_BASE} ${isActive || isDragging ? SESSION_TAB_ACTIVE : SESSION_TAB_IDLE} tab-strip-item
         ${isDragging ? 'z-[var(--z-sticky)] cursor-grabbing opacity-95' : 'cursor-grab'}
         ${isDragOver ? 'before:absolute before:-left-[3px] before:top-[4px] before:bottom-[4px] before:w-[2px] before:bg-[var(--color-brand)] before:rounded-full' : ''}
       `}
@@ -968,7 +965,7 @@ const TabItem = forwardRef<HTMLDivElement, {
         {leadingGlyph}
       </span>
 
-      <span className={tabChipLabelClass(isActive)}>
+      <span className={`min-w-0 flex-1 truncate text-[12px] tabular-nums ${isActive ? 'font-medium' : ''}`}>
         {displayTitle}
       </span>
 
@@ -979,7 +976,7 @@ const TabItem = forwardRef<HTMLDivElement, {
       */}
       {/* The active tab keeps its close button in sight, as Chrome does; the
           rest reveal it on hover so an idle row stays all title. */}
-      <span className={`ml-1.5 flex-shrink-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 ${isActive ? 'opacity-100' : 'opacity-0'}`}>
+      <span className={`ml-1.5 flex-shrink-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 ${isActive ? 'opacity-100' : 'opacity-0'}`}>
         <IconButton
           icon={<X size={12} strokeWidth={2} aria-hidden="true" />}
           label={closeLabel}

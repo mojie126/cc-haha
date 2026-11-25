@@ -21,7 +21,7 @@ const APPEARANCE_CLASSES: Record<KbdAppearance, string> = {
   surface: [
     'border border-b-2 border-[var(--color-border)]',
     'bg-[var(--color-surface-container-low)] text-[var(--color-text-secondary)]',
-    'shadow-[var(--shadow-raised)]',
+    'shadow-[var(--bevel-surface-rest)]',
   ].join(' '),
   subtle: [
     'border border-[var(--color-border)]',

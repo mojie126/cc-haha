@@ -1791,8 +1791,16 @@ async function* queryModel(
         !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_THINKING),
     )
     const modelCanThink = modelSupportsThinking(options.model)
+    // 提示词钩子求值器是内部 JSON 校验，不是用户主动关闭思考，
+    // 非第一方端点默认省略 thinking 禁用字段，避免拒绝 reasoning 的中转返回 400
+    const isThirdPartyPromptHook =
+      options.querySource === 'hook_prompt' &&
+      !isFirstPartyAnthropicBaseUrl() &&
+      !shouldSendExplicitDisabledThinking()
     const sendsExplicitDisabledThinking =
-      !hasThinking && (modelCanThink || shouldSendExplicitDisabledThinking())
+      !hasThinking &&
+      !isThirdPartyPromptHook &&
+      (modelCanThink || shouldSendExplicitDisabledThinking())
 
     const outputConfig: BetaOutputConfig = {
       ...((extraBodyParams.output_config as BetaOutputConfig) ?? {}),
@@ -1865,6 +1873,13 @@ async function* queryModel(
           thinkingConfig.budgetTokens !== undefined
         ) {
           thinkingBudget = thinkingConfig.budgetTokens;
+        } else if (
+          options.querySource === 'hook_prompt' &&
+          thinkingConfig.type === 'disabled'
+        ) {
+          // 提示词钩子只返回一个小 JSON，模型强制手写思考时把预算压到最低档，
+          // 保留输出空间并避免高额推理开销
+          thinkingBudget = Math.min(thinkingBudget, 1024);
         }
         thinkingBudget = Math.min(maxOutputTokens - 1, thinkingBudget);
         thinking = {
@@ -2087,12 +2102,24 @@ async function* queryModel(
       : undefined
   }
 
+  // 部分网关省略或清空 message.role，回退响应与流式 message_start 在此统一补齐
+  const normalizeAssistantRole = (role: unknown): BetaMessage['role'] => {
+    if (typeof role === 'string') {
+      const trimmed = role.trim()
+      if (trimmed.length > 0) {
+        return trimmed as BetaMessage['role']
+      }
+    }
+    return 'assistant'
+  }
+
   function* commitFallbackResponse(result: BetaMessage): Generator<AssistantMessage> {
     const outputLimit = result.stop_reason === 'max_tokens' || result.stop_reason === 'model_context_window_exceeded'
     const truncatedToolUse = outputLimit && result.content.some(block => block.type === 'tool_use')
     const message: AssistantMessage = {
       message: {
         ...result,
+        role: normalizeAssistantRole(result.role),
         usage: normalizeUsage(result.usage),
         content: normalizeContentFromAPI(
           truncatedToolUse ? result.content.filter(block => block.type !== 'tool_use') : result.content,
@@ -2509,7 +2536,12 @@ async function* queryModel(
 
         switch (part.type) {
           case "message_start": {
-            partialMessage = part.message;
+            partialMessage = part.message
+              ? {
+                  ...part.message,
+                  role: normalizeAssistantRole(part.message.role),
+                }
+              : part.message;
             ttftMs = Date.now() - start;
             usage = updateUsage(usage, part.message?.usage);
             // Capture research from message_start if available (internal only).

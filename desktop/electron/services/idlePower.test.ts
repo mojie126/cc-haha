@@ -145,7 +145,7 @@ describe('all-idle power completion edge', () => {
     expect(f.dispatch).not.toHaveBeenCalled()
     expect(f.service.getState().notice).toBe('new-work')
   })
-  it('records native failures once, and never retries an already consumed completion', async () => {
+  it('keeps the selected action after a native refusal and retries on the next completion', async () => {
     const f = await fixture()
     f.execute.mockImplementation(async (_action, beforeExecute) => {
       await beforeExecute()
@@ -153,10 +153,19 @@ describe('all-idle power completion edge', () => {
     })
     f.complete()
     await advanceTime(40_000)
-    expect(f.service.getState()).toMatchObject({ settings: { action: 'none' }, countdown: null, notice: 'failed', lastAction: { result: 'failed' } })
+    // 派发前的重置不代表用户意愿：系统当场拒绝时恢复已选动作，设置页不会悄悄变成不执行操作
+    expect(f.service.getState()).toMatchObject({ settings: { action: 'sleep' }, countdown: null, notice: 'failed', lastAction: { result: 'failed' } })
+    expect(f.save).toHaveBeenCalledWith({ settings: { action: 'sleep', scope: 'any', countdownSeconds: 30 }, lastAction: expect.objectContaining({ result: 'failed' }) })
     expect(f.execute).toHaveBeenCalledTimes(1)
     await advanceTime(40_000)
     expect(f.execute).toHaveBeenCalledTimes(1)
+    // 同一次完成不会重复派发，下一次完成才重试
+    f.execute.mockImplementation(async (_action, beforeExecute) => { await beforeExecute(); f.dispatch() })
+    f.complete()
+    await advanceTime(40_000)
+    expect(f.execute).toHaveBeenCalledTimes(2)
+    expect(f.dispatch).toHaveBeenCalledTimes(1)
+    expect(f.service.getState()).toMatchObject({ settings: { action: 'none' }, lastAction: { result: 'accepted' } })
   })
   it('invalidates an asynchronous platform preparation when the user disables the feature', async () => {
     const f = await fixture()

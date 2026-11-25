@@ -409,4 +409,21 @@ describe('UserMessage capability pills', () => {
     expect(pills(container)).toEqual([])
     expect(screen.queryByTestId('agent-team-chip')).toBeNull()
   })
+
+  it('tightens the facing corners of consecutive user bubbles', () => {
+    const pair = render(
+      <>
+        <UserMessage content="第一条" consecutiveAfter />
+        <UserMessage content="第二条" consecutiveBefore />
+      </>,
+    )
+    const bubbles = pair.container.querySelectorAll<HTMLElement>('[data-message-body="user"]')
+    expect(bubbles[0]!.className).toContain('rounded-br-[var(--radius-sm)]')
+    expect(bubbles[0]!.className).not.toContain('rounded-tr-[var(--radius-sm)]')
+    expect(bubbles[1]!.className).toContain('rounded-tr-[var(--radius-sm)]')
+    expect(bubbles[1]!.className).not.toContain('rounded-br-[var(--radius-sm)]')
+
+    const lone = render(<UserMessage content="单独一条" />)
+    expect(bubbleOf(lone.container).className).not.toContain('rounded-br-[var(--radius-sm)]')
+  })
 })

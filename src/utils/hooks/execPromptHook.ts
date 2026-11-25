@@ -16,22 +16,64 @@ import type { PromptHook } from '../settings/types.js'
 import { asSystemPrompt } from '../systemPromptType.js'
 import { addArgumentsToPrompt, hookResponseSchema } from './hookHelpers.js'
 
+// 从上游错误响应里提取可读描述，供非阻塞错误提示使用
+function formatPromptHookApiErrorDetail(
+  fullResponse: string,
+  fallback?: string,
+): string {
+  const raw = fullResponse || fallback || 'Unknown API error'
+  const jsonStart = raw.indexOf('{')
+  if (jsonStart >= 0) {
+    const parsed = safeParseJSON(raw.slice(jsonStart)) as {
+      error?: { message?: unknown }
+      message?: unknown
+    } | null
+    const extracted =
+      typeof parsed?.error?.message === 'string'
+        ? parsed.error.message.trim()
+        : typeof parsed?.message === 'string'
+          ? parsed.message.trim()
+          : ''
+    if (extracted) {
+      const prefix = raw.slice(0, jsonStart).trim()
+      return prefix ? `${prefix} ${extracted}` : extracted
+    }
+  }
+  return raw
+}
+
+/**
+ * 目标求值器失败时改为非阻塞错误，由停止钩子决定是否清除目标
+ * @param hook 触发失败的目标钩子
+ * @param hookName 钩子名称
+ * @param hookEvent 钩子事件
+ * @param toolUseID 关联的工具调用标识
+ * @param reason 失败原因
+ * @param stdout 原始响应内容
+ * @returns 目标钩子返回钩子结果，其他钩子返回 null
+ */
 function goalHookFailureResult(
   hook: PromptHook,
+  hookName: string,
+  hookEvent: HookEvent,
+  toolUseID: string,
   reason: string,
+  stdout = '',
 ): HookResult | null {
   if (!isGoalPromptHookCommand(hook.prompt)) return null
 
-  const blockingError = `Goal evaluator failed: ${reason}. Treat the goal as incomplete and continue working toward it.`
   return {
     hook,
-    outcome: 'blocking',
-    blockingError: {
-      blockingError,
-      command: hook.prompt,
-    },
-    preventContinuation: true,
-    stopReason: blockingError,
+    outcome: 'non_blocking_error',
+    message: createAttachmentMessage({
+      type: 'hook_non_blocking_error',
+      hookName,
+      toolUseID,
+      hookEvent,
+      stderr: `Goal evaluator failed: ${reason}`,
+      stdout,
+      exitCode: 1,
+    }),
   }
 }
 
@@ -130,6 +172,29 @@ Your response must be a JSON object matching one of the following schemas:
       const fullResponse = content.trim()
       logForDebugging(`Hooks: Model response: ${fullResponse}`)
 
+      if (response.isApiErrorMessage) {
+        const apiErrorDetail = formatPromptHookApiErrorDetail(
+          fullResponse,
+          response.apiError || response.error,
+        )
+        logForDebugging(`Hooks: Prompt hook API error: ${apiErrorDetail}`)
+        return {
+          hook,
+          outcome: 'non_blocking_error',
+          message: createAttachmentMessage({
+            type: 'hook_non_blocking_error',
+            hookName,
+            toolUseID: effectiveToolUseID,
+            hookEvent,
+            stderr: isGoalPromptHookCommand(hook.prompt)
+              ? `Goal evaluator API error: ${apiErrorDetail}`
+              : `Prompt hook API error: ${apiErrorDetail}`,
+            stdout: fullResponse,
+            exitCode: 1,
+          }),
+        }
+      }
+
       const json = safeParseJSON(fullResponse)
       if (!json) {
         logForDebugging(
@@ -137,7 +202,11 @@ Your response must be a JSON object matching one of the following schemas:
         )
         const goalFailure = goalHookFailureResult(
           hook,
+          hookName,
+          hookEvent,
+          effectiveToolUseID,
           'response was not valid JSON',
+          fullResponse,
         )
         if (goalFailure) return goalFailure
 
@@ -163,7 +232,11 @@ Your response must be a JSON object matching one of the following schemas:
         )
         const goalFailure = goalHookFailureResult(
           hook,
+          hookName,
+          hookEvent,
+          effectiveToolUseID,
           `response did not match the expected schema (${parsed.error.message})`,
+          fullResponse,
         )
         if (goalFailure) return goalFailure
 
@@ -218,7 +291,13 @@ Your response must be a JSON object matching one of the following schemas:
       if (combinedSignal.aborted) {
         const goalFailure = signal?.aborted
           ? null
-          : goalHookFailureResult(hook, 'evaluation timed out')
+          : goalHookFailureResult(
+            hook,
+            hookName,
+            hookEvent,
+            effectiveToolUseID,
+            'evaluation timed out',
+          )
         if (goalFailure) return goalFailure
 
         return {
@@ -233,6 +312,9 @@ Your response must be a JSON object matching one of the following schemas:
     logForDebugging(`Hooks: Prompt hook error: ${errorMsg}`)
     const goalFailure = goalHookFailureResult(
       hook,
+      hookName,
+      hookEvent,
+      effectiveToolUseID,
       errorMsg || 'evaluation failed',
     )
     if (goalFailure) return goalFailure

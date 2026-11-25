@@ -11,6 +11,7 @@ import type { IdlePowerDebug } from './idlePowerDebug'
 import { detectPowerCapabilities, executePowerAction } from './idlePowerPlatform'
 import { readIdlePowerPreferences, writeIdlePowerPreferences, type PowerPreferenceApp } from './idlePowerPersistence'
 import { sendDesktopNotification, type ElectronNotificationConstructor } from './notifications'
+import type { NotificationBeep } from './notificationSound'
 
 const dictionaries: Record<Locale, Record<string, string>> = { en, zh, 'zh-TW': zhTW, jp, kr }
 export async function createIdlePowerHost(options: {
@@ -19,6 +20,8 @@ export async function createIdlePowerHost(options: {
   monitor: Pick<PowerMonitor, 'getSystemIdleTime'>
   screen: Pick<Screen, 'getCursorScreenPoint'>
   NotificationClass: ElectronNotificationConstructor
+  /** 系统提示音实现，未提供时倒计时通知不发声 */
+  beep?: NotificationBeep
   locale(): Locale
   readActivity(signal: AbortSignal): Promise<PowerActivitySnapshot>
   onChange(state: IdlePowerState): void
@@ -59,13 +62,14 @@ export async function createIdlePowerHost(options: {
       // 通知失败不阻塞派发（系统关闭 Toast 通知时倒计时照常推进），仅取消点击仍生效
       sendDesktopNotification({
         NotificationClass: options.NotificationClass,
-        options: { title: 'cc-haha', body: translate('power.countdown', { action: actionName(countdown.action), seconds }) },
+        options: { title: 'cc-haha', body: translate('power.countdown', { action: actionName(countdown.action), seconds }), sound: true },
         onAction: () => cancel(),
+        beep: options.beep,
       })
     },
     notifyNotice: notice => {
       sendDesktopNotification({ NotificationClass: options.NotificationClass,
-        options: { title: 'cc-haha', body: translate(`power.cancelled.${notice}`) }, onAction: () => {} })
+        options: { title: 'cc-haha', body: translate(`power.cancelled.${notice}`), sound: true }, onAction: () => {}, beep: options.beep })
     },
   })
   service.start()

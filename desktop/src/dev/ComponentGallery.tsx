@@ -17,6 +17,8 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { IconButton, type IconButtonSize, type IconButtonTone } from '@/components/ui/IconButton'
 import { Input } from '@/components/ui/Input'
+import { Kbd, KbdGroup } from '@/components/ui/Kbd'
+import { ScrollArea } from '@/components/ui/ScrollArea'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { MobileBottomSheet } from '@/components/ui/MobileBottomSheet'
 import { Modal } from '@/components/ui/Modal'
@@ -726,6 +728,45 @@ export function ComponentGallery() {
           <Card shadow="card">shadow=card</Card>
           <Card shadow="composer">shadow=composer</Card>
           <Card interactive lift>lift (hover raises 2px)</Card>
+        </div>
+      </Section>
+
+      <Section title="Kbd / ScrollArea" note="Physical keycap hints and single-node auto-hiding scroll containers with optional 24px edge fades.">
+        <div className="flex flex-wrap items-center gap-4">
+          <KbdGroup>
+            <Kbd size="xs">⌘</Kbd>
+            <Kbd size="xs">K</Kbd>
+          </KbdGroup>
+          <KbdGroup>
+            <Kbd size="sm">⌘</Kbd>
+            <Kbd size="sm">⇧</Kbd>
+            <Kbd size="sm">P</Kbd>
+          </KbdGroup>
+          <Kbd size="md">Enter</Kbd>
+          <Kbd appearance="subtle">Esc</Kbd>
+          <Kbd appearance="inverse">⌘J</Kbd>
+        </div>
+        <div className="grid max-w-3xl grid-cols-2 gap-4">
+          <Card padding="none" surface="low" className="overflow-hidden">
+            <ScrollArea fadeTop fadeBottom className="h-36 px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+              {Array.from({ length: 12 }, (_, index) => (
+                <div key={index} className="flex items-center justify-between py-1.5">
+                  <span>Scrollable row {index + 1}</span>
+                  <Badge pill={false}>{index + 1}</Badge>
+                </div>
+              ))}
+            </ScrollArea>
+          </Card>
+          <Card padding="none" surface="low" className="overflow-hidden">
+            <ScrollArea topbarFade className="h-36 px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+              {Array.from({ length: 12 }, (_, index) => (
+                <div key={index} className="flex items-center justify-between py-1.5">
+                  <span>Topbar 7-stop fade row {index + 1}</span>
+                  <Kbd size="xs">{index + 1}</Kbd>
+                </div>
+              ))}
+            </ScrollArea>
+          </Card>
         </div>
       </Section>
 

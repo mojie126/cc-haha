@@ -1286,6 +1286,46 @@ describe('ChatInput file mentions', () => {
     expect(getComposerText()).toBe('half-typed replacement')
   })
 
+  it('docks queued prompts as a seam banner above the composer card', () => {
+    useChatStore.setState({
+      sessions: {
+        [sessionId]: {
+          messages: [{ id: 'assistant-stream', type: 'assistant_text', content: 'working', timestamp: 1 }],
+          chatState: 'streaming',
+          connectionState: 'connected',
+          streamingText: 'still answering',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          streamingResponseChars: 0,
+          elapsedSeconds: 12,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    render(<ChatInput compact />)
+
+    setComposerText('先记录一下', 5)
+    fireEvent.keyDown(getComposerElement(), { key: 'Enter' })
+
+    const list = screen.getByTestId('pending-user-message-list')
+    const panel = screen.getByTestId('chat-input-panel')
+    // The banner is a sibling before the card, shares its top corner, and bleeds
+    // its bottom edge under it through the seam wash.
+    expect(list.className).toContain('composer-seam-above')
+    expect(list.className).toContain('rounded-t-[var(--radius-2xl)]')
+    expect(list.className).toContain('-mb-4')
+    expect(panel.previousElementSibling).toBe(list)
+  })
+
   it('renders Markdown syntax in a queued prompt the same way the sent bubble does', () => {
     useChatStore.setState({
       sessions: {
@@ -1721,9 +1761,9 @@ describe('ChatInput file mentions', () => {
     render(<ChatInput variant="hero" />)
 
     const panel = screen.getByTestId('chat-input-panel')
-    // The floating card (「素」): `--radius-xl` + the composer step of the
-    // shadow scale, the same shell EmptySession renders.
-    expect(panel).toHaveClass('rounded-[var(--radius-xl)]', 'glass-panel--composer')
+    // The floating card (「素」): `--radius-2xl` + the frosted composer shell,
+    // the same one EmptySession renders.
+    expect(panel).toHaveClass('rounded-[var(--radius-2xl)]', 'composer-glass')
     expect(panel).not.toHaveClass('rounded-b-none')
 
     // One pill in the toolbar instead of a three-button bar welded to the
@@ -3711,12 +3751,12 @@ describe('ChatInput file mentions', () => {
     expect(screen.queryByText('Run')).not.toBeInTheDocument()
     expect(screen.getByTestId('chat-input-shell')).toHaveClass('px-3')
     expect(screen.getByTestId('chat-input-shell').className).toContain('safe-area-inset-bottom')
-    // `glass-panel--composer` carries the composer step of the shadow scale.
+    // `composer-glass` carries the composer step of the shadow scale.
     // The phone branch used to swap it for a `shadow-[…]` utility, which loses
-    // to `.glass-panel`'s own `box-shadow` on stylesheet order — so the phone
+    // to the shell class's own `box-shadow` on stylesheet order — so the phone
     // composer silently rendered the floating-overlay shadow instead.
-    expect(screen.getByTestId('chat-input-panel')).toHaveClass('glass-panel--composer')
-    expect(screen.getByTestId('chat-input-panel')).toHaveClass('rounded-[var(--radius-xl)]')
+    expect(screen.getByTestId('chat-input-panel')).toHaveClass('composer-glass')
+    expect(screen.getByTestId('chat-input-panel')).toHaveClass('rounded-[var(--radius-2xl)]')
     expect(screen.getByTestId('chat-input-panel')).not.toHaveClass('rounded-b-none')
     expect(screen.getByTestId('chat-input-toolbar-leading')).toHaveClass('shrink-0', 'gap-1')
     expect(screen.getByTestId('chat-input-toolbar-trailing')).toHaveClass('min-w-0', 'flex-1', 'justify-end', 'gap-1')

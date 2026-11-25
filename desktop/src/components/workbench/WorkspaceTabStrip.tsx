@@ -212,7 +212,7 @@ export function WorkspaceTabStrip({
     <div
       data-testid={`workspace-tab-strip-${dock}`}
       data-desktop-drag-region={placement === 'window' ? true : undefined}
-      className={`flex min-w-0 shrink-0 items-center gap-1 pl-2 pr-1 ${placement === 'window' ? 'h-[52px] flex-1' : 'h-10 border-b border-[var(--color-border)] bg-[var(--color-surface-sidebar)]'}`}
+      className={`flex min-w-0 shrink-0 items-center gap-1 pl-2 pr-1 ${placement === 'window' ? 'h-[52px] flex-1' : 'h-10 border-b border-[var(--color-border)] bg-[var(--color-surface)]'}`}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1">
         <div

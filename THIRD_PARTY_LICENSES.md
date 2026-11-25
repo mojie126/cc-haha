@@ -39,6 +39,13 @@ Original upstream agent-desktop code remains available under Apache-2.0. The roo
   - `wasm/`: image decoders OpenJPEG (BSD-2-Clause), JBIG2 from PDFium (BSD-3-Clause) and qcms (MIT), with pdf.js' wrappers for them; each license is in a `LICENSE_*` file beside the decoder
   - `iccs/`: an ICC colour profile (CC0 1.0, `iccs/LICENSE`)
 
+## @lobehub/icons-static-svg
+
+- Project: [Lobe Icons](https://github.com/lobehub/lobe-icons), distributed as `@lobehub/icons-static-svg`
+- Included as: the inlined model and provider brand marks rendered by `desktop/src/components/composite/ModelBrandIcon.tsx`
+- Version: 1.106.0
+- License: MIT
+
 ## claude-tap
 
 - Project: claude-tap (https://github.com/liaohch3/claude-tap)

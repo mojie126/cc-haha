@@ -111,6 +111,11 @@ export class TaskNotificationFollowUpBatch {
     return this.notifications.length > 0
   }
 
+  /** 用户中断后丢弃已排队但尚未投递的后台任务通知 */
+  clear(): void {
+    this.notifications = []
+  }
+
   takeIfSettled(hasRunningBackgroundTasks: boolean): string | undefined {
     if (hasRunningBackgroundTasks || this.notifications.length === 0) {
       return undefined

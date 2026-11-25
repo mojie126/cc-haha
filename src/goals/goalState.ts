@@ -5,6 +5,10 @@ import {
 } from '../constants/xml.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { Message } from '../types/message.js'
+import {
+  INTERRUPT_MESSAGE,
+  INTERRUPT_MESSAGE_FOR_TOOL_USE,
+} from '../utils/messages.js'
 import { shouldSkipHookDueToTrust } from '../utils/hooks.js'
 import {
   addSessionHook,
@@ -171,6 +175,18 @@ function findActiveGoalObjective(messages: Message[]): string | null {
   for (const message of messages) {
     const text = messageToText(message)
     if (!text) continue
+
+    // 用户中断本身就是回合边界，目标随之作废，之后设置的 /goal 才算新目标
+    const trimmedText = text.trim()
+    if (
+      message.type === 'user' &&
+      (trimmedText === INTERRUPT_MESSAGE ||
+        trimmedText === INTERRUPT_MESSAGE_FOR_TOOL_USE)
+    ) {
+      activeObjective = null
+      pendingGoalCommand = false
+      continue
+    }
 
     const commandName = readXmlTag(text, COMMAND_NAME_TAG)
     if (commandName) {

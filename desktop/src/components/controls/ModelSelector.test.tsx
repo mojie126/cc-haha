@@ -1936,4 +1936,67 @@ describe('controlled runtime pickers outside the composer', () => {
     fireEvent.click(within(picker).getByRole('button', { name: /^opus/ }))
     expect(onRuntimeSelectionChange).toHaveBeenCalledWith(expect.objectContaining({ providerId: '__session__', modelId: 'opus' }))
   })
-})
+
+  it('docks effort, fast mode and the permissions shortcut at the end of the model dropdown', async () => {
+    const setSessionRuntime = vi.fn()
+    const onOpenPermissions = vi.fn()
+    useSettingsStore.setState({
+      locale: 'en',
+      availableModels: MODELS,
+      currentModel: MODELS[0],
+      activeProviderName: 'Kimi',
+      effortLevel: 'max',
+    })
+    useProviderStore.setState({
+      providers: [{
+        id: 'kimi-provider',
+        presetId: 'kimi',
+        name: 'Kimi',
+        apiKey: '***',
+        baseUrl: 'https://api.kimi.com/coding/',
+        apiFormat: 'anthropic',
+        models: { main: 'k3', haiku: 'k3', sonnet: 'k3', opus: 'k3' },
+      }],
+      activeId: 'kimi-provider',
+      hasLoadedProviders: true,
+      isLoading: false,
+    })
+    useSessionRuntimeStore.getState().setSelection('session-1', {
+      providerId: 'kimi-provider',
+      modelId: 'k3',
+      effortLevel: 'max',
+    })
+    useChatStore.setState({ setSessionRuntime } as Partial<ReturnType<typeof useChatStore.getState>>)
+
+    render(
+      <ModelSelector
+        runtimeKey="session-1"
+        permissionModeLabel="Ask first"
+        onOpenPermissions={onOpenPermissions}
+      />,
+    )
+    await clickByRole(/, Kimi$/)
+
+    const docked = screen.getByTestId('model-selector-docked-controls')
+    // 停靠区在列表下方、下拉之内，不必离开面板就能改努力等级与权限
+    const effortGroup = within(docked).getByRole('radiogroup', { name: 'Effort' })
+    expect(effortGroup).toBeInTheDocument()
+    expect(within(docked).getByText('Ask first')).toBeInTheDocument()
+
+    // 改努力不关闭下拉，可以接着调下一项
+    fireEvent.click(within(effortGroup).getByRole('radio', { name: 'X-High' }))
+    expect(screen.getByTestId('model-selector-dropdown')).toBeInTheDocument()
+    expect(useSessionRuntimeStore.getState().selections['session-1']).toEqual({
+      providerId: 'kimi-provider',
+      modelId: 'k3',
+      effortLevel: 'xhigh',
+    })
+
+    const shortcut = within(docked).getByTestId('model-selector-permissions-shortcut')
+    fireEvent.click(shortcut)
+    // 权限入口会先关掉面板，再在下一帧把权限选择器打开
+    expect(screen.queryByTestId('model-selector-dropdown')).not.toBeInTheDocument()
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(() => resolve(null))) })
+    expect(onOpenPermissions).toHaveBeenCalledTimes(1)
+  })
+});

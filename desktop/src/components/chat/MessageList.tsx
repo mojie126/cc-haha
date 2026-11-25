@@ -1767,20 +1767,7 @@ const CONVERSATION_NAVIGATION_COMPACT_MIN_WIDTH_PX = 560
 const STREAMING_ASSISTANT_NAVIGATION_KEY = 'streaming-assistant-message'
 const EMPTY_MESSAGES: UIMessage[] = []
 const EMPTY_AGENT_TASK_NOTIFICATIONS: Record<string, AgentTaskNotification> = {}
-const CHAT_SCROLL_AREA_CLASS = [
-  'chat-scroll-area',
-  '[scrollbar-width:auto]',
-  '[scrollbar-color:color-mix(in_srgb,var(--color-outline)_72%,transparent)_transparent]',
-  '[&::-webkit-scrollbar]:w-2.5',
-  '[&::-webkit-scrollbar-track]:bg-transparent',
-  '[&::-webkit-scrollbar-thumb]:rounded-full',
-  '[&::-webkit-scrollbar-thumb]:border-[3px]',
-  '[&::-webkit-scrollbar-thumb]:border-transparent',
-  '[&::-webkit-scrollbar-thumb]:bg-[color-mix(in_srgb,var(--color-outline)_74%,transparent)]',
-  '[&::-webkit-scrollbar-thumb]:bg-clip-content',
-  '[&::-webkit-scrollbar-thumb:hover]:border-2',
-  '[&::-webkit-scrollbar-thumb:hover]:bg-[color-mix(in_srgb,var(--color-outline)_90%,transparent)]',
-].join(' ')
+const CHAT_SCROLL_AREA_CLASS = 'chat-scroll-area topbar-scroll-fade scrollbar-autohide'
 const CHAT_RENDER_ITEM_CLASS = [
   'chat-render-item',
 ].join(' ')
@@ -1939,6 +1926,17 @@ function clampNumber(value: number, min: number, max: number) {
 function getRenderItemKey(item: RenderItem) {
   if (item.kind === 'tool_group' || item.kind === 'team_card') return item.id
   return item.message.id
+}
+
+/** 纯用户消息（非队友、非定时任务）才参与相邻气泡的圆角衔接判定。 */
+function isPlainUserRenderItem(item: RenderItem | undefined): boolean {
+  return Boolean(
+    item &&
+    item.kind === 'message' &&
+    item.message.type === 'user_text' &&
+    !item.message.teammateFrom &&
+    !item.message.scheduledTask,
+  )
 }
 
 /**
@@ -4450,6 +4448,14 @@ export function MessageList({
           item.message.type === 'tool_use' &&
           navigationToolUseIdFor(item) === item.message.toolUseId
         }
+        consecutiveUserBefore={
+          item.message.type === 'user_text' && !item.message.teammateFrom && !item.message.scheduledTask
+          && isPlainUserRenderItem(renderItems[index - 1])
+        }
+        consecutiveUserAfter={
+          item.message.type === 'user_text' && !item.message.teammateFrom && !item.message.scheduledTask
+          && isPlainUserRenderItem(renderItems[index + 1])
+        }
       />
     ) : null
 
@@ -4825,6 +4831,8 @@ export const MessageBlock = memo(function MessageBlock({
   supersededAskUserQuestionIds,
   decisionsInComposer = false,
   navigationHighlighted = false,
+  consecutiveUserBefore = false,
+  consecutiveUserAfter = false,
 }: {
   sessionId?: string | null
   message: UIMessage
@@ -4851,6 +4859,10 @@ export const MessageBlock = memo(function MessageBlock({
   decisionsInComposer?: boolean
   /** A "locate in chat" jump landed on this tool call. */
   navigationHighlighted?: boolean
+  /** 上一条渲染项也是用户消息，用于收紧两个气泡相对一侧的圆角。 */
+  consecutiveUserBefore?: boolean
+  /** 下一条渲染项也是用户消息，用于收紧两个气泡相对一侧的圆角。 */
+  consecutiveUserAfter?: boolean
 }) {
   const t = useTranslation()
   const teammateVisual = message.type === 'user_text' && message.teammateFrom && team
@@ -4890,6 +4902,8 @@ export const MessageBlock = memo(function MessageBlock({
             teammateAvatarSrc={teammateVisual?.avatarSrc}
             teammateAvatarKey={teammateVisual?.avatarKey}
             teammateAccent={teammateVisual?.accent}
+            consecutiveBefore={consecutiveUserBefore}
+            consecutiveAfter={consecutiveUserAfter}
           />
         </SelectableChatMessage>
       )

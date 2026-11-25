@@ -1471,10 +1471,11 @@ export function EmptySession({ initialWorkDir = '', visible = true, draftRevisio
           <div
             ref={panelRef}
             data-testid="empty-session-composer-panel"
-            // Kept identical to ChatInput's floating card: `--radius-xl`, the
-            // composer shadow step from `glass-panel--composer`, and an 8px
-            // inset that the editor and toolbar pad themselves within.
-            className={`glass-panel glass-panel--composer relative flex flex-col overflow-visible rounded-[var(--radius-xl)] p-2 ${isDragActive ? 'composer-drop-target-active' : ''}`}
+            // Kept identical to ChatInput's floating card: `--radius-2xl`, the
+            // frosted `composer-glass` shell with its top specular rim and
+            // composer shadow step, and an 8px inset that the editor and toolbar
+            // pad themselves within.
+            className={`composer-glass relative z-[var(--z-raised)] flex flex-col overflow-visible rounded-[var(--radius-2xl)] p-2 transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-[var(--color-brand)] focus-within:ring-2 focus-within:ring-[var(--color-brand-soft)] ${isDragActive ? 'composer-drop-target-active' : ''}`}
             {...dragHandlers}
           >
             {isDragActive && (

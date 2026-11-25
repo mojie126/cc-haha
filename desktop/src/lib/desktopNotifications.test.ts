@@ -134,6 +134,7 @@ describe('desktopNotifications', () => {
     expect(notificationPluginMock.sendNotification).toHaveBeenCalledWith({
       title: 'Permission required',
       body: 'Approve command execution',
+      sound: true,
     })
   })
 
@@ -188,6 +189,7 @@ describe('desktopNotifications', () => {
     expect(coreApiMock.invoke).toHaveBeenCalledWith('macos_send_notification', {
       title: 'Permission required',
       body: 'Approve command execution',
+      sound: true,
     })
     expect(notificationPluginMock.sendNotification).not.toHaveBeenCalled()
     expect(notificationPluginMock.requestPermission).not.toHaveBeenCalled()
@@ -211,6 +213,7 @@ describe('desktopNotifications', () => {
       title: 'Permission required',
       body: 'Approve command execution',
       target: JSON.stringify(target),
+      sound: true,
     })
   })
 
@@ -227,6 +230,7 @@ describe('desktopNotifications', () => {
     expect(coreApiMock.invoke).toHaveBeenCalledWith('macos_send_notification', {
       title: 'Permission required',
       body: undefined,
+      sound: true,
     })
     expect(coreApiMock.invoke).not.toHaveBeenCalledWith('macos_request_notification_permission')
     expect(warnSpy).toHaveBeenCalledWith(
@@ -327,6 +331,7 @@ describe('desktopNotifications', () => {
     expect(notificationPluginMock.sendNotification).toHaveBeenCalledWith({
       title: 'Permission required',
       body: 'Approve command execution',
+      sound: true,
     })
   })
 
@@ -420,6 +425,7 @@ describe('desktopNotifications', () => {
     expect(sender).toHaveBeenCalledWith({
       title: 'Permission required',
       body: 'Approve command execution',
+      sound: true,
     })
   })
 

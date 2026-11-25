@@ -407,15 +407,11 @@ describe('desktop theme tokens', () => {
 })
 
 /**
- * `.glass-panel` states a translucent fill and a blur in one rule, and reads as
- * frosted only when both land. The blur is the fragile half: where
- * `backdrop-filter` does not run there is no failure for CSS to report — the
- * declaration is simply skipped, the fill stays translucent on its own, and
- * page text reads straight through the panel. That is what put a legible
- * provider list behind the 860px provider form.
- *
- * These pin the two defenses. Dialogs opted out of the coupling entirely;
- * the small floating layers kept it but no longer depend on it for legibility.
+ * Layered glass surfaces pair translucent fills (`0.82–0.86` alpha) with
+ * `backdrop-filter` blur/saturation and a 1px top specular rim. Where
+ * `backdrop-filter` is unavailable, CSS silently drops the blur without
+ * reporting a failure — so every translucent surface MUST drop back to its
+ * opaque fill inside `@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))`.
  */
 describe('overlay opacity contract', () => {
   /** Every value assigned to `token` across the stylesheet, in source order. */
@@ -432,11 +428,11 @@ describe('overlay opacity contract', () => {
     return Number(match![1])
   }
 
-  it('gives dialogs a fill with no alpha channel at all, in every theme', () => {
-    // Not "mostly opaque" — an rgba() here would put the regression back one
-    // decimal at a time.
+  it('gives the opaque dialog fallback token a fill with no alpha channel in every theme', () => {
+    // `--color-surface-dialog` is both the `@supports` fallback when blur is
+    // unavailable and the surface measured by contrast tests.
     for (const value of declarationsOf('--color-surface-dialog')) {
-      expect(value, `dialog fill should be opaque, got "${value}"`).not.toMatch(/rgba|hsla/)
+      expect(value, `dialog fallback fill should be opaque, got "${value}"`).not.toMatch(/rgba|hsla/)
       expect(value).not.toMatch(/,\s*[0-9.]+\s*\)\s*$/)
     }
   })
@@ -449,27 +445,40 @@ describe('overlay opacity contract', () => {
     expect(values).toContain('var(--cc-s1)')
   })
 
-  it('keeps the glass fill dense enough to stand without the blur', () => {
-    // At 0.84 the page was readable through unblurred glass. These floating
-    // layers are small enough that the frosted look survives the extra density.
-    for (const value of declarationsOf('--color-surface-glass')) {
-      expect(alphaOf(value), `glass fill "${value}" is too sheer`).toBeGreaterThanOrEqual(0.9)
+  it('keeps frosted glass fills dense enough (>= 0.80 alpha) for legible blur', () => {
+    for (const token of ['--color-surface-glass', '--color-surface-dialog-glass']) {
+      for (const value of declarationsOf(token)) {
+        expect(alphaOf(value), `${token} fill "${value}" is too sheer`).toBeGreaterThanOrEqual(0.8)
+      }
     }
   })
 
-  it('drops glass to a fully opaque fill where backdrop-filter is unavailable', () => {
-    const fallback = normalizedCss.match(
-      /@supports not \(\(backdrop-filter[^)]*\)[^{]*\{\s*\.glass-panel\s*\{([^}]*)\}/,
-    )
-    expect(fallback, 'expected an @supports fallback for .glass-panel').not.toBeNull()
-    expect(fallback![1]).toMatch(/background:\s*rgb\(var\(--cc-bg-rgb\)\)/)
+  it('drops every frosted glass surface to an opaque fill where backdrop-filter is unavailable', () => {
+    const fallbackStart = normalizedCss.indexOf('@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {')
+    expect(fallbackStart, 'expected an @supports fallback block for frosted glass').toBeGreaterThanOrEqual(0)
+    const fallbackBlock = normalizedCss.slice(fallbackStart, normalizedCss.indexOf('\n}\n', fallbackStart))
+    for (const surface of ['.glass-panel', '.surface-glass', '.dropdown-glass', '.dialog-glass', '.dialog-panel', '.composer-glass']) {
+      expect(fallbackBlock, `${surface} must fall back to an opaque fill`).toContain(surface)
+    }
+    expect(fallbackBlock).toMatch(/background:\s*rgb\(var\(--cc-bg-rgb\)\)/)
+    expect(fallbackBlock).toMatch(/background:\s*var\(--color-surface-dialog\)/)
   })
 
-  it('keeps the dialog panel off backdrop-filter entirely', () => {
+  it('keeps the scroll-edge mask off the first and last line', () => {
+    // 首尾遮罩只在滚动后被 useScrollEdgeFade 打开的一端出现，16px 与容器首尾
+    // 内边距对齐后，正文首行与末行落在遮罩之外；再退回 24px 会重新吃掉一行
+    const size = /--scroll-edge-fade-size:\s*([0-9]+)px;/.exec(normalizedCss)?.[1]
+    expect(Number(size), 'scroll-edge fade height').toBeLessThanOrEqual(16)
+    expect(normalizedCss).toContain('.scroll-edge-fade[data-fade-top="false"]')
+    expect(normalizedCss).toContain('.scroll-edge-fade[data-fade-bottom="false"]')
+  })
+
+  it('uses frosted dialog glass on .dialog-panel with a top specular rim and ambient shadow', () => {
     const rule = normalizedCss.match(/\n\.dialog-panel \{([^}]*)\}/)
     expect(rule, 'expected a .dialog-panel rule').not.toBeNull()
-    expect(rule![1]).not.toMatch(/backdrop-filter/)
-    expect(rule![1]).toMatch(/background:\s*var\(--color-surface-dialog\)/)
+    expect(rule![1]).toMatch(/background:\s*var\(--color-surface-dialog-glass\)/)
+    expect(rule![1]).toMatch(/backdrop-filter:\s*blur\(var\(--glass-blur\)\)/)
+    expect(rule![1]).toMatch(/box-shadow:\s*var\(--glass-top-rim\),\s*var\(--shadow-dialog-glass\)/)
   })
 
   it('dims harder behind a modal than behind a non-modal drawer', () => {

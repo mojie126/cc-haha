@@ -82,6 +82,8 @@ export type DesktopNotificationOptions = {
   id?: number
   extra?: Record<string, unknown>
   target?: unknown
+  /** 与通知同一时机播放提示音，由主进程按声音设置决定是否发声 */
+  sound?: boolean
 }
 
 export type DesktopUpdateDownloadEvent =

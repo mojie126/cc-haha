@@ -98,6 +98,8 @@ type SettingsStore = {
   outputStyleError: string | null
   skipWebFetchPreflight: boolean
   desktopNotificationsEnabled: boolean
+  /** 通知同时播放系统提示音，缺省为 true */
+  desktopNotificationSoundEnabled: boolean
   desktopTerminal: DesktopTerminalSettings
   webSearch: WebSearchSettings
   updateProxy: UpdateProxySettings
@@ -144,6 +146,7 @@ type SettingsStore = {
   setOutputStyle: (outputStyle: string, workDir?: string | null) => Promise<void>
   setSkipWebFetchPreflight: (enabled: boolean) => Promise<void>
   setDesktopNotificationsEnabled: (enabled: boolean) => Promise<void>
+  setDesktopNotificationSoundEnabled: (enabled: boolean) => Promise<void>
   setDesktopTerminal: (settings: Partial<DesktopTerminalSettings>) => Promise<void>
   setWebSearch: (settings: WebSearchSettings) => Promise<void>
   setUpdateProxy: (settings: UpdateProxySettings) => Promise<void>
@@ -273,6 +276,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   outputStyleError: null,
   skipWebFetchPreflight: true,
   desktopNotificationsEnabled: false,
+  desktopNotificationSoundEnabled: true,
   desktopTerminal: DEFAULT_DESKTOP_TERMINAL_SETTINGS,
   webSearch: { mode: 'auto', tavilyApiKey: '', braveApiKey: '', deepseekApiKey: '' },
   updateProxy: DEFAULT_UPDATE_PROXY_SETTINGS,
@@ -391,6 +395,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         outputStyle: normalizeOutputStyle(userSettings.outputStyle),
         skipWebFetchPreflight: userSettings.skipWebFetchPreflight !== false,
         desktopNotificationsEnabled: userSettings.desktopNotificationsEnabled === true,
+        // 旧设置没有该字段时默认开启声音，只有显式关闭才静音
+        desktopNotificationSoundEnabled: userSettings.desktopNotificationSoundEnabled !== false,
         desktopTerminal,
         webSearch: normalizeWebSearchSettings(userSettings.webSearch),
         updateProxy: normalizeUpdateProxySettings(userSettings.updateProxy),
@@ -751,6 +757,27 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     } catch {
       if (get().desktopNotificationsEnabled === enabled) {
         set({ desktopNotificationsEnabled: prev })
+      }
+    }
+  },
+
+  setDesktopNotificationSoundEnabled: async (enabled) => {
+    const prev = get().desktopNotificationSoundEnabled
+    set({ desktopNotificationSoundEnabled: enabled })
+    const save = desktopNotificationsSaveQueue
+      .catch(() => undefined)
+      .then(async () => {
+        if (get().desktopNotificationSoundEnabled !== enabled) return
+        await settingsApi.updateUser({ desktopNotificationSoundEnabled: enabled })
+      })
+
+    desktopNotificationsSaveQueue = save
+
+    try {
+      await save
+    } catch {
+      if (get().desktopNotificationSoundEnabled === enabled) {
+        set({ desktopNotificationSoundEnabled: prev })
       }
     }
   },

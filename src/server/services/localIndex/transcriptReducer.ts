@@ -546,6 +546,30 @@ function applyActivityEntry(state: ReducerState, entry: ReducerEntry): void {
   accumulateAdvisorUsage(state, entry, timestamp.date, usage)
 }
 
+/**
+ * 解析条目的消息角色，嵌套 message.role 缺失或为空时回退到条目类型
+ * @param entry 会话记录条目，只读取 type 与 message.role
+ * @returns 归一化后的角色，无法判定时返回 undefined
+ */
+export function resolveEntryMessageRole(
+  entry: { type?: string; message?: { role?: string } | null },
+): string | undefined {
+  const message = entry.message
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    return undefined
+  }
+  if (typeof message.role === 'string') {
+    const trimmedRole = message.role.trim()
+    if (trimmedRole.length > 0) {
+      return trimmedRole
+    }
+  }
+  if (entry.type === 'user' || entry.type === 'assistant' || entry.type === 'system') {
+    return entry.type
+  }
+  return undefined
+}
+
 function applyEntry(state: ReducerState, entry: ReducerEntry): void {
   if (entry.entrypoint === 'claude-desktop-team-worker') state.isTeamWorker = true
   applyActivityEntry(state, entry)
@@ -556,7 +580,7 @@ function applyEntry(state: ReducerState, entry: ReducerEntry): void {
 
   if (
     (entry.type === 'user' || entry.type === 'assistant') &&
-    entry.message?.role
+    resolveEntryMessageRole(entry)
   ) {
     state.messageCount += 1
     if (!entry.isMeta) {
@@ -628,9 +652,9 @@ function applyEntry(state: ReducerState, entry: ReducerEntry): void {
     !state.firstUserTitle &&
     entry.type === 'user' &&
     !entry.isMeta &&
-    entry.message?.role === 'user'
+    resolveEntryMessageRole(entry) === 'user'
   ) {
-    state.firstUserTitle = extractTranscriptUserTitle(entry.message.content)
+    state.firstUserTitle = extractTranscriptUserTitle(entry.message?.content)
   }
 }
 

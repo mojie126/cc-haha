@@ -1,4 +1,5 @@
 import type { DesktopNotificationOptions, NotificationPermissionState } from '../../src/lib/desktopHost/types'
+import { playNotificationSound, type NotificationBeep } from './notificationSound'
 
 export type ElectronNotificationInstance = {
   show(): void
@@ -6,7 +7,7 @@ export type ElectronNotificationInstance = {
 }
 
 export type ElectronNotificationConstructor = {
-  new(options: { title: string, body?: string, icon?: string }): ElectronNotificationInstance
+  new(options: { title: string, body?: string, icon?: string, silent?: boolean }): ElectronNotificationInstance
   isSupported(): boolean
 }
 
@@ -20,6 +21,7 @@ export function validateNotificationOptions(value: unknown): value is DesktopNot
     && (record.body === undefined || typeof record.body === 'string')
     && (record.icon === undefined || typeof record.icon === 'string')
     && (record.id === undefined || typeof record.id === 'number')
+    && (record.sound === undefined || typeof record.sound === 'boolean')
     && (record.extra === undefined || (typeof record.extra === 'object' && record.extra !== null && !Array.isArray(record.extra)))
 }
 
@@ -40,21 +42,28 @@ export function sendDesktopNotification({
   options,
   onAction,
   onLifecycle,
+  beep,
 }: {
   NotificationClass: ElectronNotificationConstructor
   options: unknown
   onAction: (payload: unknown) => void
   onLifecycle?: (event: 'close' | 'failed') => void
+  /** 系统提示音实现，调用方按设置决定是否传入 */
+  beep?: NotificationBeep
 }): boolean {
   if (!validateNotificationOptions(options)) {
     throw new Error('Invalid Electron notification payload')
   }
   if (!NotificationClass.isSupported()) return false
 
+  // 只要调用方声明这条通知由自己控制声音，就一律让系统静音；
+  // 是否真的发声由 beep 是否存在决定，避免关掉提示音后系统默认音又响一次
+  const soundRequested = options.sound === true
   const notification = new NotificationClass({
     title: options.title,
     body: options.body,
     icon: options.icon,
+    ...(soundRequested ? { silent: true } : {}),
   })
 
   activeNotifications.add(notification)
@@ -79,5 +88,7 @@ export function sendDesktopNotification({
     cleanup()
   })
   notification.show()
+  // 通知已经弹出才发声，避免系统拒绝通知时只有声音没有内容
+  if (soundRequested && beep) playNotificationSound(beep, true)
   return true
 }

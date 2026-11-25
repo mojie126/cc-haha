@@ -29,7 +29,15 @@ afterEach(async () => {
     if (previous[key] === undefined) delete process.env[key]
     else process.env[key] = previous[key]
   }
-  await rm(directory, { recursive: true, force: true })
+  // Windows 上子进程句柄可能延迟释放，EBUSY 不该掩盖断言结果，重试后放弃
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      await rm(directory, { recursive: true, force: true })
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EBUSY') throw error
+    }
+  }
 })
 
 const entry = (uuid: string | undefined, role: 'user' | 'assistant', content: unknown, parentUuid: string | null = null) => ({

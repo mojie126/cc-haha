@@ -119,7 +119,7 @@ describe('ShareImageDialog', () => {
     await settle()
     expect(lastRenderOptions()).toMatchObject({ size: 'wide', showLink: false, showCost: true })
 
-    fireEvent.change(screen.getByLabelText('Image theme'), { target: { value: 'celadon' } })
+    fireEvent.change(screen.getByLabelText('Image theme'), { target: { value: 'dark' } })
     await settle()
     expect(renderShareImageMock.mock.calls.length).toBeGreaterThan(initialCalls + 2)
     // The image is drawn in the chosen palette, whatever theme the app shows.
@@ -128,15 +128,22 @@ describe('ShareImageDialog', () => {
     expect(themeUsed.series).toHaveLength(5)
   })
 
-  it('offers every theme, led by "follow the current one"', async () => {
+  it('offers every palette, led by "follow the current one"', async () => {
     renderDialog()
     await settle()
 
-    const select = screen.getByRole('combobox', { name: 'Image theme' })
-    expect(select).toHaveTextContent('Follow current theme')
-    fireEvent.click(select)
-    expect(screen.getAllByRole('option')).toHaveLength(8)
-    expect(screen.getByRole('option', { name: 'Neutral Dark' })).toBeInTheDocument()
+    // The trigger is the app's shared card menu, not a native select, so the
+    // palettes show up once it opens.
+    const trigger = screen.getByRole('combobox', { name: 'Image theme' })
+    expect(trigger).toHaveTextContent('Follow current theme')
+    fireEvent.click(trigger)
+
+    const list = screen.getByRole('listbox', { name: 'Image theme' })
+    // Seven palettes, light grounds before dark ones, matching the appearance picker.
+    expect(within(list).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Follow current theme', 'Pure White', 'Paper', 'Warm Classic', 'Celadon', 'Ink Night', 'Ink Blue', 'Neutral Dark',
+    ])
+    expect(within(list).getByRole('option', { name: 'Ink Night' })).toHaveAttribute('aria-selected', 'false')
   })
 
   it('saves the rendered PNG under a dated name', async () => {

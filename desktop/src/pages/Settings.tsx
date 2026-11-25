@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useTranslation, getTranslationDictionary, type TranslationKey } from '../i18n'
 import { SearchField } from '@/components/ui/SearchField'
+import { Kbd } from '@/components/ui/Kbd'
 import {
   buildSettingsSearchEntries,
   searchSettings,
@@ -100,6 +101,7 @@ export function DesktopSettings() {
   const pendingSettingsTab = useUIStore((s) => s.pendingSettingsTab)
   const locale = useSettingsStore((s) => s.locale)
   const contentRef = useRef<HTMLDivElement>(null)
+  const settingsSearchInputRef = useRef<HTMLInputElement>(null)
   const highlightedRowRef = useRef<HTMLElement | null>(null)
   const t = useTranslation()
 
@@ -138,6 +140,32 @@ export function DesktopSettings() {
     if (contentRef.current) contentRef.current.scrollTop = 0
     useUIStore.getState().setPendingSettingsTab(null)
   }, [pendingSettingsTab, setActiveTab])
+
+  // 斜杠聚焦搜索框，与命令面板同一习惯。可编辑元素内、以及叠在设置页上的
+  // 对话框里不抢键，避免在输入框里打斜杠时焦点被拽走。
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
+      }
+      const input = settingsSearchInputRef.current
+      if (!input) return
+      const dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
+      if (dialogs.length > 0) {
+        const topDialog = dialogs[dialogs.length - 1]
+        if (!topDialog?.contains(input)) return
+      }
+      event.preventDefault()
+      input.focus()
+      input.select()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   useLayoutEffect(() => {
     const element = contentRef.current
@@ -235,10 +263,12 @@ export function DesktopSettings() {
           <div className="px-2.5 pb-2 text-xs font-semibold text-[var(--color-text-tertiary)]">{t('settings.title')}</div>
           <div className="shrink-0 px-0.5 pb-2">
             <SearchField
+              ref={settingsSearchInputRef}
               size="sm"
               label={t('settings.search.placeholder')}
               placeholder={t('settings.search.placeholder')}
               clearLabel={t('settings.search.clear')}
+              trailing={<Kbd size="xs">/</Kbd>}
               value={searchQuery}
               onChange={(value) => {
                 clearSearchHighlight()
