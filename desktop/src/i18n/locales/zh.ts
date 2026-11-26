@@ -3021,7 +3021,7 @@ export const zh: Record<TranslationKey, string> = {
   'settings.help.voiceCorrection.cost': '每次听写多等约 1 秒，按所选模型计费，每句几百个 token。文字会发给该模型的服务商，音频不会。',
   'settings.general.notificationsTitle': '系统通知',
   'settings.general.idlePowerTitle': '任务完成后',
-  'settings.general.idlePowerDescription': '所有任务、排队工作和等待确认结束后，才请求执行系统操作。默认不执行，执行一次后自动恢复为不执行操作；系统当场拒绝时保留所选动作，下次任务结束再试。',
+  'settings.general.idlePowerDescription': '所有任务、排队工作和等待确认结束后，才请求执行系统操作。默认不执行，执行一次后自动恢复为不执行操作；系统当场拒绝时保留所选动作，下次任务结束再试；屏幕已锁定则会强制关机，其他程序可能未保存。',
   'settings.general.idlePowerAction': '所有任务完成时',
   'settings.general.idlePowerScope': '触发来源',
   'settings.general.idlePowerScopeDescription': '两种范围都要等待 cc-haha 中的所有工作结束。',

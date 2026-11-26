@@ -135,6 +135,34 @@ describe('idle power platform dispatch', () => {
     expect(runCommand).toHaveBeenLastCalledWith('C:\\Windows\\System32\\shutdown.exe', ['/s', '/t', '0'])
   })
 
+  it('retries Windows shutdown with force only when the session is locked', async () => {
+    const { deps } = fixture('win32')
+    const run = deps.runCommand!
+    const attempts: (readonly string[])[] = []
+    deps.runCommand = async (file, args) => {
+      if (!file.endsWith('shutdown.exe')) return run(file, args)
+      attempts.push(args)
+      // 会话锁定时系统拒绝非强制关机，退出码 1271 即 ERROR_MACHINE_LOCKED
+      if (args.at(-1) !== '/f') throw Object.assign(new Error('machine is locked'), { code: 1271 })
+      return { stdout: '', stderr: '' }
+    }
+    await executePowerAction('shutdown', deps)
+    expect(attempts).toEqual([['/s', '/t', '0'], ['/s', '/t', '0', '/f']])
+  })
+
+  it('does not force Windows shutdown when the first attempt fails for another reason', async () => {
+    const { deps } = fixture('win32')
+    const run = deps.runCommand!
+    const attempts: (readonly string[])[] = []
+    deps.runCommand = async (file, args) => {
+      if (!file.endsWith('shutdown.exe')) return run(file, args)
+      attempts.push(args)
+      throw Object.assign(new Error('access denied'), { code: 5 })
+    }
+    await expect(executePowerAction('shutdown', deps)).rejects.toThrow('access denied')
+    expect(attempts).toEqual([['/s', '/t', '0']])
+  })
+
   it.each(['lock', 'sleep', 'hibernate'] as const)('checks the native boolean for Windows %s', async action => {
     const { deps, runCommand } = fixture('win32')
     await executePowerAction(action, deps)

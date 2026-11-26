@@ -13,12 +13,15 @@ export type PowerPlatformDependencies = {
 }
 
 type RunCommand = NonNullable<PowerPlatformDependencies['runCommand']>
-type Command = { file: string; args: readonly string[]; expectsBoolean?: boolean }
+/** `fallbackArgs` 仅在首次派发被拒且需要强制选项时使用，见 ERROR_MACHINE_LOCKED */
+type Command = { file: string; args: readonly string[]; expectsBoolean?: boolean; fallbackArgs?: readonly string[] }
 type PowerPlan = { capabilities: PowerCapabilities; commands: Partial<Record<PowerAction, Command>> }
 const actions: readonly PowerAction[] = ['lock', 'sleep', 'hibernate', 'shutdown']
 const macLock = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
 const logind = ['org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager']
 const noInteractiveAuthorization = '--allow-interactive-authorization=no'
+// 会话已锁定时非强制关机被系统直接拒绝，熄屏后无人值守的关机只能改用强制选项
+const errorMachineLocked = 1271
 
 const runCommand: RunCommand = (file, args) => new Promise((resolve, reject) => {
   execFile(file, [...args], { encoding: 'utf8', windowsHide: true, timeout: 30_000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
@@ -138,7 +141,9 @@ async function inspectWindows(run: RunCommand, env: NodeJS.ProcessEnv): Promise<
       sleep: scriptCommand(windowsSuspendScript('Suspend'), true),
       hibernate: scriptCommand(windowsSuspendScript('Hibernate'), true),
       // A positive /t implies /f. Zero preserves applications' shutdown veto.
-      shutdown: { file: path.win32.join(system32, 'shutdown.exe'), args: ['/s', '/t', '0'] },
+      // 会话锁定时系统以 1271 拒绝，此时才改用强制选项重试一次
+      shutdown: { file: path.win32.join(system32, 'shutdown.exe'), args: ['/s', '/t', '0'],
+        fallbackArgs: ['/s', '/t', '0', '/f'] },
     },
   }
   const output = await probe(scriptCommand(windowsCapabilitiesScript), run)
@@ -223,7 +228,15 @@ export async function executePowerAction(action: PowerAction, deps: PowerPlatfor
   const command = plan.commands[action]
   if (!plan.capabilities[action] || !command) throw new Error(`Power action ${action} is unavailable`)
   await deps.beforeExecute?.()
-  const result = await run(command.file, command.args)
+  let result: { stdout: string, stderr: string }
+  try {
+    result = await run(command.file, command.args)
+  } catch (error) {
+    // 首次被拒且原因是会话已锁定才升级为强制选项，未锁定时仍保留应用程序的关机否决
+    const code = (error as { code?: unknown }).code
+    if (!command.fallbackArgs || code !== errorMachineLocked) throw error
+    result = await run(command.file, command.fallbackArgs)
+  }
   if (command.expectsBoolean && result.stdout.trim().toLowerCase() !== 'true') {
     throw new Error(`Power action ${action} did not confirm OS acceptance`)
   }

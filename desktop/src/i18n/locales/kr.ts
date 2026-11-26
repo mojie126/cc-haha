@@ -3026,7 +3026,7 @@ export const kr: Record<TranslationKey, string> = {
   'settings.help.voiceCorrection.cost': '받아쓰기마다 약 1초 더 기다리며, 선택한 모델 기준으로 요금이 부과됩니다(문장당 수백 토큰). 텍스트는 해당 모델 제공업체로 전송되지만 오디오는 전송되지 않습니다.',
   'settings.general.notificationsTitle': '시스템 알림',
   'settings.general.idlePowerTitle': '작업 완료 후',
-  'settings.general.idlePowerDescription': '모든 작업, 대기 중인 작업, 승인 대기가 끝난 후 시스템 동작을 요청합니다. 기본값은 아무 동작도 하지 않으며, 한 번 실행하면 "아무 동작도 하지 않음"으로 돌아가지만 시스템이 거부하면 선택한 동작을 유지하고 다음 작업 완료 시 다시 시도합니다.',
+  'settings.general.idlePowerDescription': '모든 작업, 대기 중인 작업, 승인 대기가 끝난 후 시스템 동작을 요청합니다. 기본값은 아무 동작도 하지 않으며, 한 번 실행하면 "아무 동작도 하지 않음"으로 돌아가지만 시스템이 거부하면 선택한 동작을 유지하고 다음 작업 완료 시 다시 시도합니다. 화면이 잠겨 있으면 강제 종료되므로 다른 프로그램의 저장하지 않은 내용이 사라질 수 있습니다.',
   'settings.general.idlePowerAction': '모든 작업이 끝나면',
   'settings.general.idlePowerScope': '실행 조건',
   'settings.general.idlePowerScopeDescription': '두 옵션 모두 cc-haha의 모든 작업이 끝날 때까지 기다립니다.',

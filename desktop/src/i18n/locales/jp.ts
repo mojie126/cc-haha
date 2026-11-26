@@ -3024,7 +3024,7 @@ export const jp: Record<TranslationKey, string> = {
   'settings.help.voiceCorrection.cost': 'ディクテーションごとに約 1 秒長く待ち、選んだモデルの料金がかかります（1 文あたり数百トークン）。テキストはそのモデルの提供元に送られますが、音声は送られません。',
   'settings.general.notificationsTitle': 'システム通知',
   'settings.general.idlePowerTitle': 'タスク完了後',
-  'settings.general.idlePowerDescription': 'すべてのタスク、待機中の処理、承認待ちが終了してからシステム操作を要求します。初期設定では何もせず、一度実行すると「何もしない」に戻りますが、システムが拒否した場合は選択した動作を保ち、次のタスク完了時に再試行します。',
+  'settings.general.idlePowerDescription': 'すべてのタスク、待機中の処理、承認待ちが終了してからシステム操作を要求します。初期設定では何もせず、一度実行すると「何もしない」に戻りますが、システムが拒否した場合は選択した動作を保ち、次のタスク完了時に再試行します。画面がロックされている場合は強制終了となるため、他のプログラムの未保存の内容が失われる可能性があります。',
   'settings.general.idlePowerAction': 'すべてのタスクが完了したとき',
   'settings.general.idlePowerScope': '対象タスク',
   'settings.general.idlePowerScopeDescription': 'どちらの場合も、cc-haha のすべての作業が終了するまで待ちます。',
